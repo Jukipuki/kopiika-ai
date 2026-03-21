@@ -1,0 +1,103 @@
+# generated: 2026-03-21
+# project: kopiika-ai
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/ohumennyi/Projects/kopiika-ai/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-21 # refreshed
+project: kopiika-ai
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/ohumennyi/Projects/kopiika-ai/_bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Project Foundation & User Authentication
+  epic-1: in-progress
+  1-1-monorepo-scaffolding-local-development-environment: review
+  1-2-aws-infrastructure-provisioning: backlog
+  1-3-aws-cognito-integration-user-registration: backlog
+  1-4-user-login-logout-session-management: backlog
+  1-5-protected-routes-tenant-isolation: backlog
+  1-6-language-selection-ukrainian-english: backlog
+  1-7-account-settings-page: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Statement Upload & Data Ingestion
+  epic-2: backlog
+  2-1-file-upload-ui-s3-storage: backlog
+  2-2-file-validation-format-detection: backlog
+  2-3-monobank-csv-parser: backlog
+  2-4-additional-bank-format-parser: backlog
+  2-5-async-pipeline-processing-with-celery: backlog
+  2-6-real-time-processing-progress-via-sse: backlog
+  2-7-multiple-statement-uploads-cumulative-history: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: AI-Powered Financial Insights & Teaching Feed
+  epic-3: backlog
+  3-1-transaction-categorization-agent: backlog
+  3-2-rag-financial-literacy-corpus-creation: backlog
+  3-3-rag-knowledge-base-education-agent: backlog
+  3-4-teaching-feed-api-data-model: backlog
+  3-5-teaching-feed-card-ui-progressive-disclosure: backlog
+  3-6-card-stack-navigation-gestures: backlog
+  3-7-progressive-card-appearance-sse-integration: backlog
+  3-8-adaptive-education-depth: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Cumulative Financial Profile & Health Score
+  epic-4: backlog
+  4-1-persistent-financial-profile: backlog
+  4-2-financial-health-score-calculation-display: backlog
+  4-3-health-score-history-trends: backlog
+  4-4-month-over-month-spending-comparison: backlog
+  4-5-category-spending-breakdown: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Data Privacy, Trust & Consent
+  epic-5: backlog
+  5-1-data-encryption-at-rest: backlog
+  5-2-privacy-explanation-consent-during-onboarding: backlog
+  5-3-financial-advice-disclaimer: backlog
+  5-4-view-my-stored-data: backlog
+  5-5-delete-all-my-data: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Error Handling, Recovery & Operational Monitoring
+  epic-6: backlog
+  6-1-user-friendly-error-messages-error-states: backlog
+  6-2-pipeline-failure-recovery-retry: backlog
+  6-3-uncategorized-transaction-flagging: backlog
+  6-4-structured-logging-with-correlation-ids: backlog
+  6-5-pipeline-performance-upload-metrics-tracking: backlog
+  6-6-operator-job-status-health-queries: backlog
+  epic-6-retrospective: optional

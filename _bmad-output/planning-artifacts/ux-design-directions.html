@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kopiika-ai — UX Design Directions</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0F1117;
+    --surface: #1A1D27;
+    --surface-elevated: #242836;
+    --border: #2E3345;
+    --text-primary: #F0F0F3;
+    --text-secondary: #9CA3B4;
+    --text-tertiary: #6B7280;
+    --accent-primary: #6C63FF;
+    --accent-secondary: #38BDF8;
+    --triage-high: #F07068;
+    --triage-high-bg: rgba(240,112,104,0.08);
+    --triage-medium: #F0A858;
+    --triage-medium-bg: rgba(240,168,88,0.08);
+    --triage-low: #5BC4A8;
+    --triage-low-bg: rgba(91,196,168,0.08);
+  }
+
+  body {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    background: #080A0F;
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(8,10,15,0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .top-nav h1 { font-size: 18px; font-weight: 600; }
+  .top-nav span { color: var(--accent-primary); }
+  .nav-links { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nav-links a {
+    color: var(--text-secondary); text-decoration: none; font-size: 13px;
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    transition: all 0.2s;
+  }
+  .nav-links a:hover, .nav-links a.active {
+    color: var(--text-primary); border-color: var(--accent-primary);
+    background: rgba(108,99,255,0.1);
+  }
+
+  /* ===== SECTIONS ===== */
+  .section {
+    max-width: 1200px; margin: 0 auto;
+    padding: 64px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-header {
+    margin-bottom: 40px;
+  }
+  .section-header .label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--accent-primary); margin-bottom: 8px;
+  }
+  .section-header h2 {
+    font-size: 28px; font-weight: 700; margin-bottom: 8px;
+  }
+  .section-header p {
+    font-size: 16px; color: var(--text-secondary); max-width: 640px;
+  }
+
+  /* ===== DIRECTION 1: CARD STACK (MOBILE) ===== */
+  .phone-frame {
+    width: 375px; height: 812px;
+    background: var(--bg);
+    border-radius: 40px;
+    border: 3px solid var(--border);
+    overflow: hidden;
+    position: relative;
+    margin: 0 auto;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+  .phone-status-bar {
+    height: 44px; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+    padding: 0 24px;
+  }
+  .phone-header {
+    padding: 0 20px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .phone-header h3 { font-size: 22px; font-weight: 700; }
+  .phone-content {
+    flex: 1; padding: 0 20px; overflow-y: auto;
+    height: calc(100% - 44px - 56px - 56px);
+  }
+  .phone-tab-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 56px; background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 0 16px;
+  }
+  .tab-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 10px; color: var(--text-tertiary);
+  }
+  .tab-item.active { color: var(--accent-primary); }
+  .tab-icon { width: 24px; height: 24px; border-radius: 6px; background: currentColor; opacity: 0.3; }
+  .tab-item.active .tab-icon { opacity: 1; background: var(--accent-primary); }
+
+  /* Upload FAB */
+  .fab {
+    position: absolute; bottom: 72px; right: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--accent-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 300; color: white;
+    box-shadow: 0 4px 16px rgba(108,99,255,0.4);
+    cursor: pointer; z-index: 10;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(108,99,255,0.5); }
+
+  /* ===== INSIGHT CARDS ===== */
+  .insight-card {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .insight-card:hover {
+    border-color: rgba(108,99,255,0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  }
+  .insight-card.triage-high { border-left: 3px solid var(--triage-high); background: linear-gradient(135deg, var(--triage-high-bg), var(--surface)); }
+  .insight-card.triage-medium { border-left: 3px solid var(--triage-medium); background: linear-gradient(135deg, var(--triage-medium-bg), var(--surface)); }
+  .insight-card.triage-low { border-left: 3px solid var(--triage-low); background: linear-gradient(135deg, var(--triage-low-bg), var(--surface)); }
+
+  .card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .triage-badge {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 4px 10px; border-radius: 12px;
+  }
+  .triage-badge.high { background: rgba(240,112,104,0.15); color: var(--triage-high); }
+  .triage-badge.medium { background: rgba(240,168,88,0.15); color: var(--triage-medium); }
+  .triage-badge.low { background: rgba(91,196,168,0.15); color: var(--triage-low); }
+
+  .card-category { font-size: 11px; color: var(--text-tertiary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card-headline { font-size: 18px; font-weight: 600; line-height: 1.35; margin-bottom: 8px; }
+  .card-metric { font-size: 28px; font-weight: 700; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+  .card-metric .currency { font-size: 18px; font-weight: 500; color: var(--text-secondary); }
+  .card-body { font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
+
+  .card-expand {
+    font-size: 13px; color: var(--accent-primary); font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+    cursor: pointer; padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .card-expand:hover { text-decoration: underline; }
+
+  /* Education expanded state */
+  .education-layer {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+  .education-layer.visible { display: block; }
+  .education-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--accent-primary); margin-bottom: 8px;
+  }
+  .education-text { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+  /* ===== HEALTH SCORE RING ===== */
+  .score-ring-container {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 0;
+  }
+  .score-ring {
+    width: 160px; height: 160px; position: relative;
+  }
+  .score-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .score-ring-bg { fill: none; stroke: var(--border); stroke-width: 10; }
+  .score-ring-fill {
+    fill: none; stroke-width: 10; stroke-linecap: round;
+    transition: stroke-dashoffset 1.5s ease-out, stroke 0.5s ease;
+  }
+  .score-number {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 40px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-label {
+    font-size: 12px; color: var(--text-secondary); margin-top: 8px; font-weight: 500;
+  }
+
+  /* ===== CARD PAGINATION ===== */
+  .card-pagination {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 12px 0;
+  }
+  .pagination-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--border); transition: all 0.3s;
+  }
+  .pagination-dot.active { background: var(--accent-primary); width: 24px; border-radius: 4px; }
+  .pagination-dot.triage-high-dot { background: var(--triage-high); }
+  .pagination-dot.triage-medium-dot { background: var(--triage-medium); }
+  .pagination-dot.triage-low-dot { background: var(--triage-low); }
+
+  /* ===== DIRECTION GRID ===== */
+  .direction-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+  .direction-info { padding-top: 40px; }
+  .direction-info h3 { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+  .direction-info p { color: var(--text-secondary); font-size: 15px; margin-bottom: 16px; }
+  .feature-list { list-style: none; }
+  .feature-list li {
+    padding: 8px 0; font-size: 14px; color: var(--text-secondary);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .feature-list li::before { content: "→"; color: var(--accent-primary); font-weight: 600; }
+
+  /* ===== DIRECTION 2: DESKTOP LAYOUT ===== */
+  .desktop-frame {
+    width: 100%; max-width: 960px;
+    background: var(--bg);
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+  }
+  .desktop-toolbar {
+    height: 40px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 16px; gap: 8px;
+  }
+  .toolbar-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .toolbar-dot.r { background: #F07068; }
+  .toolbar-dot.y { background: #F0A858; }
+  .toolbar-dot.g { background: #5BC4A8; }
+  .desktop-nav {
+    height: 56px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 24px;
+    justify-content: space-between;
+  }
+  .desktop-nav-left { display: flex; align-items: center; gap: 32px; }
+  .desktop-nav-brand { font-size: 18px; font-weight: 700; }
+  .desktop-nav-brand span { color: var(--accent-primary); }
+  .desktop-nav-links { display: flex; gap: 4px; }
+  .desktop-nav-link {
+    font-size: 14px; padding: 8px 16px; border-radius: 8px;
+    color: var(--text-secondary); cursor: pointer; transition: all 0.2s;
+  }
+  .desktop-nav-link.active { color: var(--text-primary); background: var(--surface-elevated); }
+  .desktop-nav-link:hover { color: var(--text-primary); }
+  .desktop-body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    min-height: 520px;
+  }
+  .desktop-main { padding: 24px 32px; }
+  .desktop-sidebar {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 24px;
+  }
+  .sidebar-section { margin-bottom: 24px; }
+  .sidebar-section h4 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-tertiary); margin-bottom: 12px;
+  }
+  .upload-btn-desktop {
+    width: 100%; padding: 12px; border-radius: 12px;
+    background: var(--accent-primary); color: white;
+    font-size: 14px; font-weight: 600; border: none;
+    cursor: pointer; display: flex; align-items: center;
+    justify-content: center; gap: 8px;
+    transition: all 0.2s;
+  }
+  .upload-btn-desktop:hover { background: #5B54E6; transform: translateY(-1px); }
+
+  /* Stats mini cards */
+  .stat-mini {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .stat-mini:last-child { border-bottom: none; }
+  .stat-mini-label { font-size: 13px; color: var(--text-secondary); }
+  .stat-mini-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat-mini-value.positive { color: var(--triage-low); }
+  .stat-mini-value.negative { color: var(--triage-high); }
+
+  /* ===== DIRECTION 3: STACKED FULL-WIDTH CARDS ===== */
+  .stack-card {
+    background: var(--surface);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 2px;
+    transition: all 0.3s;
+  }
+  .stack-card-inner {
+    padding: 24px 20px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 16px;
+  }
+  .stack-severity {
+    width: 4px; height: 48px; border-radius: 2px;
+  }
+  .stack-severity.high { background: var(--triage-high); }
+  .stack-severity.medium { background: var(--triage-medium); }
+  .stack-severity.low { background: var(--triage-low); }
+  .stack-card-content h4 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .stack-card-content p { font-size: 13px; color: var(--text-secondary); }
+  .stack-card-metric { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .stack-card-metric small { display: block; font-size: 11px; color: var(--text-tertiary); font-weight: 500; }
+
+  /* ===== DIRECTION 4: PROCESSING STATE ===== */
+  .processing-card {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 24px;
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .processing-card.loading {
+    border: 1px dashed var(--border);
+    background: repeating-linear-gradient(
+      -45deg, transparent, transparent 10px,
+      rgba(108,99,255,0.03) 10px, rgba(108,99,255,0.03) 20px
+    );
+  }
+  .processing-steps { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+  .processing-step {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 14px; color: var(--text-secondary);
+  }
+  .step-indicator {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .step-indicator.done { background: rgba(91,196,168,0.15); color: var(--triage-low); }
+  .step-indicator.active { background: rgba(108,99,255,0.15); color: var(--accent-primary); }
+  .step-indicator.pending { background: var(--surface-elevated); color: var(--text-tertiary); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide-up { animation: slideUp 0.5s ease-out forwards; }
+
+  /* ===== DIRECTION 5: COMPLETION STATE ===== */
+  .completion-card {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+  .completion-emoji { font-size: 48px; margin-bottom: 16px; }
+  .completion-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .completion-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 24px; }
+  .completion-stats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+    margin-bottom: 24px; padding: 20px;
+    background: var(--surface-elevated); border-radius: 12px;
+  }
+  .completion-stat-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .completion-stat-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .completion-cta {
+    padding: 14px 32px; border-radius: 12px;
+    background: var(--accent-primary); color: white;
+    font-size: 15px; font-weight: 600; border: none;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .completion-cta:hover { background: #5B54E6; }
+
+  /* ===== DIRECTION 6: ONBOARDING ===== */
+  .onboarding-card {
+    background: var(--surface);
+    border-radius: 16px; padding: 32px;
+    text-align: center; border: 1px solid var(--border);
+    max-width: 400px; margin: 0 auto;
+  }
+  .onboarding-icon {
+    width: 80px; height: 80px; border-radius: 20px;
+    background: linear-gradient(135deg, var(--accent-primary), #38BDF8);
+    margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+  }
+  .onboarding-title { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
+  .onboarding-text { font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.6; }
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 16px;
+    padding: 32px; margin-bottom: 20px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .upload-zone:hover {
+    border-color: var(--accent-primary);
+    background: rgba(108,99,255,0.05);
+  }
+  .upload-zone-icon { font-size: 32px; margin-bottom: 8px; }
+  .upload-zone-text { font-size: 14px; color: var(--text-secondary); }
+  .upload-zone-hint { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+
+  /* ===== DIRECTION 7: ERROR STATE ===== */
+  .error-card {
+    background: var(--surface); border-radius: 16px;
+    padding: 32px; text-align: center;
+    border: 1px solid var(--border);
+    max-width: 400px; margin: 0 auto;
+  }
+  .error-emoji { font-size: 56px; margin-bottom: 16px; }
+  .error-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .error-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.6; }
+  .error-btn {
+    padding: 12px 24px; border-radius: 12px;
+    background: var(--surface-elevated); color: var(--text-primary);
+    font-size: 14px; font-weight: 500; border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .error-btn:hover { border-color: var(--accent-primary); }
+
+  /* ===== STREAK / UPLOAD INDICATOR ===== */
+  .streak-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px;
+    background: var(--surface-elevated); font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .streak-badge strong { color: var(--accent-primary); }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 900px) {
+    .direction-grid { grid-template-columns: 1fr; }
+    .desktop-frame { display: none; }
+    .section { padding: 40px 16px; }
+  }
+
+  /* ===== COMPARISON TOGGLE ===== */
+  .theme-toggle {
+    display: flex; gap: 4px; padding: 4px;
+    background: var(--surface); border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .theme-toggle button {
+    padding: 6px 16px; border-radius: 8px; border: none;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    background: transparent; color: var(--text-secondary);
+    font-family: inherit; transition: all 0.2s;
+  }
+  .theme-toggle button.active {
+    background: var(--accent-primary); color: white;
+  }
+
+  /* Light theme overrides */
+  .light-mode {
+    --bg: #FAFAF9;
+    --surface: #FFFFFF;
+    --surface-elevated: #F5F5F4;
+    --border: #E5E5E3;
+    --text-primary: #1A1D27;
+    --text-secondary: #6B7280;
+    --text-tertiary: #9CA3B4;
+    --accent-primary: #5B54E6;
+    --triage-high: #E05A52;
+    --triage-high-bg: rgba(224,90,82,0.06);
+    --triage-medium: #E09840;
+    --triage-medium-bg: rgba(224,152,64,0.06);
+    --triage-low: #4AB397;
+    --triage-low-bg: rgba(74,179,151,0.06);
+  }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <h1><span>kopiika-ai</span> — Design Directions</h1>
+  <div class="nav-links">
+    <a href="#d1" class="active">1. Card Stack</a>
+    <a href="#d2">2. Desktop</a>
+    <a href="#d3">3. Compact List</a>
+    <a href="#d4">4. Processing</a>
+    <a href="#d5">5. Completion</a>
+    <a href="#d6">6. Onboarding</a>
+    <a href="#d7">7. Error States</a>
+    <a href="#d8">8. Light Mode</a>
+  </div>
+</nav>
+
+<!-- ===== DIRECTION 1: CARD STACK (MOBILE) ===== -->
+<section class="section" id="d1">
+  <div class="section-header">
+    <div class="label">Direction 1</div>
+    <h2>Card Stack — Primary Mobile Experience</h2>
+    <p>The defining interaction: one insight at a time, triage-ordered, with progressive disclosure education layers. Swipe to navigate.</p>
+  </div>
+  <div class="direction-grid">
+    <div class="phone-frame">
+      <div class="phone-status-bar">9:41</div>
+      <div class="phone-header">
+        <h3>Teaching Feed</h3>
+        <div class="streak-badge">3 months <strong>↑</strong></div>
+      </div>
+      <div class="phone-content">
+        <div class="card-pagination">
+          <div class="pagination-dot triage-high-dot active"></div>
+          <div class="pagination-dot triage-medium-dot"></div>
+          <div class="pagination-dot triage-medium-dot"></div>
+          <div class="pagination-dot triage-low-dot"></div>
+          <div class="pagination-dot triage-low-dot"></div>
+        </div>
+
+        <div class="insight-card triage-high">
+          <div class="card-top">
+            <span class="card-category">Subscriptions</span>
+            <span class="triage-badge high">High Priority</span>
+          </div>
+          <div class="card-headline">Forgotten subscription detected</div>
+          <div class="card-metric">-849,00 <span class="currency">₴/mo</span></div>
+          <div class="card-body">You've been paying for a service you haven't used in 47 days. That's 2 547,00 ₴ over the last 3 months.</div>
+          <div class="card-expand">Why this matters →</div>
+          <div class="education-layer visible">
+            <div class="education-label">Why this matters</div>
+            <div class="education-text">Unused subscriptions are one of the most common "invisible" expenses. They're easy to forget because each charge is small, but they compound. At 849 ₴/month, this subscription costs you 10 188 ₴/year — enough to fund a weekend trip or build an emergency cushion.</div>
+          </div>
+        </div>
+      </div>
+      <div class="fab">+</div>
+      <div class="phone-tab-bar">
+        <div class="tab-item active"><div class="tab-icon"></div>Feed</div>
+        <div class="tab-item"><div class="tab-icon"></div>Score</div>
+        <div class="tab-item"><div class="tab-icon"></div>History</div>
+        <div class="tab-item"><div class="tab-icon"></div>Settings</div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>Full-Focus Card Stack</h3>
+      <p>Each card commands full attention. Triage severity (coral/amber/sage) is visible at a glance. Progressive disclosure lets users go as deep as they want.</p>
+      <ul class="feature-list">
+        <li>Swipe left/right to navigate between cards</li>
+        <li>Swipe up to dismiss / mark as read</li>
+        <li>Tap card to expand "Why this matters" layer</li>
+        <li>Tap again for deep-dive education</li>
+        <li>Dot pagination shows triage colors for upcoming cards</li>
+        <li>Persistent "+" FAB for upload from any screen</li>
+        <li>Bottom tab bar with 4 sections: Feed, Score, History, Settings</li>
+        <li>Streak badge in header reinforces cumulative intelligence</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 2: DESKTOP LAYOUT ===== -->
+<section class="section" id="d2">
+  <div class="section-header">
+    <div class="label">Direction 2</div>
+    <h2>Desktop — Two-Column with Sidebar</h2>
+    <p>Card stack centered in main area, sidebar shows Health Score ring, quick stats, and upload button. Keyboard navigable.</p>
+  </div>
+  <div class="desktop-frame">
+    <div class="desktop-toolbar">
+      <span class="toolbar-dot r"></span>
+      <span class="toolbar-dot y"></span>
+      <span class="toolbar-dot g"></span>
+    </div>
+    <div class="desktop-nav">
+      <div class="desktop-nav-left">
+        <div class="desktop-nav-brand"><span>kopiika-ai</span></div>
+        <div class="desktop-nav-links">
+          <div class="desktop-nav-link active">Feed</div>
+          <div class="desktop-nav-link">Score</div>
+          <div class="desktop-nav-link">History</div>
+          <div class="desktop-nav-link">Settings</div>
+        </div>
+      </div>
+      <div class="streak-badge">3 months <strong>↑</strong></div>
+    </div>
+    <div class="desktop-body">
+      <div class="desktop-main">
+        <div class="card-pagination" style="margin-bottom: 16px;">
+          <div class="pagination-dot triage-high-dot active"></div>
+          <div class="pagination-dot triage-medium-dot"></div>
+          <div class="pagination-dot triage-medium-dot"></div>
+          <div class="pagination-dot triage-low-dot"></div>
+          <div class="pagination-dot triage-low-dot"></div>
+          <div class="pagination-dot triage-low-dot"></div>
+          <div class="pagination-dot"></div>
+        </div>
+
+        <div class="insight-card triage-high" style="max-width: 560px; margin: 0 auto;">
+          <div class="card-top">
+            <span class="card-category">Subscriptions</span>
+            <span class="triage-badge high">High Priority</span>
+          </div>
+          <div class="card-headline">Forgotten subscription detected</div>
+          <div class="card-metric">-849,00 <span class="currency">₴/mo</span></div>
+          <div class="card-body">You've been paying for a service you haven't used in 47 days. That's 2 547,00 ₴ over the last 3 months.</div>
+          <div class="card-expand">Why this matters →</div>
+        </div>
+        <div style="text-align: center; margin-top: 16px; color: var(--text-tertiary); font-size: 13px;">
+          ← → Arrow keys to navigate &nbsp;·&nbsp; Enter to expand &nbsp;·&nbsp; Esc to collapse
+        </div>
+      </div>
+      <div class="desktop-sidebar">
+        <div class="sidebar-section">
+          <h4>Financial Health</h4>
+          <div class="score-ring-container">
+            <div class="score-ring">
+              <svg viewBox="0 0 160 160">
+                <circle class="score-ring-bg" cx="80" cy="80" r="65"/>
+                <circle class="score-ring-fill" cx="80" cy="80" r="65"
+                  stroke="var(--accent-primary)"
+                  stroke-dasharray="408.4"
+                  stroke-dashoffset="122.5"/>
+              </svg>
+              <div class="score-number" style="color: var(--accent-primary);">67</div>
+            </div>
+            <div class="score-label">+4 from last month</div>
+          </div>
+        </div>
+        <div class="sidebar-section">
+          <h4>Quick Stats</h4>
+          <div class="stat-mini"><span class="stat-mini-label">Total Spent</span><span class="stat-mini-value">28 450,00 ₴</span></div>
+          <div class="stat-mini"><span class="stat-mini-label">vs Last Month</span><span class="stat-mini-value negative">+12%</span></div>
+          <div class="stat-mini"><span class="stat-mini-label">Subscriptions</span><span class="stat-mini-value">3 249,00 ₴</span></div>
+          <div class="stat-mini"><span class="stat-mini-label">Savings Rate</span><span class="stat-mini-value positive">18%</span></div>
+        </div>
+        <div class="sidebar-section">
+          <button class="upload-btn-desktop">+ Upload Statement</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 3: COMPACT LIST ===== -->
+<section class="section" id="d3">
+  <div class="section-header">
+    <div class="label">Direction 3</div>
+    <h2>Compact List — Quick Scan Alternative</h2>
+    <p>For Viktor and Dmytro who want to quickly scan all insights. Tap any row to expand into full card view.</p>
+  </div>
+  <div class="direction-grid">
+    <div class="phone-frame">
+      <div class="phone-status-bar">9:41</div>
+      <div class="phone-header">
+        <h3>All Insights</h3>
+        <div style="font-size: 13px; color: var(--text-tertiary);">7 new</div>
+      </div>
+      <div class="phone-content">
+        <div class="stack-card">
+          <div class="stack-card-inner">
+            <div class="stack-severity high"></div>
+            <div class="stack-card-content">
+              <h4>Forgotten subscription</h4>
+              <p>Unused for 47 days</p>
+            </div>
+            <div class="stack-card-metric" style="color: var(--triage-high);">-849 ₴<small>/month</small></div>
+          </div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-card-inner">
+            <div class="stack-severity medium"></div>
+            <div class="stack-card-content">
+              <h4>Food delivery spike</h4>
+              <p>+34% vs last month</p>
+            </div>
+            <div class="stack-card-metric" style="color: var(--triage-medium);">-4 200 ₴<small>this month</small></div>
+          </div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-card-inner">
+            <div class="stack-severity medium"></div>
+            <div class="stack-card-content">
+              <h4>Entertainment growing</h4>
+              <p>3-month upward trend</p>
+            </div>
+            <div class="stack-card-metric" style="color: var(--triage-medium);">-2 100 ₴<small>this month</small></div>
+          </div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-card-inner">
+            <div class="stack-severity low"></div>
+            <div class="stack-card-content">
+              <h4>Groceries stable</h4>
+              <p>Consistent spending pattern</p>
+            </div>
+            <div class="stack-card-metric" style="color: var(--triage-low);">-6 800 ₴<small>this month</small></div>
+          </div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-card-inner">
+            <div class="stack-severity low"></div>
+            <div class="stack-card-content">
+              <h4>Savings opportunity</h4>
+              <p>Based on 3 months of data</p>
+            </div>
+            <div class="stack-card-metric" style="color: var(--triage-low);">+3 200 ₴<small>potential</small></div>
+          </div>
+        </div>
+      </div>
+      <div class="fab">+</div>
+      <div class="phone-tab-bar">
+        <div class="tab-item active"><div class="tab-icon"></div>Feed</div>
+        <div class="tab-item"><div class="tab-icon"></div>Score</div>
+        <div class="tab-item"><div class="tab-icon"></div>History</div>
+        <div class="tab-item"><div class="tab-icon"></div>Settings</div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>Scannable Overview</h3>
+      <p>All insights visible at once for power users. Severity bars on the left provide instant visual triage. Tap any row to open the full card with education layers.</p>
+      <ul class="feature-list">
+        <li>All insights visible without swiping — fast scanning</li>
+        <li>Color-coded severity bars for instant priority reading</li>
+        <li>Key metric visible on every row — no expansion needed for the number</li>
+        <li>Tap to expand into full card view with education layers</li>
+        <li>Best for Viktor (wants density) and Dmytro (wants speed)</li>
+        <li>Could serve as alternative view mode within the Feed tab</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 4: PROCESSING STATE ===== -->
+<section class="section" id="d4">
+  <div class="section-header">
+    <div class="label">Direction 4</div>
+    <h2>Processing — Progressive Card Appearance</h2>
+    <p>The "watching the AI think" experience. Cards materialize as each agent completes, building anticipation.</p>
+  </div>
+  <div class="direction-grid">
+    <div class="phone-frame">
+      <div class="phone-status-bar">9:41</div>
+      <div class="phone-header">
+        <h3>Analyzing...</h3>
+        <div style="font-size: 13px; color: var(--accent-primary);" class="pulse">Processing</div>
+      </div>
+      <div class="phone-content">
+        <div class="processing-card">
+          <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 4px;">March 2026 Statement</div>
+          <div style="font-size: 12px; color: var(--text-tertiary);">245 transactions · 1 Feb – 28 Feb</div>
+          <div class="processing-steps">
+            <div class="processing-step">
+              <div class="step-indicator done">✓</div>
+              <span>Parsing transactions</span>
+            </div>
+            <div class="processing-step">
+              <div class="step-indicator done">✓</div>
+              <span>Categorizing spending</span>
+            </div>
+            <div class="processing-step">
+              <div class="step-indicator active pulse">◉</div>
+              <span style="color: var(--accent-primary);">Detecting patterns...</span>
+            </div>
+            <div class="processing-step">
+              <div class="step-indicator pending">4</div>
+              <span>Analyzing priorities</span>
+            </div>
+            <div class="processing-step">
+              <div class="step-indicator pending">5</div>
+              <span>Generating insights</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div class="insight-card triage-high slide-up">
+            <div class="card-top">
+              <span class="card-category">Subscriptions</span>
+              <span class="triage-badge high">High Priority</span>
+            </div>
+            <div class="card-headline">Forgotten subscription detected</div>
+            <div class="card-metric">-849,00 <span class="currency">₴/mo</span></div>
+            <div class="card-body">You've been paying for a service you haven't used in 47 days.</div>
+          </div>
+          <div class="processing-card loading" style="min-height: 100px; display: flex; align-items: center; justify-content: center;">
+            <span class="pulse" style="color: var(--text-tertiary); font-size: 14px;">More insights appearing...</span>
+          </div>
+        </div>
+      </div>
+      <div class="fab">+</div>
+      <div class="phone-tab-bar">
+        <div class="tab-item active"><div class="tab-icon"></div>Feed</div>
+        <div class="tab-item"><div class="tab-icon"></div>Score</div>
+        <div class="tab-item"><div class="tab-icon"></div>History</div>
+        <div class="tab-item"><div class="tab-icon"></div>Settings</div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>The Reveal Experience</h3>
+      <p>This is the signature moment — watching the AI work in real-time. The processing tracker shows pipeline progress while completed insights slide in below.</p>
+      <ul class="feature-list">
+        <li>Pipeline progress tracker shows which agent is currently working</li>
+        <li>Completed insights slide in with animation below the tracker</li>
+        <li>Users can start reading cards while more are being generated</li>
+        <li>Dashed-border placeholder card signals more coming</li>
+        <li>"Processing" pulse indicator in header provides ambient awareness</li>
+        <li>Tracker collapses once all agents complete, leaving clean card stack</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 5: COMPLETION ===== -->
+<section class="section" id="d5">
+  <div class="section-header">
+    <div class="label">Direction 5</div>
+    <h2>Completion — "You're All Caught Up"</h2>
+    <p>The satisfying end-of-stack experience with score summary, session stats, and soft next-upload prompt.</p>
+  </div>
+  <div class="direction-grid">
+    <div class="phone-frame">
+      <div class="phone-status-bar">9:41</div>
+      <div class="phone-header">
+        <h3>Teaching Feed</h3>
+        <div class="streak-badge">3 months <strong>↑</strong></div>
+      </div>
+      <div class="phone-content">
+        <div class="completion-card">
+          <div class="completion-emoji">✨</div>
+          <div class="completion-title">You're all caught up!</div>
+          <div class="completion-subtitle">You reviewed 7 insights from your February statement</div>
+          <div class="completion-stats">
+            <div>
+              <div class="completion-stat-value" style="color: var(--accent-primary);">67</div>
+              <div class="completion-stat-label">Health Score</div>
+            </div>
+            <div>
+              <div class="completion-stat-value" style="color: var(--triage-low);">+4</div>
+              <div class="completion-stat-label">vs Last Month</div>
+            </div>
+            <div>
+              <div class="completion-stat-value">3</div>
+              <div class="completion-stat-label">Month Streak</div>
+            </div>
+          </div>
+          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+            Upload next month's statement to see how your spending changes over time
+          </div>
+          <button class="completion-cta">+ Upload Next Statement</button>
+        </div>
+      </div>
+      <div class="phone-tab-bar">
+        <div class="tab-item active"><div class="tab-icon"></div>Feed</div>
+        <div class="tab-item"><div class="tab-icon"></div>Score</div>
+        <div class="tab-item"><div class="tab-icon"></div>History</div>
+        <div class="tab-item"><div class="tab-icon"></div>Settings</div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>Session Complete</h3>
+      <p>After swiping through all cards, users see their summary. This is the accomplishment + anticipation moment — "I've handled this, and I want to see what's next."</p>
+      <ul class="feature-list">
+        <li>Health Score prominently displayed with month-over-month change</li>
+        <li>Upload streak reinforces cumulative intelligence value</li>
+        <li>Soft CTA to upload next statement — not pushy, but visible</li>
+        <li>Previous insights remain accessible via History tab</li>
+        <li>Score improvement shown in green — visible growth reward</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 6: ONBOARDING / FIRST UPLOAD ===== -->
+<section class="section" id="d6">
+  <div class="section-header">
+    <div class="label">Direction 6</div>
+    <h2>First Upload — Onboarding Experience</h2>
+    <p>The critical first-time experience: warm, safe, zero-friction. Drop your file and let the magic begin.</p>
+  </div>
+  <div class="direction-grid">
+    <div class="phone-frame">
+      <div class="phone-status-bar">9:41</div>
+      <div class="phone-header">
+        <h3 style="font-size: 18px;">Welcome!</h3>
+        <div style="font-size: 12px; color: var(--text-tertiary);">Step 1 of 1</div>
+      </div>
+      <div class="phone-content" style="display: flex; align-items: center;">
+        <div class="onboarding-card" style="border: none; background: transparent; padding: 0;">
+          <div class="onboarding-icon">📊</div>
+          <div class="onboarding-title">See what your money is trying to tell you</div>
+          <div class="onboarding-text">Drop in your Monobank statement and watch as AI reveals patterns, opportunities, and insights you never noticed.</div>
+          <div class="upload-zone">
+            <div class="upload-zone-icon">📁</div>
+            <div class="upload-zone-text">Tap to upload your statement</div>
+            <div class="upload-zone-hint">CSV or PDF · Monobank, PrivatBank & more</div>
+          </div>
+          <div style="font-size: 12px; color: var(--text-tertiary); line-height: 1.5;">
+            🔒 Your data stays encrypted and private.<br>No bank credentials needed. Delete anytime.
+          </div>
+        </div>
+      </div>
+      <div class="phone-tab-bar">
+        <div class="tab-item active"><div class="tab-icon"></div>Feed</div>
+        <div class="tab-item"><div class="tab-icon"></div>Score</div>
+        <div class="tab-item"><div class="tab-icon"></div>History</div>
+        <div class="tab-item"><div class="tab-icon"></div>Settings</div>
+      </div>
+    </div>
+    <div class="direction-info">
+      <h3>Trust-First Onboarding</h3>
+      <p>No lengthy setup, no tutorial carousel. One screen, one action: upload your file. Trust signals (encryption, no credentials, delete anytime) are visible but not dominant.</p>
+      <ul class="feature-list">
+        <li>"See what your money is trying to tell you" — curiosity-driven, not feature-driven</li>
+        <li>Single action: tap the upload zone, select file, done</li>
+        <li>Trust signals below the fold — present but not anxious</li>
+        <li>Supported formats mentioned subtly in the upload hint</li>
+        <li>No account creation wall before first upload (freemium discovery)</li>
+        <li>Warm, inviting visual tone — not clinical bank interface</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 7: ERROR STATES ===== -->
+<section class="section" id="d7">
+  <div class="section-header">
+    <div class="label">Direction 7</div>
+    <h2>Error States — Humor Disarms Anxiety</h2>
+    <p>When things go wrong, the product stays lighthearted and helpful. Never clinical, never alarming.</p>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 900px; margin: 0 auto;">
+    <div class="error-card">
+      <div class="error-emoji">🤔</div>
+      <div class="error-title">Hmm, can't read this one</div>
+      <div class="error-text">Our AI got confused by your file format. Try exporting a fresh CSV from Monobank?</div>
+      <button class="error-btn">Try Another File</button>
+    </div>
+    <div class="error-card">
+      <div class="error-emoji">😴</div>
+      <div class="error-title">Nothing new to report</div>
+      <div class="error-text">This statement overlaps with data we already have. Upload a new month to get fresh insights!</div>
+      <button class="error-btn">Got It</button>
+    </div>
+    <div class="error-card">
+      <div class="error-emoji">🔧</div>
+      <div class="error-title">We tripped over something</div>
+      <div class="error-text">Our AI had a hiccup processing your data. We've been notified and are looking into it. Mind trying again?</div>
+      <button class="error-btn">Retry</button>
+    </div>
+  </div>
+  <div style="margin-top: 40px; max-width: 640px; margin-left: auto; margin-right: auto;">
+    <h3 style="font-size: 18px; margin-bottom: 16px;">Error State Principles</h3>
+    <ul class="feature-list">
+      <li>Every error has an emoji — warmth before words</li>
+      <li>Headlines are conversational, not technical ("Hmm, can't read this" not "Parse Error 422")</li>
+      <li>Body text explains what happened AND what to do next</li>
+      <li>Single clear action button — never leave the user stuck</li>
+      <li>Tone is a smart friend apologizing, not a system reporting a failure</li>
+      <li>Never blame the user ("your file is invalid") — always take responsibility ("our AI got confused")</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===== DIRECTION 8: LIGHT MODE COMPARISON ===== -->
+<section class="section" id="d8">
+  <div class="section-header">
+    <div class="label">Direction 8</div>
+    <h2>Light Mode — Alternative Theme</h2>
+    <p>Same components, warm light palette. User-switchable. Both modes feel intentional, not afterthoughts.</p>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; max-width: 900px; margin: 0 auto;">
+    <!-- Dark card -->
+    <div style="background: var(--bg); border-radius: 16px; padding: 24px;">
+      <div style="text-align: center; margin-bottom: 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">DARK MODE (DEFAULT)</div>
+      <div class="insight-card triage-medium">
+        <div class="card-top">
+          <span class="card-category">Food & Dining</span>
+          <span class="triage-badge medium">Worth Checking</span>
+        </div>
+        <div class="card-headline">Food delivery up 34% this month</div>
+        <div class="card-metric">-4 200,00 <span class="currency">₴</span></div>
+        <div class="card-body">Your food delivery spending jumped from 3 130 ₴ last month. Based on 3 months of data, this is your highest month.</div>
+        <div class="card-expand">Why this matters →</div>
+      </div>
+    </div>
+    <!-- Light card -->
+    <div class="light-mode" style="background: var(--bg); border-radius: 16px; padding: 24px;">
+      <div style="text-align: center; margin-bottom: 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">LIGHT MODE</div>
+      <div class="insight-card triage-medium" style="box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: var(--surface);">
+        <div class="card-top">
+          <span class="card-category">Food & Dining</span>
+          <span class="triage-badge medium">Worth Checking</span>
+        </div>
+        <div class="card-headline" style="color: var(--text-primary);">Food delivery up 34% this month</div>
+        <div class="card-metric" style="color: var(--text-primary);">-4 200,00 <span class="currency">₴</span></div>
+        <div class="card-body" style="color: var(--text-secondary);">Your food delivery spending jumped from 3 130 ₴ last month. Based on 3 months of data, this is your highest month.</div>
+        <div class="card-expand" style="color: var(--accent-primary);">Why this matters →</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div style="padding: 64px 32px; text-align: center; color: var(--text-tertiary); font-size: 14px;">
+  <p>kopiika-ai UX Design Directions — Generated 2026-03-16</p>
+  <p style="margin-top: 8px;">DM Sans · Warm Dark/Light · Coral/Amber/Sage Triage · Apple Fitness-inspired Score Ring</p>
+</div>
+
+</body>
+</html>

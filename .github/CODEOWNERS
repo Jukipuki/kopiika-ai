@@ -1,0 +1,11 @@
+# Default owners for everything
+* @ohumennyi
+
+# Frontend
+/frontend/ @ohumennyi
+
+# Backend
+/backend/ @ohumennyi
+
+# Infrastructure
+/infra/ @ohumennyi

@@ -1,0 +1,1332 @@
+---
+stepsCompleted:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+workflowType: 'architecture'
+lastStep: 8
+status: 'complete'
+completedAt: '2026-03-16'
+inputDocuments:
+  - product-brief-kopiika-ai-2026-03-15.md
+  - prd.md
+  - ux-design-specification.md
+  - market-smart-financial-intelligence-research-2026-03-15.md
+  - rag-vs-finetuning-ukrainian-financial-research-2026-03-15.md
+  - vector-store-options-financial-rag-research-2026-03-15.md
+  - monobank-csv-ukrainian-bank-parsing-research-2026-03-15.md
+  - integration-patterns-rag-multi-agent-pipeline-research-2026-03-15.md
+  - api-design-data-format-integration-research-2026-03-15.md
+  - technical-ai-financial-data-pipeline-research-2026-03-15.md
+documentCounts:
+  briefs: 1
+  prd: 1
+  uxDesign: 1
+  research: 7
+  projectDocs: 0
+  projectContext: 0
+workflowType: 'architecture'
+project_name: 'kopiika-ai'
+user_name: 'Oleh'
+date: '2026-03-16'
+---
+
+# Architecture Decision Document
+
+_This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
+
+## Project Context Analysis
+
+### Requirements Overview
+
+**Functional Requirements:**
+
+The PRD defines 11 core V1 features organized into four architectural domains:
+
+1. **Data Ingestion Domain** — Statement upload & parsing (CSV/PDF), Monobank format primary, flexible parser architecture for other banks. Auto-detect bank format where possible.
+
+2. **AI Processing Domain** — 5-agent sequential pipeline via LangGraph:
+   - Ingestion Agent: Parse uploaded statements, extract/structure transactions
+   - Categorization Agent: AI-powered classification with user correction learning
+   - Pattern Detection Agent: Trends, anomalies, recurring charges, subscription detection, month-over-month comparisons
+   - Triage Agent: Severity-ranked prioritization by financial impact
+   - Education Agent: RAG-powered plain-language explanations personalized to user data and literacy level
+
+3. **User-Facing Domain** — Teaching Feed (card-based insight UI with triage severity + progressive disclosure education), Cumulative Financial Profile with Financial Health Score (0-100), subscription detection display, basic predictive forecasts, pre-built data queries, email notifications
+
+4. **Business Domain** — User authentication & data persistence, freemium model (free: top 3 insights + basic education; premium: 99-149 UAH/month for full features), bilingual support (Ukrainian + English)
+
+**Non-Functional Requirements:**
+
+| NFR | Requirement | Architectural Impact |
+|---|---|---|
+| **Security** | AES-256 at rest, TLS 1.3 in transit, tenant isolation, GDPR-aligned | Encryption layer, RLS in PostgreSQL, audit logging infrastructure |
+| **Privacy** | One-click data deletion (including embeddings), consent management | Cascading delete across all data stores, consent tracking system |
+| **Performance** | >80% first-upload completion rate, 5-15 min session sweet spot | Async pipeline with SSE progress, fast initial parsing feedback |
+| **Bilingual** | Ukrainian + English UI, AI insights, and education content | i18n framework, cross-lingual RAG embeddings, locale-aware formatting |
+| **Reliability** | Pipeline must handle failures gracefully per-agent | LangGraph checkpointing, retry logic, partial result delivery |
+| **Scalability** | Support growing user base month-over-month (Phase 2 target) | Async job queue, stateless API, database connection pooling |
+| **Compliance** | Ukrainian Data Protection Law, bank secrecy, AI explainability | Audit trails, data processing records, explainable AI outputs |
+| **Data Integrity** | Financial data accuracy is critical — no data loss or corruption | ACID transactions, raw data preservation, idempotent processing |
+
+**Scale & Complexity:**
+
+- Primary domain: Full-stack AI web application
+- Complexity level: **High** — multi-agent AI pipeline, RAG system, bilingual support, financial data security, freemium model, cumulative intelligence
+- Estimated architectural components: ~12-15 major components (frontend app, API layer, auth service, file processing, 5 AI agents, RAG/vector store, job queue, notification service, payment integration, database layer)
+
+### Technical Constraints & Dependencies
+
+| Constraint | Detail | Impact |
+|---|---|---|
+| **Monobank CSV format** | Windows-1251 encoding, semicolon delimiter, comma decimals, possible embedded newlines | Robust parser with encoding detection, format normalization |
+| **Monobank API rate limit** | 1 request per 60 seconds, max 31 days per request, 500 tx per response | Background queue with enforced delays for historical sync |
+| **No Stripe in Ukraine** | Must use Fondy (domestic) or LemonSqueezy (international) for payments | Dual payment gateway integration, more complex subscription management |
+| **Ukrainian as low-resource language** | Limited fine-tuning data for Ukrainian financial domain | RAG-first approach using multilingual embeddings (BGE-M3), defer fine-tuning |
+| **LLM API dependency** | Core pipeline depends on external LLM APIs (Claude/GPT) | Error handling, fallback strategies, cost management, rate limiting |
+| **Greenfield project** | No existing codebase or infrastructure | Freedom in technology choices, but all infrastructure must be provisioned |
+
+### Cross-Cutting Concerns Identified
+
+1. **Authentication & Authorization** — Spans every API endpoint, file upload, AI pipeline access, and payment flows. JWT + RBAC with strict user-scoped data access.
+
+2. **Bilingual Internationalization** — Affects UI strings, AI-generated content, RAG knowledge base, date/currency formatting (dd.MM.yyyy, comma decimals, UAH kopiykas), and error messages.
+
+3. **Async Job Management** — File processing, AI pipeline execution, email notifications, and Monobank API sync all require background job infrastructure with progress tracking.
+
+4. **Error Handling & Resilience** — 5 sequential AI agents means 5 potential failure points. Each must handle failures gracefully with checkpointing and partial result strategies.
+
+5. **Audit Logging** — Financial data processing requires comprehensive audit trails across ingestion, AI processing, user actions, and data access for compliance.
+
+6. **Freemium Tier Gating** — Feature access controls must be enforced consistently across API endpoints, AI pipeline depth, and UI display.
+
+7. **Data Encryption & Privacy** — Encryption at rest and in transit, with cascading deletion capability across transactions, derived insights, embeddings, and user profiles.
+
+8. **Observability** — Pipeline processing metrics, LLM API latency/cost tracking, error rates, and user engagement metrics needed from day one for a data-driven product.
+
+## Starter Template Evaluation
+
+### Primary Technology Domain
+
+**Dual-stack full-stack AI web application:**
+- Frontend: Next.js 16.1 (TypeScript) — latest stable, Turbopack default bundler
+- Backend: FastAPI (Python) — with LangGraph, Celery, pgvector
+- Monorepo: Simple folder-based structure (no Turborepo/Nx — they can't orchestrate Python)
+- Auth: AWS Cognito (JWT validation on both sides)
+- Deployment: AWS-first
+
+### Starter Options Considered
+
+**Frontend Starters:**
+
+| Option | Verdict | Rationale |
+|---|---|---|
+| **`create-next-app`** (official) | **Selected** | Next.js 16.1 defaults: TypeScript, Tailwind CSS, ESLint, App Router, Turbopack. Clean, minimal, well-maintained |
+| T3 Stack (`create-t3-app`) | Rejected | Bundles tRPC + Prisma — we need REST/GraphQL to FastAPI, not tRPC. Prisma is JS-only, our DB is Python-side |
+| Vercel AI SDK template | Considered | Good AI streaming support, but too opinionated about backend — we have our own FastAPI |
+
+**Backend Starters:**
+
+| Option | Verdict | Rationale |
+|---|---|---|
+| **Custom FastAPI structure** | **Selected** | No existing template includes LangGraph + Celery + pgvector + Cognito. Better to scaffold a clean structure than fight a template |
+| `full-stack-fastapi-template` (official) | Rejected | Bundles React frontend (we use Next.js), Docker-first (we want simple initially), and its auth is self-built JWT (we want Cognito) |
+| `fastapi-alembic-sqlmodel-async` | Reference | Good patterns for SQLModel + Alembic async — we'll borrow patterns but not use as-is |
+
+**Monorepo Approach:**
+
+| Option | Verdict | Rationale |
+|---|---|---|
+| **Simple folder-based monorepo** | **Selected** | `frontend/` + `backend/` in one repo. Each has its own tooling. Simple, no overhead |
+| Turborepo | Rejected | JS/TS only — cannot orchestrate Python builds, linting, or testing. Adds complexity without value for our dual-language setup |
+| Nx | Rejected | Can support Python via plugins, but over-engineered for a project with 2 apps and no shared JS packages |
+
+### Selected Approach: Folder-Based Monorepo with Separate Starters
+
+**Rationale:** The project's dual-language nature (TypeScript + Python) means no single starter covers both sides. A simple monorepo with `create-next-app` for frontend and a custom FastAPI scaffold for backend gives us clean foundations without fighting against template opinions.
+
+**Monorepo Structure:**
+
+```
+kopiika-ai/
+├── frontend/                  # Next.js 16.1 (TypeScript)
+│   ├── src/
+│   │   ├── app/              # App Router pages
+│   │   ├── components/       # React components
+│   │   ├── lib/              # Utilities, API client
+│   │   └── i18n/             # Ukrainian/English translations
+│   ├── public/
+│   ├── next.config.ts
+│   ├── tailwind.config.ts
+│   ├── tsconfig.json
+│   └── package.json
+│
+├── backend/                   # FastAPI (Python)
+│   ├── app/
+│   │   ├── api/              # Route handlers
+│   │   ├── agents/           # LangGraph agent definitions
+│   │   │   ├── ingestion/
+│   │   │   ├── categorization/
+│   │   │   ├── pattern_detection/
+│   │   │   ├── triage/
+│   │   │   └── education/
+│   │   ├── core/             # Config, security, deps
+│   │   ├── models/           # SQLModel data models
+│   │   ├── services/         # Business logic
+│   │   ├── tasks/            # Celery task definitions
+│   │   └── rag/              # RAG pipeline, embeddings
+│   ├── alembic/              # Database migrations
+│   ├── tests/
+│   ├── pyproject.toml
+│   └── alembic.ini
+│
+├── shared/                    # OpenAPI-generated types (optional)
+│   └── api-client/           # Auto-generated TS client from FastAPI OpenAPI spec
+│
+├── .github/                   # GitHub Actions CI/CD
+├── docker-compose.yml         # Local dev: PostgreSQL + Redis
+└── README.md
+```
+
+**Initialization Commands:**
+
+```bash
+# Frontend: Next.js 16.1 with defaults
+npx create-next-app@latest frontend --typescript --tailwind --eslint --app --turbopack
+
+# Backend: Python project with uv (modern Python package manager)
+mkdir -p backend && cd backend
+uv init --python 3.12
+# Then add dependencies: fastapi, uvicorn, sqlmodel, alembic, celery, redis,
+# langchain, langgraph, pgvector, boto3 (for Cognito)
+```
+
+### Architectural Decisions Provided by Starters
+
+**Frontend (create-next-app):**
+
+| Decision | Value |
+|---|---|
+| Language & Runtime | TypeScript 5.x, Node.js |
+| Framework | Next.js 16.1 with App Router |
+| Bundler | Turbopack (default in v16) |
+| Styling | Tailwind CSS 4.x |
+| Linting | ESLint with Next.js config |
+| Routing | File-based App Router |
+| Rendering | Server Components by default, with "use cache" directives |
+
+**Backend (Custom FastAPI scaffold):**
+
+| Decision | Value |
+|---|---|
+| Language & Runtime | Python 3.12 |
+| Framework | FastAPI with Uvicorn |
+| ORM | SQLModel (SQLAlchemy + Pydantic) |
+| Migrations | Alembic |
+| Task Queue | Celery + Redis |
+| AI Pipeline | LangGraph |
+| Vector Store | pgvector (via SQLModel/SQLAlchemy) |
+| Package Manager | uv |
+| Auth | AWS Cognito JWT validation (fastapi-cloudauth or manual) |
+
+**Cross-Stack Integration:**
+
+| Decision | Value |
+|---|---|
+| API Contract | FastAPI auto-generates OpenAPI spec; frontend consumes via generated TypeScript client (@hey-api/openapi-ts) |
+| Auth Flow | Cognito User Pool -> NextAuth.js (frontend) -> JWT validation (backend) |
+| Streaming | SSE from FastAPI -> Vercel AI SDK hooks (frontend) |
+| Local Dev | docker-compose for PostgreSQL + Redis; frontend and backend run separately |
+
+**Note:** Project initialization using these commands should be the first implementation story.
+
+## Core Architectural Decisions
+
+### Decision Priority Analysis
+
+**Critical Decisions (Block Implementation):**
+- Data architecture (PostgreSQL + pgvector, SQLModel, raw data preservation)
+- Authentication (AWS Cognito, custom UI, JWT validation)
+- API pattern (REST-only for MVP)
+- AI pipeline orchestration (LangGraph sequential with Celery workers)
+
+**Important Decisions (Shape Architecture):**
+- Frontend state management (TanStack Query + React Context)
+- Component library (shadcn/ui)
+- i18n approach (next-intl)
+- Caching strategy (Redis multi-purpose)
+- AWS compute architecture
+
+**Deferred Decisions (Post-MVP):**
+- GraphQL (evaluate if REST becomes limiting for Teaching Feed queries)
+- CDN/edge caching for AI-generated insights
+- Advanced monitoring/APM tooling
+- Multi-region deployment
+
+### Data Architecture
+
+| Decision | Choice | Version | Rationale |
+|---|---|---|---|
+| **Primary Database** | PostgreSQL + pgvector | PostgreSQL 16.x, pgvector 0.8.x | ACID compliance for financial data, pgvector for RAG embeddings in same DB, RLS for tenant isolation |
+| **ORM** | SQLModel | Latest (SQLAlchemy 2.x + Pydantic v2) | Type-safe models shared between API validation and DB, async support, native FastAPI integration |
+| **Migrations** | Alembic | Latest | Standard for SQLAlchemy/SQLModel, supports auto-generation from model changes |
+| **Caching** | Redis (multi-purpose) | Redis 7.x | Already required for Celery broker; also used for API response caching, job status tracking, and SSE progress. Write-once AI insights cached aggressively |
+| **Raw Data Preservation** | Dual storage: raw JSONB + normalized model | — | Raw Monobank data stored untouched in JSONB for audit/compliance. Normalized into structured transaction model for AI pipeline processing |
+| **File Storage** | Amazon S3 | — | Uploaded CSV/PDF files stored in S3 with per-user prefix. Processed then referenced by job ID |
+| **Vector Embeddings** | pgvector with BGE-M3 (1024 dimensions) | BGE-M3 latest | Bilingual Ukrainian/English embeddings in same vector space. HNSW index for fast ANN search. Co-located with relational data for single-query joins |
+
+**Affects:** All backend components, AI pipeline, RAG system
+
+### Authentication & Security
+
+| Decision | Choice | Version | Rationale |
+|---|---|---|---|
+| **Identity Provider** | AWS Cognito User Pools | — | AWS-native, managed user lifecycle, supports email/password + social login. JWT issuance built-in |
+| **Frontend Auth** | Custom UI + Cognito API (via NextAuth.js CognitoProvider) | NextAuth.js latest | Full design control over onboarding experience. Seamless Teaching Feed first impression. NextAuth handles token management |
+| **Backend Auth** | JWT validation middleware | fastapi-cloudauth or manual boto3 | Every FastAPI endpoint validates Cognito JWT. Extracts user_id for data scoping |
+| **Authorization** | RBAC + PostgreSQL RLS | — | User role (free/premium) checked via FastAPI dependency. RLS as defense-in-depth — users can only query their own rows |
+| **Data Encryption** | AES-256 at rest, TLS 1.3 in transit | — | RDS encryption enabled. All API communication over HTTPS. S3 server-side encryption for uploaded files |
+| **API Security** | CORS whitelist, rate limiting, input validation | — | CORS restricted to frontend domain. Rate limiting via Redis token bucket. Pydantic validation on all inputs |
+
+**Auth Flow:**
+```
+User -> Next.js (Custom Login UI) -> Cognito User Pool -> JWT issued
+     -> Next.js stores JWT (NextAuth.js session)
+     -> API requests include JWT in Authorization header
+     -> FastAPI middleware validates JWT, extracts user_id
+     -> PostgreSQL RLS enforces row-level access
+```
+
+**Affects:** Every API endpoint, file upload, AI pipeline access, payment flows
+
+### API & Communication Patterns
+
+| Decision | Choice | Version | Rationale |
+|---|---|---|---|
+| **API Style** | REST only (MVP) | — | Simpler to build and cache. Teaching Feed card type variation handled via union response type. GraphQL evaluated post-MVP if needed |
+| **API Documentation** | Auto-generated OpenAPI spec from FastAPI | OpenAPI 3.1 | FastAPI generates spec automatically. Frontend consumes via @hey-api/openapi-ts generated TypeScript client |
+| **Streaming** | SSE (Server-Sent Events) | — | Pipeline progress and LLM-generated education content streamed via FastAPI StreamingResponse. Frontend consumes with Vercel AI SDK hooks |
+| **Error Handling** | Consistent JSON error format | — | All errors return `{"error": {"code": "ERROR_CODE", "message": "...", "details": {...}}}`. HTTP status codes follow REST conventions |
+| **API Versioning** | URL prefix `/api/v1/` | — | Simple, explicit versioning. Allows future `/api/v2/` without breaking existing clients |
+| **File Upload** | Async: upload returns job_id (HTTP 202), SSE for progress | — | Never process AI workloads synchronously. Immediate acknowledgment, background processing via Celery |
+
+**Affects:** Frontend-backend contract, developer experience, client SDK generation
+
+### Frontend Architecture
+
+| Decision | Choice | Version | Rationale |
+|---|---|---|---|
+| **Framework** | Next.js with App Router | 16.1 | Latest stable. Turbopack default bundler. Server Components with "use cache" directives |
+| **State Management (Server)** | TanStack Query | v5.90.x | Industry standard for server state in React. Handles caching, invalidation, optimistic updates for API data |
+| **State Management (Client)** | React Context | Built-in | Auth state (Cognito session) and locale (uk/en) via context providers. No additional dependency needed |
+| **Component Library** | shadcn/ui | CLI v4 (March 2026) | Copy-paste components with full ownership. Built on unified radix-ui package. Design system presets for consistent Teaching Feed cards |
+| **Styling** | Tailwind CSS | 4.x (via create-next-app) | Utility-first, pairs with shadcn/ui. Responsive design for mobile-first web app |
+| **i18n** | next-intl | v4.8.x | Best App Router + Server Components support. Note: Next.js 16 renamed `middleware.ts` to `proxy.ts` — next-intl config must use `proxy.ts` |
+| **API Client** | Generated from OpenAPI spec | @hey-api/openapi-ts latest | Type-safe API calls auto-generated from FastAPI's OpenAPI spec. Eliminates manual type sync |
+| **AI Streaming** | Vercel AI SDK | Latest | `useCompletion` hook for SSE consumption. Handles streaming LLM responses in Teaching Feed education layers |
+
+**Affects:** All frontend components, UX performance, developer experience
+
+### Infrastructure & Deployment
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| **Frontend Hosting** | Vercel | Optimized for Next.js. Best DX, automatic preview deployments, edge network. Simpler than AWS Amplify for Next.js |
+| **API Compute** | AWS App Runner | Fully managed, auto-scaling, scales to zero on idle (cost savings for early stage). Simpler than ECS Fargate for the API layer |
+| **Worker Compute** | AWS ECS Fargate | Celery workers need persistent containers for long-running AI pipeline jobs. Fargate provides this without managing servers |
+| **Database** | Amazon RDS PostgreSQL (+ pgvector extension) | Managed PostgreSQL with automated backups, encryption at rest, pgvector support |
+| **Cache/Queue** | Amazon ElastiCache (Redis) | Managed Redis for Celery broker, API caching, and job status tracking |
+| **File Storage** | Amazon S3 | Uploaded CSV/PDF files. Per-user prefixed keys. Server-side encryption |
+| **Auth** | Amazon Cognito | User pools with email/password. JWT issuance. Managed user lifecycle |
+| **Email** | Amazon SES | Upload reminders, notification emails. Cost-effective, high deliverability |
+| **CI/CD** | GitHub Actions | Standard choice. Runs tests, builds frontend/backend, deploys to Vercel + AWS |
+| **Environments** | dev / staging / production | Separate AWS resources per environment. Vercel preview deployments for frontend PRs |
+| **Secrets** | AWS Secrets Manager | API keys, database credentials, Cognito config. Referenced by App Runner and ECS tasks |
+
+**AWS Architecture Diagram:**
+```
+                    [Vercel]
+                    Next.js 16.1
+                        |
+                   HTTPS (REST API)
+                        |
+                [AWS App Runner]
+                   FastAPI API
+                   /    |    \
+                  /     |     \
+    [Cognito]  [S3]  [ElastiCache]  [RDS PostgreSQL]
+    User Pool  Files   Redis         + pgvector
+                        |
+                [ECS Fargate]
+                Celery Workers
+                (LangGraph Pipeline)
+                        |
+                   [LLM APIs]
+                 Claude / GPT
+```
+
+### Decision Impact Analysis
+
+**Implementation Sequence:**
+1. Project scaffolding (monorepo, create-next-app, FastAPI init)
+2. AWS infrastructure provisioning (RDS, ElastiCache, Cognito, S3)
+3. Authentication flow (Cognito + NextAuth.js + FastAPI middleware)
+4. Database models + migrations (SQLModel + Alembic)
+5. File upload + async processing (S3 + Celery + Redis)
+6. AI pipeline (LangGraph agents, sequential)
+7. RAG system (pgvector + BGE-M3 embeddings)
+8. Teaching Feed UI (shadcn/ui cards + TanStack Query + SSE)
+9. Freemium tier gating
+10. Payment integration (Fondy + LemonSqueezy)
+
+**Cross-Component Dependencies:**
+- Auth (Cognito) must be in place before any API endpoint works
+- Database schema must be stable before AI pipeline can persist results
+- Redis must be running before Celery workers or caching works
+- OpenAPI spec must be generated before frontend API client can be built
+- BGE-M3 embeddings service must be running before Education Agent can do RAG retrieval
+
+## Implementation Patterns & Consistency Rules
+
+### Pattern Categories Defined
+
+**Critical Conflict Points Identified:** 25+ areas where AI agents could make different choices, organized into 5 categories below.
+
+### Naming Patterns
+
+**Database Naming Conventions:**
+
+| Element | Convention | Example |
+|---|---|---|
+| Tables | `snake_case`, plural | `users`, `transactions`, `financial_health_scores` |
+| Columns | `snake_case` | `user_id`, `created_at`, `health_score` |
+| Primary keys | `id` (UUID v4) | `id UUID PRIMARY KEY DEFAULT gen_random_uuid()` |
+| Foreign keys | `{referenced_table_singular}_id` | `user_id`, `transaction_id` |
+| Indexes | `idx_{table}_{columns}` | `idx_transactions_user_id`, `idx_transactions_timestamp` |
+| Constraints | `{type}_{table}_{columns}` | `uq_users_email`, `fk_transactions_user_id` |
+| Enums | `snake_case` | `triage_severity`, `subscription_status` |
+
+**API Naming Conventions:**
+
+| Element | Convention | Example |
+|---|---|---|
+| Endpoints | `kebab-case`, plural nouns | `/api/v1/transactions`, `/api/v1/teaching-feed` |
+| JSON fields | `camelCase` (Pydantic `alias_generator=to_camel`) | `userId`, `createdAt`, `healthScore` |
+| Query params | `camelCase` | `?startDate=2026-01-01&pageSize=20` |
+| Path params | `camelCase` | `/api/v1/transactions/{transactionId}` |
+| Headers | Standard HTTP conventions | `Authorization`, `Content-Type`, `X-Request-Id` |
+| SSE event names | `kebab-case` | `pipeline-progress`, `insight-ready`, `job-complete` |
+
+**Code Naming Conventions:**
+
+| Element | Frontend (TypeScript) | Backend (Python) |
+|---|---|---|
+| Files (components) | `PascalCase.tsx` — `InsightCard.tsx` | n/a |
+| Files (utilities) | `kebab-case.ts` — `api-client.ts` | `snake_case.py` — `monobank_parser.py` |
+| Files (routes) | `kebab-case/page.tsx` (App Router) | n/a |
+| Functions | `camelCase` — `fetchInsights()` | `snake_case` — `process_transactions()` |
+| Variables | `camelCase` — `userId` | `snake_case` — `user_id` |
+| Constants | `UPPER_SNAKE_CASE` — `MAX_UPLOAD_SIZE` | `UPPER_SNAKE_CASE` — `MAX_UPLOAD_SIZE` |
+| Classes/Types | `PascalCase` — `InsightCard` | `PascalCase` — `TransactionModel` |
+| React components | `PascalCase` — `<TeachingFeed />` | n/a |
+| Celery tasks | n/a | `snake_case` — `process_upload_task` |
+| LangGraph nodes | n/a | `snake_case` — `categorization_node` |
+| Environment vars | `UPPER_SNAKE_CASE` prefixed | `NEXT_PUBLIC_API_URL`, `DATABASE_URL` |
+
+### Structure Patterns
+
+**Frontend Organization (Hybrid — shared UI + feature folders):**
+
+```
+frontend/src/
+├── app/                        # Next.js App Router pages
+│   ├── (auth)/                 # Auth route group (login, signup)
+│   ├── (dashboard)/            # Protected route group
+│   │   ├── feed/page.tsx       # Teaching Feed page
+│   │   ├── upload/page.tsx     # Upload page
+│   │   └── profile/page.tsx    # Profile page
+│   ├── layout.tsx              # Root layout (providers)
+│   └── proxy.ts                # next-intl proxy (was middleware.ts in Next.js 15)
+├── components/
+│   ├── ui/                     # shadcn/ui base components (Button, Card, Dialog, etc.)
+│   └── layout/                 # Shared layout components (Header, Sidebar, Footer)
+├── features/                   # Domain feature modules
+│   ├── teaching-feed/          # Teaching Feed feature
+│   │   ├── components/         # Feature-specific components
+│   │   ├── hooks/              # Feature-specific hooks
+│   │   └── types.ts            # Feature-specific types
+│   ├── upload/                 # File upload feature
+│   ├── auth/                   # Auth feature (Cognito flows)
+│   ├── profile/                # User profile feature
+│   └── insights/               # Insights/analytics feature
+├── lib/                        # Shared utilities
+│   ├── api/                    # Generated API client + config
+│   ├── auth/                   # NextAuth.js config + Cognito
+│   └── utils.ts                # General helpers
+├── i18n/                       # Translations
+│   ├── messages/
+│   │   ├── en.json
+│   │   └── uk.json
+│   └── config.ts
+└── types/                      # Shared TypeScript types
+```
+
+**Backend Organization (Domain-aligned modules):**
+
+```
+backend/app/
+├── api/                        # Route handlers (thin layer)
+│   ├── v1/
+│   │   ├── auth.py             # Auth endpoints
+│   │   ├── uploads.py          # File upload endpoints
+│   │   ├── transactions.py     # Transaction query endpoints
+│   │   ├── insights.py         # Teaching Feed / insights endpoints
+│   │   ├── profile.py          # User profile endpoints
+│   │   └── jobs.py             # Job status + SSE streaming
+│   └── deps.py                 # Shared dependencies (auth, db session)
+├── agents/                     # LangGraph agent definitions
+│   ├── pipeline.py             # Main pipeline graph definition
+│   ├── state.py                # Shared pipeline state TypedDict
+│   ├── ingestion/
+│   │   ├── node.py             # Ingestion agent node
+│   │   └── parsers/            # Bank-specific parsers
+│   │       ├── base.py         # Abstract parser interface
+│   │       └── monobank.py     # Monobank CSV parser
+│   ├── categorization/
+│   │   └── node.py
+│   ├── pattern_detection/
+│   │   └── node.py
+│   ├── triage/
+│   │   └── node.py
+│   └── education/
+│       ├── node.py
+│       └── prompts.py          # Education prompt templates
+├── core/                       # Application core
+│   ├── config.py               # Settings (Pydantic BaseSettings)
+│   ├── security.py             # Cognito JWT validation
+│   ├── database.py             # SQLModel engine + session factory
+│   └── exceptions.py           # Custom exception classes
+├── models/                     # SQLModel data models
+│   ├── user.py
+│   ├── transaction.py
+│   ├── insight.py
+│   ├── job.py
+│   └── financial_profile.py
+├── services/                   # Business logic layer
+│   ├── upload_service.py
+│   ├── transaction_service.py
+│   ├── insight_service.py
+│   └── subscription_service.py
+├── tasks/                      # Celery task definitions
+│   ├── celery_app.py           # Celery app configuration
+│   ├── pipeline_tasks.py       # AI pipeline processing tasks
+│   └── notification_tasks.py   # Email notification tasks
+├── rag/                        # RAG pipeline components
+│   ├── embeddings.py           # BGE-M3 embedding generation
+│   ├── retriever.py            # pgvector retrieval logic
+│   └── knowledge_base.py       # Knowledge base management
+└── main.py                     # FastAPI app entry point
+```
+
+**Test Organization:**
+
+| Stack | Convention | Example |
+|---|---|---|
+| Frontend | Co-located with source | `features/teaching-feed/components/InsightCard.test.tsx` |
+| Frontend E2E | Dedicated folder | `frontend/e2e/upload-flow.spec.ts` |
+| Backend | Separate `tests/` mirroring `app/` | `backend/tests/api/v1/test_uploads.py` |
+| Backend integration | Subfolder | `backend/tests/integration/test_pipeline.py` |
+
+### Format Patterns
+
+**API Response Formats:**
+
+```typescript
+// Single resource
+GET /api/v1/transactions/{id}
+→ { "id": "uuid", "amount": -95000, "description": "...", ... }
+
+// Collection with pagination (cursor-based)
+GET /api/v1/transactions?cursor=abc&pageSize=20
+→ { "items": [...], "total": 245, "nextCursor": "def", "hasMore": true }
+
+// Teaching Feed (union type cards)
+GET /api/v1/teaching-feed?cursor=abc
+→ { "items": [
+    { "type": "spendingInsight", "severity": "warning", ... },
+    { "type": "subscriptionAlert", "severity": "critical", ... },
+    { "type": "savingTip", "severity": "info", ... }
+  ], "nextCursor": "def", "hasMore": true }
+
+// Job status
+GET /api/v1/jobs/{id}
+→ { "id": "uuid", "status": "processing", "step": "categorization", "progress": 30 }
+
+// Error response (all errors)
+→ { "error": { "code": "PARSE_ERROR", "message": "Human-readable message", "details": {...} } }
+
+// File upload (async)
+POST /api/v1/uploads → 202 Accepted
+→ { "jobId": "uuid", "statusUrl": "/api/v1/jobs/{jobId}" }
+```
+
+**HTTP Status Code Usage:**
+
+| Code | Usage |
+|---|---|
+| `200` | Successful GET, PUT, PATCH |
+| `201` | Successful POST creating a resource |
+| `202` | Accepted for async processing (file upload) |
+| `204` | Successful DELETE |
+| `400` | Validation error, malformed request |
+| `401` | Missing or invalid JWT |
+| `403` | Valid JWT but insufficient permissions (wrong tier) |
+| `404` | Resource not found |
+| `409` | Conflict (duplicate upload, etc.) |
+| `422` | Unprocessable entity (Pydantic validation) |
+| `429` | Rate limited |
+| `500` | Internal server error |
+
+**Data Format Rules:**
+
+| Format | Convention | Example |
+|---|---|---|
+| Dates in API | ISO 8601 UTC | `"2026-03-16T14:30:00Z"` |
+| Dates in DB | `timestamptz` | Timezone-aware PostgreSQL type |
+| Dates in UI | User locale | Ukrainian: `16.03.2026 14:30` |
+| Money in API | Integer (kopiykas) | `-95000` (= -950.00 UAH) |
+| Money in UI | Formatted with locale | `-950,00 ₴` |
+| IDs | UUID v4 string | `"550e8400-e29b-41d4-a716-446655440000"` |
+| Booleans | `true`/`false` | Never `1`/`0` or `"true"` |
+| Nulls | Explicit `null` | Never omit field; return `null` if empty |
+| Currency codes | ISO 4217 numeric | `980` (UAH), `840` (USD) |
+| Language codes | ISO 639-1 | `"uk"`, `"en"` |
+
+### Communication Patterns
+
+**SSE Event Structure:**
+
+```
+event: pipeline-progress
+data: {"jobId": "uuid", "step": "categorization", "progress": 30, "message": "Categorizing 245 transactions..."}
+
+event: insight-ready
+data: {"jobId": "uuid", "insightId": "uuid", "type": "spendingInsight"}
+
+event: job-complete
+data: {"jobId": "uuid", "status": "completed", "totalInsights": 12}
+
+event: job-failed
+data: {"jobId": "uuid", "status": "failed", "error": {"code": "LLM_ERROR", "message": "..."}}
+```
+
+**Celery Task Naming:**
+
+| Convention | Example |
+|---|---|
+| Module path dot notation | `app.tasks.pipeline_tasks.run_financial_pipeline` |
+| Task function name | `snake_case` — `run_financial_pipeline`, `send_upload_reminder` |
+
+**Logging Format:**
+
+```python
+# Backend: structured JSON logging
+{"timestamp": "2026-03-16T14:30:00Z", "level": "INFO", "service": "api",
+ "user_id": "uuid", "job_id": "uuid", "message": "Pipeline step completed",
+ "step": "categorization", "duration_ms": 1234}
+```
+
+| Level | Usage |
+|---|---|
+| `DEBUG` | Detailed diagnostic (SQL queries, LLM prompts) |
+| `INFO` | Normal operations (pipeline step completed, upload received) |
+| `WARNING` | Recoverable issues (LLM retry, low confidence categorization) |
+| `ERROR` | Failed operations (pipeline failure, auth failure) |
+| `CRITICAL` | System-level failures (DB connection lost, Redis down) |
+
+### Process Patterns
+
+**Error Handling:**
+
+| Layer | Pattern |
+|---|---|
+| **FastAPI routes** | Custom exception handlers map to consistent JSON error format. Never expose stack traces in production |
+| **LangGraph pipeline** | Each agent node wrapped in try/except. Failures logged and recorded in pipeline state. Partial results preserved via checkpointing |
+| **Celery tasks** | `max_retries=3` with exponential backoff for transient failures (LLM API timeouts). Dead letter queue for permanent failures |
+| **Frontend** | TanStack Query `onError` callbacks. Error boundaries per feature. User-friendly error messages from i18n, not raw API errors |
+| **LLM calls** | Retry with exponential backoff (2s, 4s, 8s). Fallback to secondary LLM provider if primary fails. Log token usage for cost tracking |
+
+**Loading State Patterns:**
+
+| Context | Pattern |
+|---|---|
+| **Page loads** | Next.js `loading.tsx` with skeleton components (shadcn/ui Skeleton) |
+| **API data** | TanStack Query `isLoading` / `isPending` states per query |
+| **File upload** | Immediate optimistic UI ("Uploading...") + SSE progress stream |
+| **AI pipeline** | Multi-step progress bar with step names: Parsing → Categorizing → Detecting Patterns → Analyzing → Generating Insights |
+| **Streaming text** | Vercel AI SDK handles token-by-token rendering for education content |
+
+**Validation Patterns:**
+
+| Layer | Tool | Responsibility |
+|---|---|---|
+| **Frontend forms** | React Hook Form + Zod | Client-side validation for immediate feedback |
+| **API input** | Pydantic v2 models | Server-side validation — authoritative, never trust client |
+| **File upload** | Custom validator | MIME type, file size, header row format check (sync, before queuing) |
+| **Database** | SQLModel + DB constraints | Final defense — NOT NULL, UNIQUE, CHECK constraints |
+
+### Enforcement Guidelines
+
+**All AI Agents MUST:**
+
+1. Follow the naming conventions table for the language they're working in (camelCase for TS, snake_case for Python, camelCase for API JSON)
+2. Place files in the correct location per the structure patterns above
+3. Use the standard error response format `{"error": {"code": "...", "message": "...", "details": {...}}}` for all error responses
+4. Return money as integers (kopiykas) and dates as ISO 8601 UTC in API responses
+5. Use UUID v4 for all entity IDs
+6. Add structured JSON logging for all significant operations
+7. Never expose internal errors to the frontend — map to user-friendly error codes
+8. Use TanStack Query for all API data fetching on the frontend (no raw `fetch` in components)
+9. Scope all database queries to the authenticated `user_id` (enforced via dependency injection + RLS)
+
+**Pattern Verification:**
+- ESLint + Prettier enforces frontend naming and formatting
+- Ruff + Black enforces backend Python formatting
+- Pydantic `alias_generator=to_camel` ensures camelCase API output
+- Generated OpenAPI client ensures frontend-backend type alignment
+- CI pipeline runs linting checks on every PR
+
+## Project Structure & Boundaries
+
+### Complete Project Directory Structure
+
+```
+kopiika-ai/
+│
+├── .github/
+│   ├── workflows/
+│   │   ├── ci-frontend.yml          # Frontend lint, test, build
+│   │   ├── ci-backend.yml           # Backend lint, test
+│   │   ├── deploy-frontend.yml      # Deploy to Vercel
+│   │   └── deploy-backend.yml       # Deploy to AWS (App Runner + ECS)
+│   └── CODEOWNERS
+│
+├── frontend/                         # Next.js 16.1 (TypeScript)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── globals.css
+│   │   │   ├── layout.tsx            # Root layout: providers (QueryClient, NextIntl, NextAuth)
+│   │   │   ├── proxy.ts             # next-intl proxy (Next.js 16 convention)
+│   │   │   ├── not-found.tsx
+│   │   │   ├── error.tsx            # Global error boundary
+│   │   │   ├── loading.tsx          # Global loading skeleton
+│   │   │   │
+│   │   │   ├── [locale]/            # i18n locale prefix (uk, en)
+│   │   │   │   ├── layout.tsx       # Locale layout
+│   │   │   │   ├── page.tsx         # Landing / marketing page
+│   │   │   │   │
+│   │   │   │   ├── (auth)/          # Auth route group (no layout chrome)
+│   │   │   │   │   ├── login/page.tsx
+│   │   │   │   │   ├── signup/page.tsx
+│   │   │   │   │   └── forgot-password/page.tsx
+│   │   │   │   │
+│   │   │   │   └── (dashboard)/     # Protected route group (with sidebar/header)
+│   │   │   │       ├── layout.tsx   # Dashboard layout (auth guard, nav)
+│   │   │   │       ├── feed/
+│   │   │   │       │   ├── page.tsx          # Teaching Feed main page
+│   │   │   │       │   └── loading.tsx       # Feed skeleton loader
+│   │   │   │       ├── upload/
+│   │   │   │       │   └── page.tsx          # Upload page with drag-drop
+│   │   │   │       ├── history/
+│   │   │   │       │   └── page.tsx          # Upload history / past analyses
+│   │   │   │       ├── profile/
+│   │   │   │       │   └── page.tsx          # User profile + Financial Health Score
+│   │   │   │       └── settings/
+│   │   │   │           └── page.tsx          # Notification prefs, language, subscription
+│   │   │   │
+│   │   │   └── api/                 # Next.js API routes (auth callbacks only)
+│   │   │       └── auth/
+│   │   │           └── [...nextauth]/route.ts
+│   │   │
+│   │   ├── components/
+│   │   │   ├── ui/                  # shadcn/ui base components
+│   │   │   │   ├── button.tsx
+│   │   │   │   ├── card.tsx
+│   │   │   │   ├── dialog.tsx
+│   │   │   │   ├── dropdown-menu.tsx
+│   │   │   │   ├── input.tsx
+│   │   │   │   ├── progress.tsx
+│   │   │   │   ├── skeleton.tsx
+│   │   │   │   ├── badge.tsx
+│   │   │   │   ├── tabs.tsx
+│   │   │   │   └── tooltip.tsx
+│   │   │   └── layout/
+│   │   │       ├── Header.tsx
+│   │   │       ├── Sidebar.tsx
+│   │   │       ├── Footer.tsx
+│   │   │       └── LocaleSwitcher.tsx
+│   │   │
+│   │   ├── features/
+│   │   │   ├── teaching-feed/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── FeedContainer.tsx         # Feed list with infinite scroll
+│   │   │   │   │   ├── InsightCard.tsx           # Base card with severity badge
+│   │   │   │   │   ├── SpendingInsightCard.tsx   # Spending pattern card
+│   │   │   │   │   ├── SubscriptionAlertCard.tsx # Subscription detection card
+│   │   │   │   │   ├── SavingTipCard.tsx         # Saving recommendation card
+│   │   │   │   │   ├── ForecastCard.tsx          # Predictive forecast card
+│   │   │   │   │   ├── EducationLayer.tsx        # Progressive disclosure education
+│   │   │   │   │   └── TriageBadge.tsx           # Severity badge (red/yellow/green)
+│   │   │   │   ├── hooks/
+│   │   │   │   │   ├── use-teaching-feed.ts      # TanStack Query hook for feed
+│   │   │   │   │   └── use-education-stream.ts   # SSE hook for streaming education
+│   │   │   │   └── types.ts
+│   │   │   │
+│   │   │   ├── upload/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── UploadDropzone.tsx        # Drag-drop file upload
+│   │   │   │   │   ├── UploadProgress.tsx        # Pipeline progress tracker
+│   │   │   │   │   └── FileFormatGuide.tsx       # Help text for supported formats
+│   │   │   │   ├── hooks/
+│   │   │   │   │   ├── use-upload.ts             # Upload mutation + progress SSE
+│   │   │   │   │   └── use-job-status.ts         # Job polling/SSE hook
+│   │   │   │   └── types.ts
+│   │   │   │
+│   │   │   ├── auth/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── LoginForm.tsx
+│   │   │   │   │   ├── SignupForm.tsx
+│   │   │   │   │   └── ForgotPasswordForm.tsx
+│   │   │   │   └── hooks/
+│   │   │   │       └── use-auth.ts               # Auth state + Cognito helpers
+│   │   │   │
+│   │   │   ├── profile/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── FinancialHealthScore.tsx  # Score visualization (0-100)
+│   │   │   │   │   ├── SpendingBreakdown.tsx     # Category breakdown
+│   │   │   │   │   └── TrendChart.tsx            # Historical trend chart
+│   │   │   │   └── hooks/
+│   │   │   │       └── use-profile.ts
+│   │   │   │
+│   │   │   ├── queries/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── QuerySelector.tsx         # Pre-built query selector
+│   │   │   │   │   └── QueryResult.tsx           # Query result display
+│   │   │   │   └── hooks/
+│   │   │   │       └── use-query.ts
+│   │   │   │
+│   │   │   └── settings/
+│   │   │       ├── components/
+│   │   │       │   ├── NotificationPrefs.tsx
+│   │   │       │   ├── LanguageSelector.tsx
+│   │   │       │   ├── SubscriptionManager.tsx
+│   │   │       │   └── DataDeletion.tsx          # One-click data deletion
+│   │   │       └── hooks/
+│   │   │           └── use-settings.ts
+│   │   │
+│   │   ├── lib/
+│   │   │   ├── api/
+│   │   │   │   ├── client.ts                # Generated API client config
+│   │   │   │   └── generated/               # @hey-api/openapi-ts output
+│   │   │   ├── auth/
+│   │   │   │   ├── next-auth-config.ts      # NextAuth.js + Cognito config
+│   │   │   │   └── auth-guard.tsx           # Route protection component
+│   │   │   ├── providers/
+│   │   │   │   ├── query-provider.tsx       # TanStack Query provider
+│   │   │   │   └── intl-provider.tsx        # next-intl provider
+│   │   │   ├── utils.ts                     # cn() helper, formatters
+│   │   │   └── format/
+│   │   │       ├── currency.ts              # UAH formatting (kopiykas → ₴)
+│   │   │       └── date.ts                  # Locale-aware date formatting
+│   │   │
+│   │   ├── i18n/
+│   │   │   ├── messages/
+│   │   │   │   ├── en.json
+│   │   │   │   └── uk.json
+│   │   │   ├── config.ts                    # Supported locales, default locale
+│   │   │   └── request.ts                   # next-intl request config
+│   │   │
+│   │   └── types/
+│   │       ├── api.ts                       # Re-exported generated API types
+│   │       └── common.ts                    # Shared frontend types
+│   │
+│   ├── e2e/                                 # Playwright E2E tests
+│   │   ├── upload-flow.spec.ts
+│   │   ├── feed-interaction.spec.ts
+│   │   └── auth-flow.spec.ts
+│   │
+│   ├── public/
+│   │   ├── favicon.ico
+│   │   └── images/
+│   │
+│   ├── next.config.ts
+│   ├── tailwind.config.ts
+│   ├── tsconfig.json
+│   ├── components.json                      # shadcn/ui config
+│   ├── package.json
+│   ├── .env.local                           # Local dev env vars
+│   └── .env.example
+│
+├── backend/                                  # FastAPI (Python 3.12)
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                          # FastAPI app entry point
+│   │   │
+│   │   ├── api/
+│   │   │   ├── __init__.py
+│   │   │   ├── deps.py                      # Shared deps (get_db, get_current_user)
+│   │   │   └── v1/
+│   │   │       ├── __init__.py
+│   │   │       ├── router.py                # v1 API router aggregator
+│   │   │       ├── auth.py                  # POST /signup, /login callbacks
+│   │   │       ├── uploads.py               # POST /uploads, GET /uploads
+│   │   │       ├── transactions.py          # GET /transactions, /transactions/{id}
+│   │   │       ├── insights.py              # GET /teaching-feed, /insights/{id}
+│   │   │       ├── profile.py               # GET/PUT /profile, /health-score
+│   │   │       ├── jobs.py                  # GET /jobs/{id}, /jobs/{id}/stream (SSE)
+│   │   │       ├── queries.py               # POST /queries (pre-built data queries)
+│   │   │       └── settings.py              # GET/PUT /settings (notifications, prefs)
+│   │   │
+│   │   ├── agents/
+│   │   │   ├── __init__.py
+│   │   │   ├── pipeline.py                  # Main StateGraph definition
+│   │   │   ├── state.py                     # FinancialPipelineState TypedDict
+│   │   │   ├── ingestion/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── node.py                  # Ingestion agent node
+│   │   │   │   └── parsers/
+│   │   │   │       ├── __init__.py
+│   │   │   │       ├── base.py              # AbstractParser interface
+│   │   │   │       ├── monobank.py          # Monobank CSV parser
+│   │   │   │       └── privatbank.py        # PrivatBank XLS parser (future)
+│   │   │   ├── categorization/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── node.py                  # Categorization agent node
+│   │   │   │   └── mcc_mapping.py           # MCC code → category mapping
+│   │   │   ├── pattern_detection/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── node.py                  # Pattern detection agent node
+│   │   │   │   └── detectors/
+│   │   │   │       ├── recurring.py         # Subscription/recurring charge detection
+│   │   │   │       ├── trends.py            # Month-over-month trend analysis
+│   │   │   │       └── anomalies.py         # Anomaly detection
+│   │   │   ├── triage/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── node.py                  # Triage agent node
+│   │   │   │   └── severity.py              # Severity scoring logic
+│   │   │   └── education/
+│   │   │       ├── __init__.py
+│   │   │       ├── node.py                  # Education agent node (RAG)
+│   │   │       └── prompts.py               # LLM prompt templates (UK + EN)
+│   │   │
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py                    # Pydantic BaseSettings (env vars)
+│   │   │   ├── security.py                  # Cognito JWT validation
+│   │   │   ├── database.py                  # Async SQLModel engine + session
+│   │   │   ├── exceptions.py                # Custom exceptions + handlers
+│   │   │   ├── logging.py                   # Structured JSON logging setup
+│   │   │   └── redis.py                     # Redis connection factory
+│   │   │
+│   │   ├── models/
+│   │   │   ├── __init__.py
+│   │   │   ├── user.py                      # User, UserPreferences
+│   │   │   ├── transaction.py               # Transaction, RawTransaction
+│   │   │   ├── insight.py                   # Insight (union: spending, subscription, etc.)
+│   │   │   ├── job.py                       # ProcessingJob
+│   │   │   ├── financial_profile.py         # FinancialProfile, HealthScore
+│   │   │   └── subscription.py              # UserSubscription (freemium tier)
+│   │   │
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   ├── upload_service.py            # File validation, S3 storage, job creation
+│   │   │   ├── transaction_service.py       # Transaction CRUD, user-scoped queries
+│   │   │   ├── insight_service.py           # Insight retrieval, feed pagination
+│   │   │   ├── profile_service.py           # Health score calculation, profile updates
+│   │   │   ├── subscription_service.py      # Tier checking, payment webhook handling
+│   │   │   └── notification_service.py      # Email sending via SES
+│   │   │
+│   │   ├── tasks/
+│   │   │   ├── __init__.py
+│   │   │   ├── celery_app.py                # Celery configuration (Redis broker)
+│   │   │   ├── pipeline_tasks.py            # run_financial_pipeline task
+│   │   │   └── notification_tasks.py        # send_upload_reminder, send_insight_ready
+│   │   │
+│   │   └── rag/
+│   │       ├── __init__.py
+│   │       ├── embeddings.py                # BGE-M3 embedding generation
+│   │       ├── retriever.py                 # pgvector similarity search
+│   │       ├── knowledge_base.py            # KB document management
+│   │       └── content/                     # Financial education content (seed data)
+│   │           ├── budgeting_uk.md
+│   │           ├── budgeting_en.md
+│   │           ├── saving_strategies_uk.md
+│   │           ├── saving_strategies_en.md
+│   │           └── ...
+│   │
+│   ├── alembic/
+│   │   ├── env.py
+│   │   ├── versions/                        # Migration files
+│   │   └── script.py.mako
+│   ├── alembic.ini
+│   │
+│   ├── tests/
+│   │   ├── conftest.py                      # Fixtures: test DB, test client, mock user
+│   │   ├── api/
+│   │   │   └── v1/
+│   │   │       ├── test_uploads.py
+│   │   │       ├── test_transactions.py
+│   │   │       ├── test_insights.py
+│   │   │       └── test_auth.py
+│   │   ├── agents/
+│   │   │   ├── test_ingestion.py
+│   │   │   ├── test_categorization.py
+│   │   │   ├── test_pattern_detection.py
+│   │   │   ├── test_triage.py
+│   │   │   └── test_education.py
+│   │   ├── services/
+│   │   │   ├── test_upload_service.py
+│   │   │   └── test_transaction_service.py
+│   │   └── integration/
+│   │       ├── test_pipeline_e2e.py         # Full pipeline integration test
+│   │       └── test_rag_retrieval.py
+│   │
+│   ├── pyproject.toml                       # uv project config + dependencies
+│   ├── .python-version                      # 3.12
+│   ├── .env                                 # Local dev env vars
+│   └── .env.example
+│
+├── shared/                                   # Cross-stack shared artifacts
+│   └── openapi/
+│       └── generate-client.sh               # Script to regenerate TS client from OpenAPI
+│
+├── infra/                                    # AWS infrastructure (optional IaC)
+│   └── README.md                            # Infrastructure setup documentation
+│
+├── docker-compose.yml                        # Local dev: PostgreSQL + Redis
+├── .gitignore
+├── .editorconfig
+└── README.md
+```
+
+### Architectural Boundaries
+
+**API Boundaries:**
+
+```
+Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
+                            ↕                           ↕
+                       Celery Workers (ECS)        pgvector (same RDS)
+                            ↕
+                       LLM APIs (external)
+```
+
+| Boundary | Protocol | Auth | Data Format |
+|---|---|---|---|
+| Frontend → FastAPI | HTTPS REST | Cognito JWT in `Authorization` header | JSON (camelCase) |
+| FastAPI → PostgreSQL | TCP (SQLModel async) | Connection string + RLS | SQL / SQLModel objects |
+| FastAPI → Redis | TCP | Connection string | JSON strings |
+| FastAPI → S3 | HTTPS (boto3) | IAM role | Binary (file upload) |
+| FastAPI → Celery | Redis broker | Internal (same VPC) | Serialized task args |
+| Celery → LLM APIs | HTTPS | API key | JSON |
+| Celery → PostgreSQL | TCP (SQLModel async) | Connection string + RLS | SQL |
+| FastAPI → Frontend (SSE) | HTTPS (text/event-stream) | Cognito JWT | JSON event payloads |
+| Cognito → Frontend | HTTPS (OAuth2) | Client ID/Secret | JWT tokens |
+
+**Component Boundaries (Backend):**
+
+| Layer | Responsibility | Depends On | Never Depends On |
+|---|---|---|---|
+| `api/` | HTTP handling, request validation, response serialization | `services/`, `core/`, `models/` | `agents/`, `tasks/`, `rag/` |
+| `services/` | Business logic, orchestration | `models/`, `core/` | `api/`, `agents/` |
+| `agents/` | LangGraph pipeline nodes, AI logic | `models/`, `core/`, `rag/`, `services/` | `api/` |
+| `tasks/` | Celery task definitions, async job execution | `agents/`, `services/`, `core/` | `api/` |
+| `models/` | SQLModel data models, schema definitions | `core/` (database engine only) | Everything else |
+| `core/` | Config, security, DB engine, exceptions | Nothing (leaf dependency) | Everything |
+| `rag/` | Embeddings, retrieval, knowledge base | `core/`, `models/` | `api/`, `agents/` |
+
+**Component Boundaries (Frontend):**
+
+| Layer | Responsibility | Depends On | Never Depends On |
+|---|---|---|---|
+| `app/` (routes) | Page composition, layout | `features/`, `components/`, `lib/` | — |
+| `features/` | Domain logic, feature-specific components/hooks | `components/ui/`, `lib/`, `types/` | Other features (isolated) |
+| `components/ui/` | Reusable UI primitives (shadcn) | Tailwind CSS only | `features/`, `lib/api/` |
+| `components/layout/` | App shell (header, sidebar) | `components/ui/`, `lib/auth/` | `features/` |
+| `lib/api/` | Generated API client | — (auto-generated) | — |
+| `lib/auth/` | Auth config, guards | NextAuth.js, Cognito | `features/` |
+
+### Requirements to Structure Mapping
+
+**PRD Feature → Directory Mapping:**
+
+| PRD Feature | Frontend Location | Backend Location |
+|---|---|---|
+| **Statement Upload & Parsing** | `features/upload/` | `api/v1/uploads.py`, `agents/ingestion/`, `services/upload_service.py` |
+| **Multi-Agent AI Pipeline** | `features/upload/` (progress UI) | `agents/`, `tasks/pipeline_tasks.py`, `agents/pipeline.py` |
+| **Teaching Feed** | `features/teaching-feed/` | `api/v1/insights.py`, `services/insight_service.py` |
+| **Cumulative Financial Profile** | `features/profile/` | `api/v1/profile.py`, `services/profile_service.py`, `models/financial_profile.py` |
+| **Subscription Detection** | `features/teaching-feed/` (card type) | `agents/pattern_detection/detectors/recurring.py` |
+| **Basic Predictive Forecasts** | `features/teaching-feed/` (card type) | `agents/pattern_detection/detectors/trends.py` |
+| **Pre-built Data Queries** | `features/queries/` | `api/v1/queries.py` |
+| **Bilingual Support** | `i18n/`, `lib/format/` | `agents/education/prompts.py`, `rag/content/` |
+| **Email Notifications** | `features/settings/` (prefs UI) | `tasks/notification_tasks.py`, `services/notification_service.py` |
+| **Freemium Model** | `features/settings/` (subscription UI) | `api/deps.py` (tier guard), `services/subscription_service.py` |
+| **User Auth** | `features/auth/`, `lib/auth/` | `api/v1/auth.py`, `core/security.py` |
+
+**Cross-Cutting Concerns → Location:**
+
+| Concern | Frontend | Backend |
+|---|---|---|
+| **Authentication** | `lib/auth/`, `app/api/auth/` | `core/security.py`, `api/deps.py` |
+| **i18n** | `i18n/`, `proxy.ts` | `agents/education/prompts.py` (LLM language param) |
+| **Error handling** | `app/error.tsx`, feature error boundaries | `core/exceptions.py`, `main.py` (exception handlers) |
+| **Logging** | Browser console (dev) | `core/logging.py` (structured JSON) |
+| **Tier gating** | Feature-level conditional rendering | `api/deps.py` (FastAPI dependency) |
+
+### Integration Points
+
+**Internal Communication:**
+
+| From | To | Mechanism | Trigger |
+|---|---|---|---|
+| `api/uploads.py` | `tasks/pipeline_tasks.py` | Celery `apply_async()` | File upload received |
+| `tasks/pipeline_tasks.py` | `agents/pipeline.py` | Direct function call | Task picked up by worker |
+| `agents/education/node.py` | `rag/retriever.py` | Direct function call | Education agent activated |
+| `api/jobs.py` | Redis | `hget/hset` | Job status poll / SSE stream |
+| `tasks/pipeline_tasks.py` | Redis | `hset` | Pipeline progress update |
+
+**External Integrations:**
+
+| Integration | Backend Location | Protocol |
+|---|---|---|
+| **LLM APIs (Claude/GPT)** | `agents/*/node.py` | HTTPS, API key auth |
+| **AWS Cognito** | `core/security.py` | JWKS endpoint for JWT validation |
+| **AWS S3** | `services/upload_service.py` | boto3 SDK |
+| **AWS SES** | `services/notification_service.py` | boto3 SDK |
+| **Fondy (payments)** | `services/subscription_service.py` | Webhook + REST API |
+| **LemonSqueezy** | `services/subscription_service.py` | Webhook + REST API |
+| **Monobank API** | `agents/ingestion/parsers/monobank.py` | REST API (future: webhook) |
+
+**Data Flow (Upload → Insights):**
+
+```
+1. User uploads CSV → Frontend UploadDropzone
+2. Frontend POST /api/v1/uploads → FastAPI validates file, stores to S3
+3. FastAPI creates ProcessingJob, queues Celery task → HTTP 202 + jobId
+4. Frontend opens SSE stream GET /api/v1/jobs/{id}/stream
+5. Celery worker picks up task, runs LangGraph pipeline:
+   a. Ingestion Node: Parse CSV (Windows-1251) → structured transactions
+   b. Categorization Node: MCC + LLM → categorized transactions
+   c. Pattern Detection Node: Recurring, trends, anomalies
+   d. Triage Node: Severity scoring → ranked findings
+   e. Education Node: RAG retrieval + LLM generation → insight cards
+6. Each node updates Redis with progress → SSE pushes to frontend
+7. Pipeline complete: insights stored in PostgreSQL
+8. Frontend receives job-complete event, fetches Teaching Feed
+```
+
+### Development Workflow
+
+**Local Development:**
+
+```bash
+# Terminal 1: Start infrastructure
+docker-compose up -d  # PostgreSQL + Redis
+
+# Terminal 2: Start backend
+cd backend && uv run uvicorn app.main:app --reload --port 8000
+
+# Terminal 3: Start Celery worker
+cd backend && uv run celery -A app.tasks.celery_app worker --loglevel=info
+
+# Terminal 4: Start frontend
+cd frontend && npm run dev  # Next.js on port 3000
+```
+
+**docker-compose.yml services:**
+
+| Service | Image | Ports | Purpose |
+|---|---|---|---|
+| `postgres` | `pgvector/pgvector:pg16` | `5432:5432` | PostgreSQL + pgvector |
+| `redis` | `redis:7-alpine` | `6379:6379` | Celery broker + caching |
+
+**Environment Files:**
+
+| File | Location | Contents |
+|---|---|---|
+| `frontend/.env.local` | Frontend | `NEXT_PUBLIC_API_URL`, Cognito client ID, NextAuth secret |
+| `backend/.env` | Backend | `DATABASE_URL`, `REDIS_URL`, Cognito pool ID, AWS credentials, LLM API keys |
+| `*.env.example` | Both | Template with all vars (no secrets) |
+
+## Architecture Validation Results
+
+### Coherence Validation ✅
+
+**Decision Compatibility:**
+
+All technology choices work together without conflicts:
+- Next.js 16.1 (TypeScript) ↔ FastAPI (Python) communicate via REST + generated OpenAPI client — no version conflicts
+- SQLModel (SQLAlchemy 2.x + Pydantic v2) is fully compatible with FastAPI's native Pydantic v2 integration
+- pgvector 0.8.x works within PostgreSQL 16.x via RDS — BGE-M3 1024-dimension vectors are within pgvector's capabilities
+- Celery + Redis 7.x is a proven combination; ElastiCache supports the required Redis version
+- TanStack Query v5 + Next.js 16.1 App Router are compatible — TanStack Query has full RSC support
+- shadcn/ui CLI v4 + Tailwind CSS 4.x + unified radix-ui package are designed to work together
+- next-intl v4.8.x supports Next.js 16's `proxy.ts` convention (documented in patterns)
+- AWS App Runner + ECS Fargate + RDS + ElastiCache + Cognito + S3 + SES are all within the same AWS ecosystem with IAM-based access
+
+**Pattern Consistency:**
+
+- Naming conventions are consistently defined across all three layers: snake_case (Python/DB) → camelCase (API JSON via Pydantic alias_generator) → camelCase (TypeScript)
+- The cross-lingual naming bridge (Pydantic `alias_generator=to_camel`) eliminates the most common source of naming conflicts in dual-stack projects
+- File naming follows language conventions: PascalCase.tsx for components, snake_case.py for Python modules, kebab-case for routes
+- SSE event names (kebab-case) are consistent with API endpoint naming
+
+**Structure Alignment:**
+
+- Project structure directly supports the 5-agent pipeline architecture with dedicated `agents/` subdirectories per agent
+- Feature-folder organization in frontend maps 1:1 to PRD features (teaching-feed, upload, auth, profile, queries, settings)
+- Backend layer separation (api → services → agents → models → core) enforces clean dependency directions
+- The `shared/openapi/` directory supports the OpenAPI-generated client workflow
+
+### Requirements Coverage Validation ✅
+
+**Feature Coverage:**
+
+| PRD Feature | Architecture Support | Status |
+|---|---|---|
+| Statement Upload & Parsing | S3 storage + Celery async + Ingestion Agent + Monobank parser | ✅ Fully covered |
+| Multi-Agent AI Pipeline | LangGraph StateGraph, 5 agent nodes, Celery workers on ECS Fargate | ✅ Fully covered |
+| Teaching Feed | REST API with union-type cards, cursor pagination, severity triage, SSE streaming | ✅ Fully covered |
+| Cumulative Financial Profile | Dedicated model + service + API endpoint + profile feature folder | ✅ Fully covered |
+| Subscription Detection | Pattern Detection Agent + recurring charge detector | ✅ Fully covered |
+| Basic Predictive Forecasts | Pattern Detection Agent + trends detector | ✅ Fully covered |
+| Pre-built Data Queries | Dedicated queries API endpoint + frontend feature folder | ✅ Fully covered |
+| Bilingual Support | next-intl (UI) + BGE-M3 cross-lingual embeddings (RAG) + bilingual prompts + locale formatting | ✅ Fully covered |
+| Email Notifications | SES + Celery notification tasks + settings UI | ✅ Fully covered |
+| Freemium Model | Subscription model + tier-gating dependency + Fondy/LemonSqueezy integration | ✅ Fully covered |
+| User Auth & Data Persistence | Cognito + NextAuth.js + JWT middleware + RLS + cascading delete | ✅ Fully covered |
+
+**Non-Functional Requirements Coverage:**
+
+| NFR | Architectural Support | Status |
+|---|---|---|
+| Security (AES-256, TLS 1.3, tenant isolation) | RDS encryption, HTTPS everywhere, RLS, Cognito JWT | ✅ Covered |
+| Privacy (one-click deletion, consent) | Cascading delete across all stores, DataDeletion component | ✅ Covered |
+| Performance (>80% first-upload completion) | Async pipeline with SSE progress, fast parsing feedback | ✅ Covered |
+| Bilingual | next-intl, BGE-M3, bilingual RAG content, locale formatting | ✅ Covered |
+| Reliability (graceful agent failures) | LangGraph checkpointing, Celery retries, partial results | ✅ Covered |
+| Scalability | ECS Fargate auto-scaling, App Runner scale-to-zero, connection pooling | ✅ Covered |
+| Compliance (Ukrainian DPL, audit) | Structured JSON logging, raw data preservation, audit trails | ✅ Covered |
+| Data Integrity | ACID transactions, dual storage (raw JSONB + normalized), DB constraints | ✅ Covered |
+
+### Implementation Readiness Validation ✅
+
+**Decision Completeness:**
+
+- All critical technology choices include specific version numbers
+- Implementation patterns cover 25+ conflict points across 5 categories
+- Enforcement guidelines provide 9 explicit rules for AI agents
+- Pattern verification tooling is specified (ESLint, Ruff, Pydantic aliases, CI checks)
+
+**Structure Completeness:**
+
+- Complete directory structure with every file and its purpose annotated
+- Component boundaries defined with explicit "Depends On" / "Never Depends On" tables for both frontend and backend
+- Integration points mapped for both internal (Celery, Redis, direct calls) and external (LLM APIs, Cognito, S3, SES, Fondy, LemonSqueezy)
+- Requirements-to-structure mapping table links every PRD feature to specific directories
+
+**Pattern Completeness:**
+
+- Naming conventions comprehensive across DB, API, and code layers
+- Communication patterns (SSE events, Celery tasks, logging) fully specified
+- Process patterns (error handling, loading states, validation) documented per layer
+- Data format rules (dates, money, IDs, nulls, currency codes) explicitly standardized
+
+### Gap Analysis Results
+
+**Gaps Identified & Resolutions:**
+
+| # | Gap | Priority | Resolution |
+|---|---|---|---|
+| 1 | **BGE-M3 embedding model hosting** not specified — where does the model run? | Critical | **Recommended:** HuggingFace Inference Endpoints for MVP (managed, auto-scaling, supports BGE-M3). Migrate to self-hosted on ECS Fargate if cost or latency requires it |
+| 2 | **LLM provider** not explicitly chosen — Claude vs GPT vs both | Critical | **Recommended:** Claude (Anthropic) as primary LLM for all 5 agents. GPT-4o as fallback provider. Provider abstraction via LangChain's LLM interface allows easy switching |
+| 3 | **Database migration workflow** not detailed — who runs migrations, when | Important | **Recommended:** Alembic migrations run as a pre-deployment step in CI/CD pipeline. `alembic upgrade head` executed before new API version starts. Never auto-migrate in app startup |
+| 4 | **APM/monitoring tooling** deferred but observability is a day-one NFR | Nice-to-have | **Recommended:** Start with structured JSON logging to CloudWatch (free with AWS). Add Sentry for error tracking in MVP. Evaluate Datadog/New Relic post-MVP |
+
+### Architecture Completeness Checklist
+
+**✅ Requirements Analysis**
+
+- [x] Project context thoroughly analyzed (11 features, 4 domains, 8 NFRs)
+- [x] Scale and complexity assessed (High — 12-15 major components)
+- [x] Technical constraints identified (6 constraints with impact analysis)
+- [x] Cross-cutting concerns mapped (8 concerns)
+
+**✅ Architectural Decisions**
+
+- [x] Critical decisions documented with versions (PostgreSQL 16, pgvector 0.8, Redis 7, Next.js 16.1, etc.)
+- [x] Technology stack fully specified (frontend, backend, infra, auth, payments)
+- [x] Integration patterns defined (REST, SSE, Celery, OpenAPI client generation)
+- [x] Performance considerations addressed (async pipeline, SSE progress, cursor pagination)
+
+**✅ Implementation Patterns**
+
+- [x] Naming conventions established (DB, API, code — all three layers)
+- [x] Structure patterns defined (frontend feature folders, backend domain modules)
+- [x] Communication patterns specified (SSE events, Celery tasks, logging)
+- [x] Process patterns documented (error handling, loading states, validation)
+
+**✅ Project Structure**
+
+- [x] Complete directory structure defined (every file annotated)
+- [x] Component boundaries established (dependency tables for frontend + backend)
+- [x] Integration points mapped (internal + external, 12 boundary definitions)
+- [x] Requirements to structure mapping complete (11 features → directories)
+
+### Architecture Readiness Assessment
+
+**Overall Status:** READY FOR IMPLEMENTATION
+
+**Confidence Level:** High — all 11 PRD features have clear architectural support, all NFRs are addressed, and implementation patterns are comprehensive enough to guide AI agents consistently.
+
+**Key Strengths:**
+
+1. **Comprehensive cross-language bridge** — Pydantic alias_generator eliminates the #1 source of dual-stack naming conflicts
+2. **Clear layer boundaries** — Explicit "Never Depends On" rules prevent circular dependencies
+3. **Financial data integrity** — Dual storage (raw JSONB + normalized) preserves audit trail while enabling AI processing
+4. **Async-first design** — Upload → Celery → SSE pattern prevents blocking on expensive AI operations
+5. **Bilingual by design** — BGE-M3 cross-lingual embeddings + next-intl + bilingual prompts baked into architecture from day one
+6. **Security depth** — Three-layer auth (Cognito JWT → FastAPI middleware → PostgreSQL RLS) with encryption at rest and in transit
+
+**Areas for Future Enhancement:**
+
+1. GraphQL evaluation post-MVP if Teaching Feed queries become complex
+2. Self-hosted embedding model (ECS Fargate) if HuggingFace Inference Endpoints become a bottleneck
+3. CDN/edge caching for AI-generated insights that don't change frequently
+4. Multi-region deployment for latency optimization
+5. Advanced APM (Datadog/New Relic) for production observability
+6. MamayLM fine-tuning for Ukrainian financial domain (per RAG research recommendations)
+
+### Implementation Handoff
+
+**AI Agent Guidelines:**
+
+- Follow all architectural decisions exactly as documented — versions, naming conventions, file locations
+- Use implementation patterns consistently across all components
+- Respect project structure and component boundaries (check "Never Depends On" tables)
+- Refer to this document for all architectural questions — it is the single source of truth
+- When in doubt about a pattern, check the Enforcement Guidelines section
+
+**First Implementation Priority:**
+
+1. Initialize monorepo: `create-next-app` for frontend, `uv init` for backend
+2. Set up `docker-compose.yml` with PostgreSQL (pgvector) + Redis
+3. Implement Cognito auth flow (frontend + backend)
+4. Create database models + initial Alembic migration
+5. Build file upload endpoint with S3 storage + Celery task queuing
