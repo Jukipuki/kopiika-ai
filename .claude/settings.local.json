@@ -53,7 +53,18 @@
       "Bash(docker stop:*)",
       "Bash(docker exec:*)",
       "Bash(xargs kill:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git status:*)",
+      "Bash(git rm:*)",
+      "Bash(find infra/terraform -name *.tf -exec grep -l \"syntax\\\\|error\" {})",
+      "Bash(2)",
+      "Bash(find infra/terraform -name *.tf)",
+      "Bash(export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\")",
+      "Bash(grep -r AWS_ /Users/ohumennyi/Personal/kopiika-ai/backend/Dockerfile* /Users/ohumennyi/Personal/kopiika-ai/.github/workflows/)",
+      "Bash(grep -E '\\(node_modules/|\\\\.next/|\\\\.venv/|__pycache__|\\\\.DS_Store|\\\\.env$|\\\\.env\\\\.local|\\\\.pyc$|\\\\.egg-info/|\\\\.terraform|\\\\.tfstate|\\\\.coverage$|htmlcov/\\)')",
+      "Bash(grep -E '\\(node_modules|\\\\.next|\\\\.env$\\)')",
+      "Bash(grep -E '\\(\\\\.venv|__pycache__|\\\\.pyc|\\\\.env$\\)')"
     ]
   }
 }

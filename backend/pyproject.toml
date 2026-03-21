@@ -1,7 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "Kopiika AI backend — FastAPI service for AI-powered personal finance education"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

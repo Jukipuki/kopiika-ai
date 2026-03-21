@@ -1,0 +1,95 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REPOSITORY: kopiika-backend
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        id: build-api
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f backend/Dockerfile backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Run Alembic migrations
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker run --rm \
+            -e AWS_REGION=${{ env.AWS_REGION }} \
+            -e AWS_SECRETS_PREFIX=${{ vars.PROJECT_NAME }}/${{ vars.ENVIRONMENT }} \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_SESSION_TOKEN \
+            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            alembic upgrade head
+
+      - name: Deploy to App Runner
+        uses: awslabs/amazon-app-runner-deploy@v2
+        with:
+          service: kopiika-${{ vars.ENVIRONMENT }}-api
+          image: ${{ steps.build-api.outputs.image }}
+          access-role-arn: ${{ vars.APPRUNNER_ECR_ROLE_ARN }}
+          region: ${{ env.AWS_REGION }}
+          wait-for-service-stability-seconds: 300
+
+      - name: Build and push worker image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:worker-$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:worker-latest -f backend/Dockerfile.worker backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:worker-$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:worker-latest
+
+      - name: Render ECS task definition
+        id: render-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: kopiika-${{ vars.ENVIRONMENT }}-worker
+          container-name: worker
+          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:worker-${{ github.sha }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task.outputs.task-definition }}
+          service: kopiika-${{ vars.ENVIRONMENT }}-worker
+          cluster: kopiika-${{ vars.ENVIRONMENT }}-cluster
+          wait-for-service-stability: true

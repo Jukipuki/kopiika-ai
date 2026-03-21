@@ -1,6 +1,6 @@
 # Story 1.1: Monorepo Scaffolding & Local Development Environment
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -217,6 +217,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-21: Story 1.1 implemented — full monorepo scaffolding with local dev environment
+- 2026-03-21: Code review fixes applied — alembic.ini dummy URL cleared, .python-version unignored, globals.css Arial override removed, CORS restricted, backend/main.py stub removed, pyproject.toml description updated
 
 ### File List
 
@@ -228,12 +229,20 @@ Claude Opus 4.6
 - .github/workflows/ci-backend.yml
 - .github/CODEOWNERS
 - shared/openapi/generate-client.sh
-- frontend/ (scaffolded via create-next-app)
+- frontend/package.json
+- frontend/package-lock.json
+- frontend/tsconfig.json
+- frontend/next.config.ts
+- frontend/postcss.config.mjs
+- frontend/eslint.config.mjs
+- frontend/.gitignore
 - frontend/src/app/layout.tsx (modified — DM Sans font, metadata)
 - frontend/src/app/page.tsx (modified — health endpoint integration)
 - frontend/src/app/globals.css (modified — DM Sans theme variable)
+- frontend/src/app/favicon.ico
+- frontend/public/file.svg, globe.svg, next.svg, vercel.svg, window.svg
 - frontend/.env.example
-- frontend/.env.local
+- frontend/.env.local (gitignored, local only)
 - frontend/src/components/ui/.gitkeep
 - frontend/src/components/layout/.gitkeep
 - frontend/src/features/.gitkeep
@@ -241,11 +250,12 @@ Claude Opus 4.6
 - frontend/src/i18n/.gitkeep
 - frontend/src/types/.gitkeep
 - frontend/e2e/.gitkeep
-- backend/pyproject.toml (created by uv init)
+- backend/pyproject.toml
 - backend/uv.lock
 - backend/.python-version
-- backend/.env
+- backend/.env (gitignored, local only)
 - backend/.env.example
+- backend/.gitignore
 - backend/app/__init__.py
 - backend/app/main.py
 - backend/app/core/__init__.py
@@ -266,3 +276,6 @@ Claude Opus 4.6
 - backend/tests/__init__.py
 - backend/tests/test_health.py
 - backend/tests/test_structure.py
+
+**Removed during code review:**
+- backend/main.py (leftover uv init stub)

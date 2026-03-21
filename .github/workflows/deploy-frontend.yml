@@ -1,0 +1,46 @@
+name: Deploy Frontend
+
+# Vercel's Git integration handles auto-deploy on push to main.
+# This workflow exists as documentation and for manual triggers if needed.
+# Primary deployment is via Vercel's built-in GitHub integration.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            vercel deploy --prod --token=$VERCEL_TOKEN
+          else
+            vercel deploy --token=$VERCEL_TOKEN
+          fi
