@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    # AWS Cognito
+    COGNITO_USER_POOL_ID: str = ""
+    COGNITO_APP_CLIENT_ID: str = ""
+    COGNITO_REGION: str = "eu-central-1"
+    COGNITO_BACKEND_CLIENT_ID: str = ""
+    COGNITO_BACKEND_CLIENT_SECRET: str = ""
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

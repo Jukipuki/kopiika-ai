@@ -1,4 +1,7 @@
 {
+  "env": {
+    "PATH": "/opt/homebrew/bin:/opt/homebrew/opt/node@20/bin:/Users/ohumennyi/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  },
   "permissions": {
     "allow": [
       "WebFetch(domain:pypi.org)",
@@ -64,7 +67,43 @@
       "Bash(grep -r AWS_ /Users/ohumennyi/Personal/kopiika-ai/backend/Dockerfile* /Users/ohumennyi/Personal/kopiika-ai/.github/workflows/)",
       "Bash(grep -E '\\(node_modules/|\\\\.next/|\\\\.venv/|__pycache__|\\\\.DS_Store|\\\\.env$|\\\\.env\\\\.local|\\\\.pyc$|\\\\.egg-info/|\\\\.terraform|\\\\.tfstate|\\\\.coverage$|htmlcov/\\)')",
       "Bash(grep -E '\\(node_modules|\\\\.next|\\\\.env$\\)')",
-      "Bash(grep -E '\\(\\\\.venv|__pycache__|\\\\.pyc|\\\\.env$\\)')"
+      "Bash(grep -E '\\(\\\\.venv|__pycache__|\\\\.pyc|\\\\.env$\\)')",
+      "Bash(git diff-tree:*)",
+      "Bash(for c:*)",
+      "Bash(do echo:*)",
+      "Bash(done)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); text=data[0][''''text'''']; print\\(text[:8000]\\)\")",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); text=data[0][''''text'''']; print\\(text[8000:16000]\\)\")",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); text=data[0][''''text'''']; print\\(text[16000:24000]\\)\")",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); text=data[0][''''text'''']; print\\(text[24000:]\\)\")",
+      "Bash(ls -la /Users/ohumennyi/Personal/kopiika-ai/frontend/.prettierrc* /Users/ohumennyi/Personal/kopiika-ai/frontend/tailwind.config.* /Users/ohumennyi/Personal/kopiika-ai/frontend/postcss.config.*)",
+      "Bash(echo $PATH)",
+      "Bash(/Users/ohumennyi/.local/bin/uv add:*)",
+      "Bash(/Users/ohumennyi/.local/bin/uv run:*)",
+      "Read(//Applications/Docker.app/Contents/Resources/bin/**)",
+      "Read(//Applications/Docker.app/**)",
+      "Bash(/usr/local/bin/docker compose:*)",
+      "Bash(npm install:*)",
+      "Bash(ls ~/.nvm/versions/node/*/bin/npm)",
+      "Bash(command -v node)",
+      "Bash(/usr/local/bin/node --version)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(ls /Users/ohumennyi/.fnm/node-versions/*/bin/npm)",
+      "Bash(ls /Users/ohumennyi/.local/share/fnm/node-versions/*/installation/bin/npm)",
+      "Bash(find /Users/ohumennyi -maxdepth 5 -name npm -not -path */node_modules/*)",
+      "Bash(ls /opt/homebrew/opt/node*/bin/npm)",
+      "Bash(ls /opt/homebrew/Cellar/node*/*/bin/npm)",
+      "Bash(/opt/homebrew/opt/node@20/bin/npm install:*)",
+      "Bash(export PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\")",
+      "Bash(npm view:*)",
+      "Bash(node -e \"const z = require\\(''zod''\\); console.log\\(''Zod version:'', z.z?.version || ''unknown''\\)\")",
+      "Bash(node -e \"console.log\\(require\\(''zod/package.json''\\).version\\)\")",
+      "Bash(node -e \"console.log\\(JSON.parse\\(require\\(''fs''\\).readFileSync\\(''node_modules/zod/package.json'',''utf8''\\)\\).version\\)\")",
+      "Bash(npx vitest:*)",
+      "Bash(npx eslint:*)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale] -type f)"
     ]
   }
 }

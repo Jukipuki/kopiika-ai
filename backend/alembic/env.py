@@ -5,6 +5,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 from app.core.config import settings
+from app.models import User  # noqa: F401 — ensure models are registered
 
 config = context.config
 
