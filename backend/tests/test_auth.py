@@ -1,6 +1,11 @@
 import pytest
 
-from app.core.exceptions import RegistrationError
+from app.core.exceptions import AuthenticationError, RegistrationError
+from app.core.security import get_current_user_payload
+from app.main import app
+
+
+# ==================== Signup Tests (Story 1.3 — preserved) ====================
 
 
 @pytest.mark.asyncio
@@ -108,3 +113,219 @@ async def test_resend_verification(client, mock_cognito_service):
     mock_cognito_service.resend_confirmation_code.assert_called_once_with(
         email="test@example.com"
     )
+
+
+# ==================== Login Tests (Story 1.4) ====================
+
+
+@pytest.mark.asyncio
+async def test_login_success(client, mock_cognito_service, mock_rate_limiter):
+    """9.1 Test login success with valid credentials -> 200 + tokens"""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "test@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "accessToken" in data
+    assert "refreshToken" in data
+    assert "expiresIn" in data
+    assert data["user"]["email"] == "test@example.com"
+    assert "id" in data["user"]
+    assert "locale" in data["user"]
+    mock_cognito_service.authenticate_user.assert_called_once_with(
+        email="test@example.com", password="StrongPass1!"
+    )
+    mock_rate_limiter.clear_attempts.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_login_invalid_password(client, mock_cognito_service, mock_rate_limiter):
+    """9.2 Test login with invalid password -> 401 INVALID_CREDENTIALS"""
+    mock_cognito_service.authenticate_user.side_effect = AuthenticationError(
+        code="INVALID_CREDENTIALS",
+        message="Invalid email or password",
+        status_code=401,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "test@example.com", "password": "WrongPass1!"},
+    )
+
+    assert response.status_code == 401
+    data = response.json()
+    assert data["error"]["code"] == "INVALID_CREDENTIALS"
+    mock_rate_limiter.record_failed_attempt.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_login_unverified_email(client, mock_cognito_service):
+    """9.3 Test login with unverified email -> 403 EMAIL_NOT_VERIFIED"""
+    mock_cognito_service.authenticate_user.side_effect = AuthenticationError(
+        code="EMAIL_NOT_VERIFIED",
+        message="Please verify your email before logging in",
+        status_code=403,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "unverified@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data["error"]["code"] == "EMAIL_NOT_VERIFIED"
+
+
+@pytest.mark.asyncio
+async def test_login_nonexistent_email(client, mock_cognito_service):
+    """9.4 Test login with non-existent email -> 401 INVALID_CREDENTIALS (no enumeration)"""
+    mock_cognito_service.authenticate_user.side_effect = AuthenticationError(
+        code="INVALID_CREDENTIALS",
+        message="Invalid email or password",
+        status_code=401,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "nonexistent@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 401
+    data = response.json()
+    # Same error as wrong password — prevents user enumeration
+    assert data["error"]["code"] == "INVALID_CREDENTIALS"
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limited(client, mock_rate_limiter):
+    """9.5 Test rate limiting -> 429 RATE_LIMITED after 10 failed attempts"""
+    mock_rate_limiter.check_rate_limit.side_effect = AuthenticationError(
+        code="RATE_LIMITED",
+        message="Too many login attempts. Please try again later.",
+        status_code=429,
+        details={"retryAfter": 600},
+    )
+
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "test@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 429
+    data = response.json()
+    assert data["error"]["code"] == "RATE_LIMITED"
+    assert data["error"]["details"]["retryAfter"] == 600
+    assert response.headers.get("retry-after") == "600"
+
+
+# ==================== Token Refresh Tests (Story 1.4) ====================
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_success(client, mock_cognito_service):
+    """9.6 Test token refresh -> 200 + new access token"""
+    response = await client.post(
+        "/api/v1/auth/refresh-token",
+        json={"refreshToken": "valid-refresh-token", "email": "test@example.com"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "accessToken" in data
+    assert "expiresIn" in data
+    mock_cognito_service.refresh_tokens.assert_called_once_with(
+        refresh_token="valid-refresh-token", email="test@example.com"
+    )
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_invalid(client, mock_cognito_service):
+    """9.7 Test token refresh with invalid token -> 401"""
+    mock_cognito_service.refresh_tokens.side_effect = AuthenticationError(
+        code="INVALID_CREDENTIALS",
+        message="Invalid or expired refresh token",
+        status_code=401,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/refresh-token",
+        json={"refreshToken": "invalid-refresh-token", "email": "test@example.com"},
+    )
+
+    assert response.status_code == 401
+    data = response.json()
+    assert data["error"]["code"] == "INVALID_CREDENTIALS"
+
+
+# ==================== Get Me Tests (Story 1.4) ====================
+
+
+@pytest.mark.asyncio
+async def test_get_me_success(client, mock_cognito_service):
+    """9.8 Test GET /me with valid token -> 200 + user profile"""
+    # First create a user via login
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "me@example.com", "password": "StrongPass1!"},
+    )
+
+    # Override auth for the /me endpoint
+    async def mock_payload():
+        return {"sub": "test-cognito-sub-123"}
+
+    app.dependency_overrides[get_current_user_payload] = mock_payload
+
+    try:
+        response = await client.get("/api/v1/auth/me")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "me@example.com"
+        assert "id" in data
+        assert "locale" in data
+        assert "isVerified" in data
+        assert "createdAt" in data
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+@pytest.mark.asyncio
+async def test_get_me_no_token(client):
+    """9.9 Test GET /me without token -> 401"""
+    response = await client.get("/api/v1/auth/me")
+
+    assert response.status_code in (401, 403)
+
+
+# ==================== Logout Tests (Story 1.4) ====================
+
+
+@pytest.mark.asyncio
+async def test_logout_success(client, mock_cognito_service):
+    """9.10 Test logout -> 200"""
+    # First create a user via login
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "logout@example.com", "password": "StrongPass1!"},
+    )
+
+    # Override auth for the /logout endpoint
+    async def mock_payload():
+        return {"sub": "test-cognito-sub-123"}
+
+    app.dependency_overrides[get_current_user_payload] = mock_payload
+
+    try:
+        response = await client.post("/api/v1/auth/logout")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["message"] == "Logged out successfully"
+        mock_cognito_service.global_sign_out.assert_called_once_with(
+            cognito_sub="test-cognito-sub-123"
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)

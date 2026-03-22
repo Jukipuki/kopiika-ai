@@ -1,17 +1,31 @@
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
+from jose import jwt as jose_jwt
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from pydantic.alias_generators import to_camel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
-from app.api.deps import get_cognito_service, get_db
+from app.api.deps import get_cognito_service, get_current_user, get_db, get_rate_limiter
 from app.models.user import User
 from app.services.cognito_service import CognitoService
+from app.services.rate_limiter import RateLimiter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
 
 
 class SignupRequest(BaseModel):
@@ -43,6 +57,141 @@ class ResendVerificationRequest(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     email: EmailStr
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+
+class UserInfo(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: str
+    email: str
+    locale: str
+
+
+class LoginResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    access_token: str
+    refresh_token: str
+    expires_in: int
+    user: UserInfo
+
+
+class RefreshTokenRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    refresh_token: str
+    email: EmailStr | None = None
+
+
+class RefreshTokenResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    access_token: str
+    expires_in: int
+
+
+class UserProfileResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: str
+    email: str
+    locale: str
+    is_verified: bool
+    created_at: str
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(
+    body: LoginRequest,
+    request: Request,
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+    cognito: Annotated[CognitoService, Depends(get_cognito_service)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+) -> LoginResponse:
+    ip = _get_client_ip(request)
+
+    await rate_limiter.check_rate_limit(ip)
+
+    try:
+        tokens = cognito.authenticate_user(email=body.email, password=body.password)
+    except Exception:
+        await rate_limiter.record_failed_attempt(ip)
+        logger.warning("Login failed", extra={"ip": ip, "email": body.email, "action": "login_failure"})
+        raise
+
+    claims = jose_jwt.get_unverified_claims(tokens["access_token"])
+    cognito_sub = claims["sub"]
+
+    statement = select(User).where(User.cognito_sub == cognito_sub)
+    result = await session.exec(statement)
+    user = result.first()
+
+    if not user:
+        user = User(
+            cognito_sub=cognito_sub,
+            email=body.email,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    await rate_limiter.clear_attempts(ip)
+
+    logger.info("Login successful", extra={"user_id": str(user.id), "ip": ip, "action": "login_success"})
+
+    return LoginResponse(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        expires_in=tokens["expires_in"],
+        user=UserInfo(
+            id=str(user.id),
+            email=user.email,
+            locale=user.locale,
+        ),
+    )
+
+
+@router.post("/refresh-token", response_model=RefreshTokenResponse)
+async def refresh_token(
+    body: RefreshTokenRequest,
+    cognito: Annotated[CognitoService, Depends(get_cognito_service)],
+) -> RefreshTokenResponse:
+    tokens = cognito.refresh_tokens(refresh_token=body.refresh_token, email=body.email)
+    return RefreshTokenResponse(
+        access_token=tokens["access_token"],
+        expires_in=tokens["expires_in"],
+    )
+
+
+@router.get("/me", response_model=UserProfileResponse)
+async def get_me(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UserProfileResponse:
+    return UserProfileResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        locale=current_user.locale,
+        is_verified=current_user.is_verified,
+        created_at=current_user.created_at.isoformat(),
+    )
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout(
+    current_user: Annotated[User, Depends(get_current_user)],
+    cognito: Annotated[CognitoService, Depends(get_cognito_service)],
+) -> MessageResponse:
+    cognito.global_sign_out(cognito_sub=current_user.cognito_sub)
+    logger.info("Logout successful", extra={"user_id": str(current_user.id), "action": "logout"})
+    return MessageResponse(message="Logged out successfully")
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)

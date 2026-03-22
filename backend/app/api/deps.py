@@ -6,9 +6,11 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.core.database import get_session
+from app.core.redis import get_redis
 from app.core.security import get_current_user_payload
 from app.models.user import User
 from app.services.cognito_service import CognitoService
+from app.services.rate_limiter import RateLimiter
 
 _cognito_service: CognitoService | None = None
 
@@ -23,6 +25,11 @@ def get_cognito_service() -> CognitoService:
     if _cognito_service is None:
         _cognito_service = CognitoService()
     return _cognito_service
+
+
+async def get_rate_limiter() -> RateLimiter:
+    redis = await get_redis()
+    return RateLimiter(redis=redis)
 
 
 async def get_current_user(

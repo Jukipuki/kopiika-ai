@@ -27,9 +27,13 @@ class ValidationError(Exception):
 
 
 async def authentication_error_handler(_request: Request, exc: AuthenticationError) -> JSONResponse:
+    headers: dict[str, str] = {}
+    if exc.code == "RATE_LIMITED" and "retryAfter" in exc.details:
+        headers["Retry-After"] = str(exc.details["retryAfter"])
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
+        headers=headers or None,
     )
 
 

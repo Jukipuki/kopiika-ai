@@ -61,7 +61,7 @@ jobs:
             alembic upgrade head
 
       - name: Deploy to App Runner
-        uses: awslabs/amazon-app-runner-deploy@v2
+        uses: awslabs/amazon-app-runner-deploy@v1
         with:
           service: kopiika-${{ vars.ENVIRONMENT }}-api
           image: ${{ steps.build-api.outputs.image }}

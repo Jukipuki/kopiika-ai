@@ -1,18 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
+  const locale = pathname.split("/")[1] || "en";
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/en/signup");
+      const callbackUrl = encodeURIComponent(pathname);
+      router.replace(`/${locale}/login?callbackUrl=${callbackUrl}`);
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, pathname, locale]);
 
   if (isLoading) {
     return (

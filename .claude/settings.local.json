@@ -103,7 +103,16 @@
       "Bash(node -e \"console.log\\(JSON.parse\\(require\\(''fs''\\).readFileSync\\(''node_modules/zod/package.json'',''utf8''\\)\\).version\\)\")",
       "Bash(npx vitest:*)",
       "Bash(npx eslint:*)",
-      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale] -type f)"
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale] -type f)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python3 -m pytest tests/ -v)",
+      "Bash(.venv/bin/python -m pytest tests/ -v)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(auth\\\\\\)/login/)",
+      "Bash(.venv/bin/python -c \":*)",
+      "Bash(.venv/bin/python -m ruff check app/ tests/)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(auth\\\\\\)/login -type f)",
+      "Bash(.venv/bin/pytest tests/ -v)",
+      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -m pytest tests/ -v)"
     ]
   }
 }
