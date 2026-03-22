@@ -66,6 +66,7 @@
   },
   "dashboard": {
     "title": "Копійка AI",
+    "settings": "Налаштування",
     "logOut": "Вийти",
     "logOutSuccess": "Ви успішно вийшли з облікового запису"
   },
@@ -82,10 +83,22 @@
     "serverError": "Не вдалося з'єднатися з сервером. Спробуйте ще раз.",
     "loginFailed": "Не вдалося увійти. Спробуйте ще раз.",
     "signupFailed": "Сталася непередбачена помилка",
-    "verificationFailed": "Не вдалося підтвердити. Спробуйте ще раз."
+    "verificationFailed": "Не вдалося підтвердити. Спробуйте ще раз.",
+    "retry": "Повторити"
   },
   "settings": {
+    "title": "Налаштування акаунту",
+    "accountInfo": "Інформація про акаунт",
+    "email": "Електронна пошта",
+    "emailVerified": "Підтверджено",
+    "emailNotVerified": "Не підтверджено",
+    "memberSince": "Учасник з",
+    "languagePreference": "Мова",
+    "languageDescription": "Оберіть бажану мову інтерфейсу",
+    "ukrainian": "Українська",
+    "english": "English",
     "language": "Мова",
-    "preferenceSaved": "Налаштування збережено"
+    "preferenceSaved": "Налаштування збережено",
+    "saveFailed": "Не вдалося зберегти налаштування"
   }
 }

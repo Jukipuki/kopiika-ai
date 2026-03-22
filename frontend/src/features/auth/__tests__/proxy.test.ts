@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Use vi.hoisted so these are available inside vi.mock factories
 const { holder, tracking } = vi.hoisted(() => ({
-  holder: { handler: null as Function | null },
+  holder: { handler: null as ((req: unknown) => unknown) | null },
   tracking: { redirectCalls: [] as URL[], nextCalls: 0, intlCalls: 0 },
 }));
 
 // Mock next-auth config — capture the handler passed to auth()
 vi.mock("@/lib/auth/next-auth-config", () => ({
-  auth: (handler: Function) => {
+  auth: (handler: (req: unknown) => unknown) => {
     holder.handler = handler;
     return handler;
   },
@@ -46,7 +46,7 @@ vi.mock("@/i18n/routing", () => ({
 // Force proxy.ts to load (triggers auth() mock which captures handler)
 import "@/proxy";
 
-function createMockRequest(pathname: string, auth: any = null) {
+function createMockRequest(pathname: string, auth: Record<string, unknown> | null = null) {
   return {
     nextUrl: { pathname },
     url: "http://localhost:3000" + pathname,

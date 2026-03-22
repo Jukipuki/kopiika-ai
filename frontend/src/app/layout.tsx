@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { Toaster } from "sonner";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -26,7 +27,7 @@ export default async function RootLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale} className={`${dmSans.variable} h-full antialiased`}>
+    <html lang={locale} className={cn("dark h-full antialiased", dmSans.variable)}>
       <body className="min-h-full flex flex-col font-sans">
         <SessionProvider>
           <NextIntlClientProvider locale={locale} messages={messages}>

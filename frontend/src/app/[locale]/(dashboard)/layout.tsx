@@ -7,6 +7,8 @@ import AuthGuard from "@/lib/auth/auth-guard";
 import { useIdleTimeout } from "@/features/auth/hooks/use-idle-timeout";
 import SessionExpiredDialog from "@/features/auth/components/SessionExpiredDialog";
 import LocaleSwitcher from "@/components/layout/LocaleSwitcher";
+import { Link } from "@/i18n/navigation";
+import { Settings } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -55,6 +57,13 @@ export default function DashboardLayout({
               {t("title")}
             </h1>
             <div className="flex items-center gap-2">
+              <Link
+                href="/settings"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/20 px-2.5 py-1.5 text-sm text-foreground/70 hover:bg-foreground/5 hover:text-foreground transition-colors"
+                aria-label={t("settings")}
+              >
+                <Settings className="h-4 w-4" />
+              </Link>
               <LocaleSwitcher accessToken={session?.accessToken} />
               <button
                 onClick={handleLogout}

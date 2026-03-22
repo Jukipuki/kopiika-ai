@@ -127,7 +127,19 @@
       "Bash(grep -r DM_Sans node_modules/ --include=*.d.ts -l)",
       "Bash(python -m pytest tests/test_auth.py -v)",
       "Bash(python3 -m pytest tests/test_auth.py -v)",
-      "Bash(.venv/bin/python -m pytest -q)"
+      "Bash(.venv/bin/python -m pytest -q)",
+      "Bash(git -C /Users/ohumennyi/Personal/kopiika-ai log --oneline -5)",
+      "Bash(grep -E \"\\\\.\\(ts|js|json|css\\)$\")",
+      "Bash(npx shadcn@latest init --defaults --yes)",
+      "Bash(npx shadcn@latest add card separator select skeleton --yes)",
+      "Bash(node -e \"try { require.resolve\\(''lucide-react''\\); console.log\\(''lucide-react: installed''\\); } catch\\(e\\) { console.log\\(''lucide-react: NOT installed''\\); }\")",
+      "Bash(npx next:*)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(python -m pytest)",
+      "Bash(python3 -m pytest)",
+      "Bash(.venv/bin/python -m pytest backend/)",
+      "Bash(ls -d /Users/ohumennyi/Personal/kopiika-ai/**/.venv)",
+      "Bash(.venv/bin/python -m pytest)"
     ]
   }
 }

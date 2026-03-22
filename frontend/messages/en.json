@@ -66,6 +66,7 @@
   },
   "dashboard": {
     "title": "Kopiika AI",
+    "settings": "Settings",
     "logOut": "Log out",
     "logOutSuccess": "You've been logged out successfully"
   },
@@ -82,10 +83,22 @@
     "serverError": "Unable to connect to the server. Please try again.",
     "loginFailed": "Login failed. Please try again.",
     "signupFailed": "An unexpected error occurred",
-    "verificationFailed": "Verification failed. Please try again."
+    "verificationFailed": "Verification failed. Please try again.",
+    "retry": "Retry"
   },
   "settings": {
+    "title": "Account Settings",
+    "accountInfo": "Account Information",
+    "email": "Email",
+    "emailVerified": "Verified",
+    "emailNotVerified": "Not verified",
+    "memberSince": "Member since",
+    "languagePreference": "Language",
+    "languageDescription": "Choose your preferred language for the interface",
+    "ukrainian": "Українська",
+    "english": "English",
     "language": "Language",
-    "preferenceSaved": "Preference saved"
+    "preferenceSaved": "Preference saved",
+    "saveFailed": "Failed to save preference"
   }
 }

@@ -38,8 +38,6 @@ export default auth((req) => {
   return handleI18nRouting(req);
 });
 
-export const runtime = "nodejs";
-
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon\\.ico|health).*)",

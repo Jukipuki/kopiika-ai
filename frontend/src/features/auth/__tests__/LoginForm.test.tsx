@@ -11,12 +11,14 @@ vi.mock("next-intl", () => ({
 }));
 
 // Mock @/i18n/navigation (Link used for forgot-password)
-vi.mock("@/i18n/navigation", () => ({
-  Link: ({ href, children, ...props }: Record<string, unknown>) => {
-    const { createElement } = require("react");
-    return createElement("a", { href, ...props }, children);
-  },
-}));
+vi.mock("@/i18n/navigation", async () => {
+  const React = await import("react");
+  return {
+    Link: ({ href, children, ...props }: Record<string, unknown>) => {
+      return React.createElement("a", { href, ...props }, children);
+    },
+  };
+});
 
 // Mock next-auth/react
 const mockSignIn = vi.fn();
