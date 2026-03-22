@@ -1,11 +1,12 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { usePathname } from "next/navigation";
+import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import AuthGuard from "@/lib/auth/auth-guard";
 import { useIdleTimeout } from "@/features/auth/hooks/use-idle-timeout";
 import SessionExpiredDialog from "@/features/auth/components/SessionExpiredDialog";
+import LocaleSwitcher from "@/components/layout/LocaleSwitcher";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -15,8 +16,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { data: session } = useSession();
-  const pathname = usePathname();
-  const locale = pathname.split("/")[1] || "en";
+  const locale = useLocale();
+  const t = useTranslations("dashboard");
 
   const handleLogout = async () => {
     try {
@@ -33,7 +34,7 @@ export default function DashboardLayout({
       // Proceed with client-side logout even if backend call fails
     }
 
-    toast.success("You've been logged out successfully", { duration: 4000 });
+    toast.success(t("logOutSuccess"), { duration: 4000 });
     await signOut({ callbackUrl: `/${locale}/login` });
   };
 
@@ -51,14 +52,17 @@ export default function DashboardLayout({
         <header className="border-b border-foreground/10 bg-background">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
             <h1 className="text-lg font-semibold text-foreground">
-              Kopiika AI
+              {t("title")}
             </h1>
-            <button
-              onClick={handleLogout}
-              className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm text-foreground/70 hover:bg-foreground/5 hover:text-foreground transition-colors"
-            >
-              Log out
-            </button>
+            <div className="flex items-center gap-2">
+              <LocaleSwitcher accessToken={session?.accessToken} />
+              <button
+                onClick={handleLogout}
+                className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm text-foreground/70 hover:bg-foreground/5 hover:text-foreground transition-colors"
+              >
+                {t("logOut")}
+              </button>
+            </div>
           </div>
         </header>
         <main>{children}</main>

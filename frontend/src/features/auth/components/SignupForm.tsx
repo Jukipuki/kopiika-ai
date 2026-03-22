@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  signupSchema,
-  type SignupFormData,
-  passwordRequirements,
-} from "../schemas/signup-schema";
+import { useTranslations } from "next-intl";
+import { z } from "zod";
+import { type SignupFormData } from "../schemas/signup-schema";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -18,6 +16,47 @@ interface SignupFormProps {
 export default function SignupForm({ onSuccess }: SignupFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const t = useTranslations("auth.signup");
+  const tv = useTranslations("auth.validation");
+  const tp = useTranslations("auth.passwordRequirements");
+  const te = useTranslations("errors");
+
+  const schema = useMemo(
+    () =>
+      z
+        .object({
+          email: z
+            .string()
+            .min(1, tv("emailRequired"))
+            .email(tv("emailInvalid")),
+          password: z
+            .string()
+            .min(8, tv("passwordMin"))
+            .regex(/[A-Z]/, tv("passwordUppercase"))
+            .regex(/[a-z]/, tv("passwordLowercase"))
+            .regex(/[0-9]/, tv("passwordNumber"))
+            .regex(/[^A-Za-z0-9]/, tv("passwordSpecial")),
+          confirmPassword: z
+            .string()
+            .min(1, tv("confirmPasswordRequired")),
+        })
+        .refine((data) => data.password === data.confirmPassword, {
+          message: tv("passwordsMismatch"),
+          path: ["confirmPassword"],
+        }),
+    [tv]
+  );
+
+  const requirements = useMemo(
+    () => [
+      { label: tp("minLength"), regex: /.{8,}/ },
+      { label: tp("uppercase"), regex: /[A-Z]/ },
+      { label: tp("lowercase"), regex: /[a-z]/ },
+      { label: tp("number"), regex: /[0-9]/ },
+      { label: tp("special"), regex: /[^A-Za-z0-9]/ },
+    ],
+    [tp]
+  );
 
   const {
     register,
@@ -25,7 +64,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
     watch,
     formState: { errors },
   } = useForm<SignupFormData>({
-    resolver: zodResolver(signupSchema),
+    resolver: zodResolver(schema),
     mode: "onBlur",
   });
 
@@ -45,14 +84,14 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
       if (!response.ok) {
         const errorData = await response.json();
         const message =
-          errorData?.error?.message || "An unexpected error occurred";
+          errorData?.error?.message || te("signupFailed");
         setServerError(message);
         return;
       }
 
       onSuccess(data.email);
     } catch {
-      setServerError("Unable to connect to the server. Please try again.");
+      setServerError(te("serverError"));
     } finally {
       setIsSubmitting(false);
     }
@@ -66,8 +105,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
           htmlFor="email"
           className="block text-sm font-medium text-foreground mb-1.5"
         >
-          {/* i18n: auth.signup.email */}
-          Email
+          {t("email")}
         </label>
         <input
           id="email"
@@ -78,7 +116,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
           className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-[#6C63FF] ${
             errors.email ? "border-[#FF6B6B]" : "border-foreground/20"
           }`}
-          placeholder="you@example.com"
+          placeholder={t("emailPlaceholder")}
           {...register("email")}
         />
         {errors.email && (
@@ -94,8 +132,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
           htmlFor="password"
           className="block text-sm font-medium text-foreground mb-1.5"
         >
-          {/* i18n: auth.signup.password */}
-          Password
+          {t("password")}
         </label>
         <input
           id="password"
@@ -106,12 +143,12 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
           className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-[#6C63FF] ${
             errors.password ? "border-[#FF6B6B]" : "border-foreground/20"
           }`}
-          placeholder="Create a password"
+          placeholder={t("passwordPlaceholder")}
           {...register("password")}
         />
         {/* Password requirements checklist */}
         <ul id="password-requirements" className="mt-2 space-y-1">
-          {passwordRequirements.map((req) => {
+          {requirements.map((req) => {
             const met = req.regex.test(passwordValue);
             return (
               <li
@@ -134,8 +171,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
           htmlFor="confirmPassword"
           className="block text-sm font-medium text-foreground mb-1.5"
         >
-          {/* i18n: auth.signup.confirmPassword */}
-          Confirm Password
+          {t("confirmPassword")}
         </label>
         <input
           id="confirmPassword"
@@ -148,7 +184,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
           className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-[#6C63FF] ${
             errors.confirmPassword ? "border-[#FF6B6B]" : "border-foreground/20"
           }`}
-          placeholder="Confirm your password"
+          placeholder={t("confirmPasswordPlaceholder")}
           {...register("confirmPassword")}
         />
         {errors.confirmPassword && (
@@ -174,8 +210,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
         disabled={isSubmitting}
         className="w-full rounded-lg bg-[#6C63FF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#5B54E6] focus:outline-none focus:ring-2 focus:ring-[#6C63FF] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {/* i18n: auth.signup.submit */}
-        {isSubmitting ? "Creating account..." : "Create Account"}
+        {isSubmitting ? t("submitting") : t("submit")}
       </button>
     </form>
   );

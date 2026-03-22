@@ -46,8 +46,8 @@ development_status:
   1-2-aws-infrastructure-provisioning: done
   1-3-aws-cognito-integration-user-registration: done
   1-4-user-login-logout-session-management: done
-  1-5-protected-routes-tenant-isolation: backlog
-  1-6-language-selection-ukrainian-english: backlog
+  1-5-protected-routes-tenant-isolation: done
+  1-6-language-selection-ukrainian-english: done
   1-7-account-settings-page: backlog
   epic-1-retrospective: optional
 

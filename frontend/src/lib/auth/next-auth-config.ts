@@ -102,6 +102,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string;
+      session.locale = (token.locale as string) || "uk";
       if (token.error === "TokenRefreshFailed") {
         session.error = "TokenRefreshFailed";
       }
@@ -109,6 +110,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   pages: {
-    signIn: "/en/login",
+    // NextAuth requires a static string — cannot be dynamic per-locale.
+    // Defaults to Ukrainian (primary market). The proxy.ts handles
+    // locale-aware redirects before this fallback is reached.
+    signIn: "/uk/login",
   },
 });

@@ -1,7 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createUseTranslations } from "@/test-utils/intl-mock";
 import SignupForm from "../components/SignupForm";
+
+// Mock next-intl
+vi.mock("next-intl", () => ({
+  useTranslations: createUseTranslations(),
+  useLocale: () => "en",
+}));
 
 const mockOnSuccess = vi.fn();
 

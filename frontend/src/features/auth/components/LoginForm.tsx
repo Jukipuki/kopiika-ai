@@ -1,18 +1,34 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginSchema, type LoginFormData } from "../schemas/login-schema";
+import { useTranslations, useLocale } from "next-intl";
+import { Link } from "@/i18n/navigation";
+import { z } from "zod";
+import { type LoginFormData } from "../schemas/login-schema";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/en/dashboard";
+  const locale = useLocale();
+  const callbackUrl = searchParams.get("callbackUrl") || `/${locale}/dashboard`;
+  const t = useTranslations("auth.login");
+  const tv = useTranslations("auth.validation");
+  const te = useTranslations("errors");
+
+  const schema = useMemo(
+    () =>
+      z.object({
+        email: z.string().min(1, tv("emailRequired")).email(tv("emailInvalid")),
+        password: z.string().min(1, tv("passwordRequired")),
+      }),
+    [tv]
+  );
 
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -23,7 +39,7 @@ export default function LoginForm() {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(schema),
     mode: "onBlur",
   });
 
@@ -60,16 +76,12 @@ export default function LoginForm() {
               parseInt(response.headers.get("Retry-After") || "900", 10);
             const minutes = Math.ceil(retryAfter / 60);
             setRateLimitSeconds(retryAfter);
-            setServerError(
-              `Too many login attempts. Please try again in ${minutes} minute${minutes !== 1 ? "s" : ""}.`
-            );
+            setServerError(te("rateLimited", { minutes }));
           } else if (errorCode === "EMAIL_NOT_VERIFIED") {
-            setServerError(
-              "Please verify your email before logging in. Check your inbox for the verification link."
-            );
+            setServerError(te("emailNotVerified"));
           } else {
             setServerError(
-              errorData?.error?.message || "Invalid email or password."
+              errorData?.error?.message || te("invalidCredentials")
             );
           }
           return;
@@ -88,18 +100,18 @@ export default function LoginForm() {
         });
 
         if (result?.error) {
-          setServerError("Login failed. Please try again.");
+          setServerError(te("loginFailed"));
           return;
         }
 
         router.push(callbackUrl);
       } catch {
-        setServerError("Unable to connect to the server. Please try again.");
+        setServerError(te("serverError"));
       } finally {
         setIsSubmitting(false);
       }
     },
-    [callbackUrl, router]
+    [callbackUrl, router, te]
   );
 
   const isRateLimited = rateLimitSeconds > 0;
@@ -112,7 +124,7 @@ export default function LoginForm() {
           htmlFor="email"
           className="block text-sm font-medium text-foreground mb-1.5"
         >
-          Email
+          {t("email")}
         </label>
         <input
           id="email"
@@ -123,7 +135,7 @@ export default function LoginForm() {
           className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-[#6C63FF] ${
             errors.email ? "border-[#FF6B6B]" : "border-foreground/20"
           }`}
-          placeholder="you@example.com"
+          placeholder={t("emailPlaceholder")}
           {...register("email")}
         />
         {errors.email && (
@@ -139,7 +151,7 @@ export default function LoginForm() {
           htmlFor="password"
           className="block text-sm font-medium text-foreground mb-1.5"
         >
-          Password
+          {t("password")}
         </label>
         <input
           id="password"
@@ -150,7 +162,7 @@ export default function LoginForm() {
           className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-[#6C63FF] ${
             errors.password ? "border-[#FF6B6B]" : "border-foreground/20"
           }`}
-          placeholder="Enter your password"
+          placeholder={t("passwordPlaceholder")}
           {...register("password")}
         />
         {errors.password && (
@@ -162,12 +174,12 @@ export default function LoginForm() {
 
       {/* Forgot password link */}
       <div className="text-right">
-        <a
+        <Link
           href="/forgot-password"
           className="text-sm text-[#6C63FF] hover:underline"
         >
-          Forgot password?
-        </a>
+          {t("forgotPassword")}
+        </Link>
       </div>
 
       {/* Server Error */}
@@ -187,10 +199,13 @@ export default function LoginForm() {
         className="w-full rounded-lg bg-[#6C63FF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#5B54E6] focus:outline-none focus:ring-2 focus:ring-[#6C63FF] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isSubmitting
-          ? "Signing in..."
+          ? t("submitting")
           : isRateLimited
-            ? `Try again in ${Math.ceil(rateLimitSeconds / 60)}m ${rateLimitSeconds % 60}s`
-            : "Sign In"}
+            ? te("rateLimitTimer", {
+                minutes: Math.ceil(rateLimitSeconds / 60),
+                seconds: rateLimitSeconds % 60,
+              })
+            : t("submit")}
       </button>
     </form>
   );

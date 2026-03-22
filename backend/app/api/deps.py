@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
@@ -52,3 +53,30 @@ async def get_current_user(
             detail={"error": {"code": "USER_NOT_FOUND", "message": "User not found"}},
         )
     return user
+
+
+async def get_current_user_id(
+    payload: Annotated[dict[str, Any], Depends(get_current_user_payload)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+) -> uuid.UUID:
+    """Lightweight alternative to get_current_user that returns just the user UUID.
+
+    Extracts cognito_sub from JWT, looks up user_id. Use for endpoints
+    that only need the user_id for query scoping.
+    """
+    cognito_sub = payload.get("sub")
+    if not cognito_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "INVALID_TOKEN", "message": "Token missing sub claim"}},
+        )
+
+    statement = select(User.id).where(User.cognito_sub == cognito_sub)
+    result = await session.exec(statement)
+    user_id = result.first()
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "USER_NOT_FOUND", "message": "User not found"}},
+        )
+    return user_id

@@ -1,0 +1,91 @@
+{
+  "auth": {
+    "login": {
+      "title": "Sign in to your account",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "forgotPassword": "Forgot password?",
+      "submit": "Sign In",
+      "submitting": "Signing in...",
+      "noAccount": "Don't have an account?",
+      "signUp": "Sign up",
+      "loading": "Loading..."
+    },
+    "signup": {
+      "title": "Create your account",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "password": "Password",
+      "passwordPlaceholder": "Create a password",
+      "confirmPassword": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm your password",
+      "submit": "Create Account",
+      "submitting": "Creating account...",
+      "hasAccount": "Already have an account?",
+      "logIn": "Log in"
+    },
+    "verify": {
+      "title": "Verify your email",
+      "instructions": "We sent a verification code to",
+      "code": "Verification Code",
+      "codePlaceholder": "000000",
+      "submit": "Verify Email",
+      "submitting": "Verifying...",
+      "resend": "Resend verification code",
+      "resendCooldown": "Resend code in {seconds}s",
+      "successTitle": "Email Verified",
+      "successMessage": "Your account has been verified. Redirecting to login..."
+    },
+    "validation": {
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address",
+      "passwordRequired": "Password is required",
+      "passwordMin": "Password must be at least 8 characters",
+      "passwordUppercase": "Password must contain at least one uppercase letter",
+      "passwordLowercase": "Password must contain at least one lowercase letter",
+      "passwordNumber": "Password must contain at least one number",
+      "passwordSpecial": "Password must contain at least one special character",
+      "confirmPasswordRequired": "Please confirm your password",
+      "passwordsMismatch": "Passwords do not match",
+      "codeInvalid": "Please enter a 6-digit verification code"
+    },
+    "passwordRequirements": {
+      "minLength": "At least 8 characters",
+      "uppercase": "One uppercase letter",
+      "lowercase": "One lowercase letter",
+      "number": "One number",
+      "special": "One special character"
+    },
+    "sessionExpired": {
+      "title": "Session Expired",
+      "description": "Your session has expired due to inactivity. Please log in again.",
+      "logIn": "Log in"
+    }
+  },
+  "dashboard": {
+    "title": "Kopiika AI",
+    "logOut": "Log out",
+    "logOutSuccess": "You've been logged out successfully"
+  },
+  "common": {
+    "loading": "Loading...",
+    "appName": "Kopiika AI",
+    "appDescription": "AI-powered personal finance education"
+  },
+  "errors": {
+    "rateLimited": "Too many login attempts. Please try again in {minutes, plural, one {# minute} other {# minutes}}.",
+    "rateLimitTimer": "Try again in {minutes}m {seconds}s",
+    "emailNotVerified": "Please verify your email before logging in. Check your inbox for the verification link.",
+    "invalidCredentials": "Invalid email or password.",
+    "serverError": "Unable to connect to the server. Please try again.",
+    "loginFailed": "Login failed. Please try again.",
+    "signupFailed": "An unexpected error occurred",
+    "verificationFailed": "Verification failed. Please try again."
+  },
+  "settings": {
+    "language": "Language",
+    "preferenceSaved": "Preference saved"
+  }
+}

@@ -112,7 +112,22 @@
       "Bash(.venv/bin/python -m ruff check app/ tests/)",
       "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(auth\\\\\\)/login -type f)",
       "Bash(.venv/bin/pytest tests/ -v)",
-      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -m pytest tests/ -v)"
+      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -m pytest tests/ -v)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/node_modules/next/dist/docs -type f -name *middleware* -o -name *proxy*)",
+      "Bash(chmod +x /Users/ohumennyi/Personal/kopiika-ai/backend/entrypoint.sh)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(auth\\\\\\)/)",
+      "Bash(npx tsc:*)",
+      "Bash(python -m pytest tests/ -v --timeout=30)",
+      "Bash(python3 -m pytest tests/ -v --timeout=30)",
+      "Bash(npm test:*)",
+      "Bash(ls -la /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale] -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\))",
+      "Bash(grep -r DM_Sans node_modules/ --include=*.d.ts -l)",
+      "Bash(python -m pytest tests/test_auth.py -v)",
+      "Bash(python3 -m pytest tests/test_auth.py -v)",
+      "Bash(.venv/bin/python -m pytest -q)"
     ]
   }
 }

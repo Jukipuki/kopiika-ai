@@ -1,7 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createUseTranslations } from "@/test-utils/intl-mock";
 import LoginForm from "../components/LoginForm";
+
+// Mock next-intl
+vi.mock("next-intl", () => ({
+  useTranslations: createUseTranslations(),
+  useLocale: () => "en",
+}));
+
+// Mock @/i18n/navigation (Link used for forgot-password)
+vi.mock("@/i18n/navigation", () => ({
+  Link: ({ href, children, ...props }: Record<string, unknown>) => {
+    const { createElement } = require("react");
+    return createElement("a", { href, ...props }, children);
+  },
+}));
 
 // Mock next-auth/react
 const mockSignIn = vi.fn();

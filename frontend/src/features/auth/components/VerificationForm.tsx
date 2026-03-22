@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
+import { useTranslations } from "next-intl";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const RESEND_COOLDOWN = 60; // seconds
@@ -12,6 +13,9 @@ interface VerificationFormProps {
 
 export default function VerificationForm({ email }: VerificationFormProps) {
   const router = useRouter();
+  const t = useTranslations("auth.verify");
+  const tv = useTranslations("auth.validation");
+  const te = useTranslations("errors");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -21,7 +25,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
   useEffect(() => {
     if (isVerified) {
       const timer = setTimeout(() => {
-        router.push("/en/login");
+        router.push("/login");
       }, 2000);
       return () => clearTimeout(timer);
     }
@@ -39,7 +43,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (code.length !== 6) {
-        setError("Please enter a 6-digit verification code");
+        setError(tv("codeInvalid"));
         return;
       }
 
@@ -56,19 +60,19 @@ export default function VerificationForm({ email }: VerificationFormProps) {
         if (!response.ok) {
           const errorData = await response.json();
           setError(
-            errorData?.error?.message || "Verification failed. Please try again."
+            errorData?.error?.message || te("verificationFailed")
           );
           return;
         }
 
         setIsVerified(true);
       } catch {
-        setError("Unable to connect to the server. Please try again.");
+        setError(te("serverError"));
       } finally {
         setIsSubmitting(false);
       }
     },
-    [code, email]
+    [code, email, tv, te]
   );
 
   const handleResend = async () => {
@@ -97,12 +101,10 @@ export default function VerificationForm({ email }: VerificationFormProps) {
       <div className="text-center space-y-4">
         <div className="text-4xl">&#x2705;</div>
         <h2 className="text-xl font-semibold text-foreground">
-          {/* i18n: auth.verify.success.title */}
-          Email Verified
+          {t("successTitle")}
         </h2>
         <p className="text-sm text-foreground/60">
-          {/* i18n: auth.verify.success.message */}
-          Your account has been verified. Redirecting to login...
+          {t("successMessage")}
         </p>
       </div>
     );
@@ -111,8 +113,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
   return (
     <form onSubmit={handleVerify} className="space-y-5">
       <p className="text-sm text-foreground/60 text-center">
-        {/* i18n: auth.verify.instructions */}
-        We sent a verification code to{" "}
+        {t("instructions")}{" "}
         <span className="font-medium text-foreground">{email}</span>
       </p>
 
@@ -121,8 +122,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
           htmlFor="code"
           className="block text-sm font-medium text-foreground mb-1.5"
         >
-          {/* i18n: auth.verify.code */}
-          Verification Code
+          {t("code")}
         </label>
         <input
           id="code"
@@ -141,7 +141,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
           className={`w-full rounded-lg border px-3 py-2.5 text-center text-lg tracking-[0.5em] font-mono bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-[#6C63FF] ${
             error ? "border-[#FF6B6B]" : "border-foreground/20"
           }`}
-          placeholder="000000"
+          placeholder={t("codePlaceholder")}
         />
         {error && (
           <p id="code-error" className="mt-1 text-sm text-[#FF6B6B]">
@@ -155,8 +155,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
         disabled={isSubmitting || code.length !== 6}
         className="w-full rounded-lg bg-[#6C63FF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#5B54E6] focus:outline-none focus:ring-2 focus:ring-[#6C63FF] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {/* i18n: auth.verify.submit */}
-        {isSubmitting ? "Verifying..." : "Verify Email"}
+        {isSubmitting ? t("submitting") : t("submit")}
       </button>
 
       <div className="text-center">
@@ -167,8 +166,8 @@ export default function VerificationForm({ email }: VerificationFormProps) {
           className="text-sm text-[#6C63FF] hover:underline disabled:text-foreground/40 disabled:no-underline disabled:cursor-not-allowed"
         >
           {cooldown > 0
-            ? /* i18n: auth.verify.resendCooldown */ `Resend code in ${cooldown}s`
-            : /* i18n: auth.verify.resend */ "Resend verification code"}
+            ? t("resendCooldown", { seconds: cooldown })
+            : t("resend")}
         </button>
       </div>
     </form>

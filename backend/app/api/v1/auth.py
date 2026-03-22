@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
 from jose import jwt as jose_jwt
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pydantic.alias_generators import to_camel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
@@ -107,6 +107,20 @@ class UserProfileResponse(BaseModel):
     created_at: str
 
 
+class UpdateProfileRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    locale: str
+
+    @field_validator("locale")
+    @classmethod
+    def validate_locale(cls, v: str) -> str:
+        if v not in ("uk", "en"):
+            msg = "Locale must be 'uk' or 'en'"
+            raise ValueError(msg)
+        return v
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
     body: LoginRequest,
@@ -175,6 +189,32 @@ async def refresh_token(
 async def get_me(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserProfileResponse:
+    return UserProfileResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        locale=current_user.locale,
+        is_verified=current_user.is_verified,
+        created_at=current_user.created_at.isoformat(),
+    )
+
+
+@router.patch("/me", response_model=UserProfileResponse)
+async def update_me(
+    body: UpdateProfileRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+) -> UserProfileResponse:
+    current_user.locale = body.locale
+    current_user.updated_at = datetime.now(UTC)
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
+
+    logger.info(
+        "Profile updated",
+        extra={"user_id": str(current_user.id), "locale": body.locale, "action": "profile_update"},
+    )
+
     return UserProfileResponse(
         id=str(current_user.id),
         email=current_user.email,

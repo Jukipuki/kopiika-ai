@@ -329,3 +329,136 @@ async def test_logout_success(client, mock_cognito_service):
         )
     finally:
         app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+# ==================== Update Profile (PATCH /me) Tests (Story 1.6) ====================
+
+
+@pytest.mark.asyncio
+async def test_patch_me_locale_uk(client, mock_cognito_service):
+    """7.1 Test PATCH /me with valid locale 'uk' -> 200, user.locale updated"""
+    # Create user via login
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "locale-uk@example.com", "password": "StrongPass1!"},
+    )
+
+    async def mock_payload():
+        return {"sub": "test-cognito-sub-123"}
+
+    app.dependency_overrides[get_current_user_payload] = mock_payload
+
+    try:
+        response = await client.patch(
+            "/api/v1/auth/me",
+            json={"locale": "uk"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["locale"] == "uk"
+        assert "email" in data
+        assert "id" in data
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+@pytest.mark.asyncio
+async def test_patch_me_locale_en(client, mock_cognito_service):
+    """7.2 Test PATCH /me with valid locale 'en' -> 200, user.locale updated"""
+    # Create user via login
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "locale-en@example.com", "password": "StrongPass1!"},
+    )
+
+    async def mock_payload():
+        return {"sub": "test-cognito-sub-123"}
+
+    app.dependency_overrides[get_current_user_payload] = mock_payload
+
+    try:
+        response = await client.patch(
+            "/api/v1/auth/me",
+            json={"locale": "en"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["locale"] == "en"
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+@pytest.mark.asyncio
+async def test_patch_me_invalid_locale(client, mock_cognito_service):
+    """7.3 Test PATCH /me with invalid locale 'fr' -> 422"""
+    # Create user via login
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "locale-bad@example.com", "password": "StrongPass1!"},
+    )
+
+    async def mock_payload():
+        return {"sub": "test-cognito-sub-123"}
+
+    app.dependency_overrides[get_current_user_payload] = mock_payload
+
+    try:
+        response = await client.patch(
+            "/api/v1/auth/me",
+            json={"locale": "fr"},
+        )
+
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+@pytest.mark.asyncio
+async def test_patch_me_no_token(client):
+    """7.4 Test PATCH /me without authentication -> 401"""
+    response = await client.patch(
+        "/api/v1/auth/me",
+        json={"locale": "uk"},
+    )
+
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_get_me_returns_locale(client, mock_cognito_service):
+    """7.5 Test GET /me returns locale field in response"""
+    # Create user via login
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "locale-get@example.com", "password": "StrongPass1!"},
+    )
+
+    async def mock_payload():
+        return {"sub": "test-cognito-sub-123"}
+
+    app.dependency_overrides[get_current_user_payload] = mock_payload
+
+    try:
+        response = await client.get("/api/v1/auth/me")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "locale" in data
+        assert data["locale"] in ("uk", "en")
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+@pytest.mark.asyncio
+async def test_default_locale_is_uk(client, mock_cognito_service):
+    """7.6 Test default locale is 'uk' for new users"""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "default-locale@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user"]["locale"] == "uk"

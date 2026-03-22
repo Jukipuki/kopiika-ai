@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { Toaster } from "sonner";
 import "./globals.css";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
 });
 
 export const metadata: Metadata = {
@@ -15,17 +17,22 @@ export const metadata: Metadata = {
     "AI-powered personal finance education platform",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="en" className={`${dmSans.variable} h-full antialiased`}>
+    <html lang={locale} className={`${dmSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
         <SessionProvider>
-          {children}
-          <Toaster position="top-right" richColors />
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            {children}
+            <Toaster position="top-right" richColors />
+          </NextIntlClientProvider>
         </SessionProvider>
       </body>
     </html>

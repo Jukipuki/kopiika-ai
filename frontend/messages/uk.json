@@ -1,0 +1,91 @@
+{
+  "auth": {
+    "login": {
+      "title": "Увійдіть у свій обліковий запис",
+      "email": "Електронна пошта",
+      "emailPlaceholder": "ви@example.com",
+      "password": "Пароль",
+      "passwordPlaceholder": "Введіть ваш пароль",
+      "forgotPassword": "Забули пароль?",
+      "submit": "Увійти",
+      "submitting": "Входимо...",
+      "noAccount": "Немає облікового запису?",
+      "signUp": "Зареєструватися",
+      "loading": "Завантаження..."
+    },
+    "signup": {
+      "title": "Створіть обліковий запис",
+      "email": "Електронна пошта",
+      "emailPlaceholder": "ви@example.com",
+      "password": "Пароль",
+      "passwordPlaceholder": "Створіть пароль",
+      "confirmPassword": "Підтвердіть пароль",
+      "confirmPasswordPlaceholder": "Підтвердіть ваш пароль",
+      "submit": "Створити обліковий запис",
+      "submitting": "Створюємо обліковий запис...",
+      "hasAccount": "Вже маєте обліковий запис?",
+      "logIn": "Увійти"
+    },
+    "verify": {
+      "title": "Підтвердіть вашу електронну пошту",
+      "instructions": "Ми надіслали код підтвердження на",
+      "code": "Код підтвердження",
+      "codePlaceholder": "000000",
+      "submit": "Підтвердити пошту",
+      "submitting": "Підтверджуємо...",
+      "resend": "Надіслати код повторно",
+      "resendCooldown": "Надіслати код повторно через {seconds} с",
+      "successTitle": "Пошту підтверджено",
+      "successMessage": "Ваш обліковий запис підтверджено. Перенаправляємо на сторінку входу..."
+    },
+    "validation": {
+      "emailRequired": "Електронна пошта обов'язкова",
+      "emailInvalid": "Введіть дійсну адресу електронної пошти",
+      "passwordRequired": "Пароль обов'язковий",
+      "passwordMin": "Пароль має містити щонайменше 8 символів",
+      "passwordUppercase": "Пароль має містити щонайменше одну велику літеру",
+      "passwordLowercase": "Пароль має містити щонайменше одну малу літеру",
+      "passwordNumber": "Пароль має містити щонайменше одну цифру",
+      "passwordSpecial": "Пароль має містити щонайменше один спеціальний символ",
+      "confirmPasswordRequired": "Підтвердіть ваш пароль",
+      "passwordsMismatch": "Паролі не збігаються",
+      "codeInvalid": "Введіть 6-значний код підтвердження"
+    },
+    "passwordRequirements": {
+      "minLength": "Щонайменше 8 символів",
+      "uppercase": "Одна велика літера",
+      "lowercase": "Одна мала літера",
+      "number": "Одна цифра",
+      "special": "Один спеціальний символ"
+    },
+    "sessionExpired": {
+      "title": "Сеанс завершено",
+      "description": "Ваш сеанс завершено через неактивність. Будь ласка, увійдіть знову.",
+      "logIn": "Увійти"
+    }
+  },
+  "dashboard": {
+    "title": "Копійка AI",
+    "logOut": "Вийти",
+    "logOutSuccess": "Ви успішно вийшли з облікового запису"
+  },
+  "common": {
+    "loading": "Завантаження...",
+    "appName": "Копійка AI",
+    "appDescription": "Фінансова освіта на основі ШІ"
+  },
+  "errors": {
+    "rateLimited": "Забагато спроб входу. Спробуйте знову через {minutes, plural, one {# хвилину} few {# хвилини} many {# хвилин} other {# хвилин}}.",
+    "rateLimitTimer": "Спробуйте через {minutes}хв {seconds}с",
+    "emailNotVerified": "Підтвердіть свою електронну пошту перед входом. Перевірте вхідні повідомлення.",
+    "invalidCredentials": "Невірна електронна пошта або пароль.",
+    "serverError": "Не вдалося з'єднатися з сервером. Спробуйте ще раз.",
+    "loginFailed": "Не вдалося увійти. Спробуйте ще раз.",
+    "signupFailed": "Сталася непередбачена помилка",
+    "verificationFailed": "Не вдалося підтвердити. Спробуйте ще раз."
+  },
+  "settings": {
+    "language": "Мова",
+    "preferenceSaved": "Налаштування збережено"
+  }
+}

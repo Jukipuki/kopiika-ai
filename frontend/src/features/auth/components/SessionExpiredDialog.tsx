@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 interface SessionExpiredDialogProps {
   onLogin: () => void;
 }
@@ -7,6 +9,8 @@ interface SessionExpiredDialogProps {
 export default function SessionExpiredDialog({
   onLogin,
 }: SessionExpiredDialogProps) {
+  const t = useTranslations("auth.sessionExpired");
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -19,17 +23,17 @@ export default function SessionExpiredDialog({
           id="session-expired-title"
           className="text-lg font-semibold text-foreground text-center"
         >
-          Session Expired
+          {t("title")}
         </h2>
         <p className="mt-2 text-sm text-foreground/60 text-center">
-          Your session has expired due to inactivity. Please log in again.
+          {t("description")}
         </p>
         <div className="mt-6">
           <button
             onClick={onLogin}
             className="w-full rounded-lg bg-[#6C63FF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#5B54E6] focus:outline-none focus:ring-2 focus:ring-[#6C63FF] focus:ring-offset-2 transition-colors"
           >
-            Log in
+            {t("logIn")}
           </button>
         </div>
       </div>
