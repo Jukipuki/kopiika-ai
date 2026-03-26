@@ -5,7 +5,7 @@ from sqlmodel import Field, SQLModel
 
 
 def _utcnow() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class User(SQLModel, table=True):

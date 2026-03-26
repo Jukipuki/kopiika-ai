@@ -139,7 +139,12 @@
       "Bash(python3 -m pytest)",
       "Bash(.venv/bin/python -m pytest backend/)",
       "Bash(ls -d /Users/ohumennyi/Personal/kopiika-ai/**/.venv)",
-      "Bash(.venv/bin/python -m pytest)"
+      "Bash(.venv/bin/python -m pytest)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/src/middleware*)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/middleware*)",
+      "Bash(grep -r \"proxy\" /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config*)",
+      "Bash(grep -r \"proxy\" /Users/ohumennyi/Personal/kopiika-ai/frontend/src/auth*)",
+      "Bash(grep -r \"middleware\" /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config*)"
     ]
   }
 }

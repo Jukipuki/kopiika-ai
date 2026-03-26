@@ -205,7 +205,7 @@ async def update_me(
     session: Annotated[SQLModelAsyncSession, Depends(get_db)],
 ) -> UserProfileResponse:
     current_user.locale = body.locale
-    current_user.updated_at = datetime.now(UTC)
+    current_user.updated_at = datetime.now(UTC).replace(tzinfo=None)
     session.add(current_user)
     await session.commit()
     await session.refresh(current_user)
@@ -267,7 +267,7 @@ async def verify(
     user = result.first()
     if user:
         user.is_verified = True
-        user.updated_at = datetime.now(UTC)
+        user.updated_at = datetime.now(UTC).replace(tzinfo=None)
         session.add(user)
         await session.commit()
 

@@ -7,9 +7,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     CognitoProvider({
-      clientId: process.env.AUTH_COGNITO_ID!,
-      clientSecret: process.env.AUTH_COGNITO_SECRET!,
-      issuer: process.env.AUTH_COGNITO_ISSUER!,
+      clientId: process.env.AUTH_COGNITO_ID || "",
+      clientSecret: process.env.AUTH_COGNITO_SECRET || "unused",
+      issuer: process.env.AUTH_COGNITO_ISSUER || "",
     }),
     CredentialsProvider({
       name: "credentials",

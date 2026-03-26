@@ -1,12 +1,15 @@
 import base64
 import hashlib
 import hmac
+import logging
 from typing import Any, NoReturn
 
 import boto3
 from botocore.exceptions import ClientError
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError, RegistrationError
+
+logger = logging.getLogger(__name__)
 
 
 class CognitoService:
@@ -109,6 +112,8 @@ class CognitoService:
             }
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+            logger.error("Cognito sign_up failed: %s - %s", error_code, error_message)
             self._handle_cognito_error(error_code)
 
     def confirm_sign_up(self, email: str, code: str) -> dict[str, Any]:
@@ -172,6 +177,7 @@ class CognitoService:
             code, message, status_code = error_map[error_code]
             raise RegistrationError(code=code, message=message, status_code=status_code)
 
+        logger.error("Unhandled Cognito error: %s", error_code)
         raise RegistrationError(
             code="COGNITO_ERROR",
             message="An unexpected error occurred",

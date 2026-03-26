@@ -54,7 +54,7 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
-# Frontend app client (public, no secret, SRP auth)
+# Frontend app client (public, no secret, SRP auth for browser + public Cognito API calls)
 resource "aws_cognito_user_pool_client" "frontend" {
   name         = "${local.name_prefix}-frontend-client"
   user_pool_id = aws_cognito_user_pool.main.id

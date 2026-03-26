@@ -1,29 +1,23 @@
 "use client";
 
 import { useLocale } from "next-intl";
-import { useRouter, usePathname } from "@/i18n/navigation";
-import { useTransition } from "react";
-import { routing } from "@/i18n/routing";
+import { usePathname } from "@/i18n/navigation";
 
 function AuthLocaleToggle() {
   const locale = useLocale();
-  const router = useRouter();
   const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
 
   const nextLocale = locale === "uk" ? "en" : "uk";
 
   const handleSwitch = () => {
-    startTransition(() => {
-      router.replace(pathname, { locale: nextLocale as (typeof routing.locales)[number] });
-    });
+    window.location.href = `/${nextLocale}${pathname}`;
   };
 
   return (
     <div className="absolute top-4 right-4">
       <button
         onClick={handleSwitch}
-        disabled={isPending}
+        disabled={false}
         aria-label={`Switch language to ${nextLocale === "uk" ? "Українська" : "English"}`}
         className="text-sm text-foreground/50 hover:text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#6C63FF] rounded px-1"
       >
