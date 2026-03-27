@@ -8,7 +8,7 @@ import { useIdleTimeout } from "@/features/auth/hooks/use-idle-timeout";
 import SessionExpiredDialog from "@/features/auth/components/SessionExpiredDialog";
 import LocaleSwitcher from "@/components/layout/LocaleSwitcher";
 import { Link } from "@/i18n/navigation";
-import { Settings } from "lucide-react";
+import { Settings, Plus } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -75,6 +75,14 @@ export default function DashboardLayout({
           </div>
         </header>
         <main>{children}</main>
+
+        <Link
+          href="/upload"
+          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
+          aria-label={t("upload")}
+        >
+          <Plus className="h-6 w-6" />
+        </Link>
       </div>
 
       {isTimedOut && (

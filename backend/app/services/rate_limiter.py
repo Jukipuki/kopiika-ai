@@ -56,3 +56,32 @@ class RateLimiter:
     async def clear_attempts(self, ip: str) -> None:
         key = f"rate_limit:login:{ip}"
         await self._redis.delete(key)
+
+    async def check_upload_rate_limit(
+        self, user_id: str, max_uploads: int = 20, window_seconds: int = 3600
+    ) -> None:
+        key = f"rate_limit:upload:{user_id}"
+        now = time.time()
+        window_start = now - window_seconds
+
+        pipe = self._redis.pipeline()
+        pipe.zremrangebyscore(key, 0, window_start)
+        pipe.zcard(key)
+        results = await pipe.execute()
+
+        attempt_count = results[1]
+
+        if attempt_count >= max_uploads:
+            from app.core.exceptions import ValidationError
+
+            raise ValidationError(
+                code="RATE_LIMITED",
+                message="You've uploaded a lot of files recently. Please try again in a few minutes.",
+                status_code=429,
+            )
+
+        # Record this upload
+        pipe = self._redis.pipeline()
+        pipe.zadd(key, {str(now): now})
+        pipe.expire(key, window_seconds)
+        await pipe.execute()

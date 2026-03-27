@@ -1,9 +1,14 @@
+import os
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Kopiika AI"
     VERSION: str = "0.1.0"
+
+    # AWS Profile (set in OS env so boto3 picks it up)
+    AWS_PROFILE: str = ""
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/kopiika_db"
@@ -21,7 +26,15 @@ class Settings(BaseSettings):
     COGNITO_BACKEND_CLIENT_ID: str = ""
     COGNITO_BACKEND_CLIENT_SECRET: str = ""
 
+    # S3
+    S3_UPLOADS_BUCKET: str = ""
+    S3_REGION: str = "eu-central-1"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()
+
+# Propagate AWS_PROFILE to OS environment so boto3 can see it
+if settings.AWS_PROFILE:
+    os.environ.setdefault("AWS_PROFILE", settings.AWS_PROFILE)

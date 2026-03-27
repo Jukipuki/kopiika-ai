@@ -1,0 +1,262 @@
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createUseTranslations } from "@/test-utils/intl-mock";
+import UploadDropzone from "../components/UploadDropzone";
+
+// Mock next-intl
+vi.mock("next-intl", () => ({
+  useTranslations: createUseTranslations(),
+  useLocale: () => "en",
+}));
+
+// Mock next-auth/react
+const mockUseSession = vi.fn();
+vi.mock("next-auth/react", () => ({
+  useSession: () => mockUseSession(),
+}));
+
+// Mock sonner
+const mockToastSuccess = vi.fn();
+vi.mock("sonner", () => ({
+  toast: {
+    success: (...args: unknown[]) => mockToastSuccess(...args),
+    error: vi.fn(),
+  },
+}));
+
+// Mock fetch
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
+function createFile(
+  name: string,
+  size: number,
+  type: string,
+): File {
+  const content = new Uint8Array(size);
+  return new File([content], name, { type });
+}
+
+describe("UploadDropzone", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseSession.mockReturnValue({
+      data: { accessToken: "test-token" },
+      status: "authenticated",
+    });
+  });
+
+  it("renders idle state with drop text and file picker", () => {
+    render(<UploadDropzone />);
+
+    expect(
+      screen.getByText("Drop your bank statement here"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("or click to select a file"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Upload bank statement file" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders supported format guide", () => {
+    render(<UploadDropzone />);
+
+    expect(screen.getByText("Monobank CSV")).toBeInTheDocument();
+  });
+
+  it("renders trust message", () => {
+    render(<UploadDropzone />);
+
+    expect(
+      screen.getByText("Your data stays encrypted and private"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows drag-over visual feedback", () => {
+    render(<UploadDropzone />);
+
+    const dropzone = screen.getByRole("button", {
+      name: "Upload bank statement file",
+    });
+
+    fireEvent.dragEnter(dropzone, {
+      dataTransfer: { files: [] },
+    });
+
+    // The dropzone should have the drag-over styling class
+    expect(dropzone.className).toContain("border-primary");
+  });
+
+  it("accepts CSV file via file input and calls upload API", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ jobId: "job-123", statusUrl: "/api/v1/jobs/job-123" }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/uploads"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: "Bearer test-token",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("shows error for invalid file type", async () => {
+    render(<UploadDropzone />);
+
+    const file = createFile("image.png", 1024, "image/png");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    // Use fireEvent to bypass accept attribute filtering
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Only CSV and PDF files are supported. Try exporting your bank statement as CSV.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    // Should NOT call the API
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows error for file too large", async () => {
+    render(<UploadDropzone />);
+
+    const file = createFile("big.csv", 11 * 1024 * 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "This file is too large. Please upload files under 10MB.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows upload progress indicator during upload", async () => {
+    // Make fetch hang to keep uploading state
+    mockFetch.mockReturnValue(new Promise(() => {}));
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Analyzing your transactions..."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows rate limit error from server", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: () =>
+        Promise.resolve({
+          error: { code: "RATE_LIMITED", message: "Rate limited" },
+        }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "You've uploaded a lot of files recently. Please try again in a few minutes.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows try again button on error and can retry", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: () =>
+        Promise.resolve({
+          error: { code: "UPLOAD_FAILED", message: "Failed" },
+        }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(screen.getByText("Try again")).toBeInTheDocument();
+    });
+
+    // Click try again to clear error
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Try again"));
+
+    // Error should be cleared, back to idle
+    expect(
+      screen.getByText("Drop your bank statement here"),
+    ).toBeInTheDocument();
+  });
+
+  it("is keyboard navigable", () => {
+    render(<UploadDropzone />);
+
+    const dropzone = screen.getByRole("button", {
+      name: "Upload bank statement file",
+    });
+    expect(dropzone).toHaveAttribute("tabindex", "0");
+  });
+
+  it("shows success state after upload", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ jobId: "job-123", statusUrl: "/api/v1/jobs/job-123" }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(screen.getByText("File uploaded successfully!")).toBeInTheDocument();
+    });
+
+    expect(mockToastSuccess).toHaveBeenCalledWith("File uploaded successfully!");
+  });
+});

@@ -1,11 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createUseTranslations } from "@/test-utils/intl-mock";
 import LocaleSwitcher from "../LocaleSwitcher";
-
-// Track router calls
-const mockReplace = vi.fn();
 
 // Mock next-intl
 vi.mock("next-intl", () => ({
@@ -15,7 +12,6 @@ vi.mock("next-intl", () => ({
 
 // Mock @/i18n/navigation
 vi.mock("@/i18n/navigation", () => ({
-  useRouter: () => ({ replace: mockReplace }),
   usePathname: () => "/dashboard",
 }));
 
@@ -37,10 +33,24 @@ vi.mock("sonner", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// Mock window.location
+const originalLocation = window.location;
+
 describe("LocaleSwitcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockResolvedValue({ ok: true });
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { ...originalLocation, href: "" },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: originalLocation,
+    });
   });
 
   it("8.1 renders current locale with flag and locale code", () => {
@@ -79,14 +89,14 @@ describe("LocaleSwitcher", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("8.3 switches route via router.replace with new locale", async () => {
+  it("8.3 navigates to new locale via window.location.href", async () => {
     const user = userEvent.setup();
     render(<LocaleSwitcher />);
 
     await user.click(screen.getByRole("button"));
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith("/dashboard", { locale: "en" });
+      expect(window.location.href).toBe("/en/dashboard");
     });
   });
 

@@ -68,7 +68,8 @@
     "title": "Kopiika AI",
     "settings": "Settings",
     "logOut": "Log out",
-    "logOutSuccess": "You've been logged out successfully"
+    "logOutSuccess": "You've been logged out successfully",
+    "upload": "Upload statement"
   },
   "common": {
     "loading": "Loading...",
@@ -85,6 +86,21 @@
     "signupFailed": "An unexpected error occurred",
     "verificationFailed": "Verification failed. Please try again.",
     "retry": "Retry"
+  },
+  "upload": {
+    "title": "Upload Statement",
+    "dropHere": "Drop your bank statement here",
+    "orClickToSelect": "or click to select a file",
+    "dropzoneLabel": "Upload bank statement file",
+    "supportedFormat": "Monobank CSV",
+    "trustMessage": "Your data stays encrypted and private",
+    "analyzing": "Analyzing your transactions...",
+    "uploadSuccess": "File uploaded successfully!",
+    "tryAgain": "Try again",
+    "errorInvalidFileType": "Only CSV and PDF files are supported. Try exporting your bank statement as CSV.",
+    "errorFileTooLarge": "This file is too large. Please upload files under 10MB.",
+    "errorRateLimited": "You've uploaded a lot of files recently. Please try again in a few minutes.",
+    "errorUploadFailed": "Something went wrong with the upload. Please try again."
   },
   "settings": {
     "title": "Account Settings",

@@ -144,7 +144,19 @@
       "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/middleware*)",
       "Bash(grep -r \"proxy\" /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config*)",
       "Bash(grep -r \"proxy\" /Users/ohumennyi/Personal/kopiika-ai/frontend/src/auth*)",
-      "Bash(grep -r \"middleware\" /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config*)"
+      "Bash(grep -r \"middleware\" /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config*)",
+      "Bash(xargs cat:*)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(python3 -m pytest tests/ -x -q)",
+      "Bash(.venv/bin/python -m pytest tests/ -x -q)",
+      "Bash(.venv/bin/uv pip:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(uv pip:*)",
+      "Bash(.venv/bin/python -m pytest tests/test_uploads.py -x -v)",
+      "Bash(.venv/bin/python -m pytest tests/ -q)",
+      "Bash(python -c \":*)",
+      "Bash(python3 -c \":*)",
+      "Bash(python3 -c \"import secrets; print\\(secrets.token_hex\\(6\\)\\)\")"
     ]
   }
 }

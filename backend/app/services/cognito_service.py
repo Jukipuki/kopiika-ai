@@ -58,6 +58,8 @@ class CognitoService:
             }
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+            logger.error("Cognito auth failed: %s - %s", error_code, error_message)
             self._handle_auth_error(error_code)
 
     def refresh_tokens(self, refresh_token: str, email: str | None = None) -> dict[str, Any]:
@@ -83,6 +85,8 @@ class CognitoService:
             }
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+            logger.error("Cognito auth failed: %s - %s", error_code, error_message)
             self._handle_auth_error(error_code)
 
     def global_sign_out(self, cognito_sub: str) -> dict[str, Any]:
@@ -94,6 +98,8 @@ class CognitoService:
             return {"signed_out": True}
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+            logger.error("Cognito auth failed: %s - %s", error_code, error_message)
             self._handle_auth_error(error_code)
 
     def sign_up(self, email: str, password: str) -> dict[str, Any]:

@@ -1,9 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Track router calls
-const mockReplace = vi.fn();
 let mockLocale = "uk";
 
 // Mock next-intl
@@ -13,7 +11,6 @@ vi.mock("next-intl", () => ({
 
 // Mock @/i18n/navigation
 vi.mock("@/i18n/navigation", () => ({
-  useRouter: () => ({ replace: mockReplace }),
   usePathname: () => "/login",
 }));
 
@@ -27,10 +24,24 @@ vi.mock("@/i18n/routing", () => ({
 
 import AuthLayout from "../layout";
 
+// Mock window.location
+const originalLocation = window.location;
+
 describe("AuthLayout locale toggle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocale = "uk";
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { ...originalLocation, href: "" },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: originalLocation,
+    });
   });
 
   it("8.5 renders UA | EN toggle with UA highlighted when locale is uk", () => {
@@ -59,7 +70,7 @@ describe("AuthLayout locale toggle", () => {
     });
     await user.click(button);
 
-    expect(mockReplace).toHaveBeenCalledWith("/login", { locale: "en" });
+    expect(window.location.href).toBe("/en/login");
   });
 
   it("renders children inside layout", () => {
