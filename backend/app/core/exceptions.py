@@ -59,9 +59,14 @@ async def registration_error_handler(_request: Request, exc: RegistrationError) 
 
 
 async def validation_error_handler(_request: Request, exc: ValidationError) -> JSONResponse:
+    suggestions = exc.details.get("suggestions") if exc.details else None
+    details = {k: v for k, v in exc.details.items() if k != "suggestions"} if exc.details else {}
+    error_body: dict = {"code": exc.code, "message": exc.message, "details": details}
+    if suggestions is not None:
+        error_body["suggestions"] = suggestions
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
+        content={"error": error_body},
     )
 
 

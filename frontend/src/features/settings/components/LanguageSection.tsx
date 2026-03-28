@@ -1,11 +1,9 @@
 "use client";
 
 import { useTranslations, useLocale } from "next-intl";
-import { useRouter, usePathname } from "@/i18n/navigation";
+import { usePathname } from "@/i18n/navigation";
 import { useSession } from "next-auth/react";
-import { useTransition } from "react";
 import { toast } from "sonner";
-import { routing } from "@/i18n/routing";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Select,
@@ -20,10 +18,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export default function LanguageSection() {
   const t = useTranslations("settings");
   const locale = useLocale();
-  const router = useRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
-  const [isPending, startTransition] = useTransition();
 
   const handleLanguageChange = async (newLocale: string | null) => {
     if (!newLocale || newLocale === locale) return;
@@ -46,17 +42,14 @@ export default function LanguageSection() {
       }
     }
 
-    startTransition(() => {
-      router.replace(pathname, {
-        locale: newLocale as (typeof routing.locales)[number],
-      });
-    });
-
     if (saved) {
       toast.success(t("preferenceSaved"), { duration: 2000 });
     } else {
       toast.error(t("saveFailed"), { duration: 4000 });
     }
+
+    // Full navigation to ensure middleware runs and locale state is consistent
+    window.location.href = `/${newLocale}${pathname}`;
   };
 
   return (
@@ -74,7 +67,7 @@ export default function LanguageSection() {
           <Select
             value={locale}
             onValueChange={handleLanguageChange}
-            disabled={isPending}
+            disabled={false}
           >
             <SelectTrigger
               className="w-full min-h-[44px] sm:w-[240px]"

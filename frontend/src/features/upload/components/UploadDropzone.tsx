@@ -9,17 +9,48 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useUpload } from "../hooks/use-upload";
 import UploadProgress from "./UploadProgress";
 import FileFormatGuide from "./FileFormatGuide";
-import type { UploadState } from "../types";
+import type { UploadState, UploadResponse } from "../types";
 
 const ALLOWED_EXTENSIONS = [".csv", ".pdf"];
 const ACCEPT = ".csv,.pdf,text/csv,application/pdf";
 
+const ERROR_KEY_MAP: Record<string, string> = {
+  INVALID_FILE_TYPE: "errorInvalidFileType",
+  FILE_TOO_LARGE: "errorFileTooLarge",
+  RATE_LIMITED: "errorRateLimited",
+  UPLOAD_FAILED: "errorUploadFailed",
+  INVALID_FILE_STRUCTURE: "errorInvalidFileStructure",
+  UNSUPPORTED_BANK_FORMAT: "errorUnsupportedBankFormat",
+  ENCODING_ERROR: "errorEncodingError",
+  EMPTY_FILE: "errorEmptyFile",
+  CORRUPTED_FILE: "errorCorruptedFile",
+  UNAUTHENTICATED: "errorUnauthenticated",
+};
+
+const ERROR_SUGGESTION_MAP: Record<string, string[]> = {
+  INVALID_FILE_TYPE: ["suggestionExportCsv"],
+  FILE_TOO_LARGE: [],
+  INVALID_FILE_STRUCTURE: ["suggestionCheckCsv", "suggestionReExport"],
+  UNSUPPORTED_BANK_FORMAT: ["suggestionSupportMonobank", "suggestionTryMonobank", "suggestionOtherBanksSoon"],
+  ENCODING_ERROR: ["suggestionReExportFile", "suggestionNotCorrupted"],
+  EMPTY_FILE: ["suggestionCheckTransactionData", "suggestionDownloadAgain"],
+  CORRUPTED_FILE: ["suggestionDownloadFromBank"],
+  RATE_LIMITED: ["suggestionWaitAndRetry"],
+};
+
+const FORMAT_LABEL_MAP: Record<string, string> = {
+  monobank: "formatDetectedMonobank",
+  privatbank: "formatDetectedPrivatbank",
+  unknown: "formatDetectedUnknown",
+};
+
 export default function UploadDropzone() {
   const t = useTranslations("upload");
-  const { upload, isUploading, error, clearError } = useUpload();
+  const { upload, isUploading, error, clearError, formatResult } = useUpload();
   const [dragState, setDragState] = useState<UploadState>("idle");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [lastUploadResult, setLastUploadResult] = useState<UploadResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
@@ -36,16 +67,19 @@ export default function UploadDropzone() {
       clearError();
       setSelectedFile(file);
       setUploadComplete(false);
+      setLastUploadResult(null);
 
       const result = await upload(file);
       if (result) {
         setUploadComplete(true);
+        setLastUploadResult(result);
         toast.success(t("uploadSuccess"));
         // Reset after showing success
         setTimeout(() => {
           setSelectedFile(null);
           setUploadComplete(false);
-        }, 2000);
+          setLastUploadResult(null);
+        }, 3000);
       }
     },
     [upload, clearError, t],
@@ -117,16 +151,16 @@ export default function UploadDropzone() {
 
   const state = getState();
 
-  const errorKey = error
-    ? error.code === "INVALID_FILE_TYPE"
-      ? "errorInvalidFileType"
-      : error.code === "FILE_TOO_LARGE"
-        ? "errorFileTooLarge"
-        : error.code === "RATE_LIMITED"
-          ? "errorRateLimited"
-          : "errorUploadFailed"
-    : null;
+  const errorKey = error ? (ERROR_KEY_MAP[error.code] || "errorUploadFailed") : null;
   const errorMessage = errorKey ? t(errorKey) : null;
+
+  // Use i18n keys for suggestions based on error code (not raw server strings)
+  const suggestionKeys = error ? (ERROR_SUGGESTION_MAP[error.code] || []) : [];
+
+  // Format detection label
+  const formatLabelKey = lastUploadResult?.detectedFormat
+    ? FORMAT_LABEL_MAP[lastUploadResult.detectedFormat]
+    : null;
 
   return (
     <Card className="mx-auto w-full max-w-[600px]">
@@ -164,6 +198,13 @@ export default function UploadDropzone() {
             <div className="flex flex-col items-center gap-3 text-center">
               <AlertCircle className="h-10 w-10 text-destructive" />
               <p className="text-sm text-destructive">{errorMessage}</p>
+              {suggestionKeys.length > 0 && (
+                <ul className="flex flex-col gap-1 text-xs text-muted-foreground" role="list" aria-label="Suggestions">
+                  {suggestionKeys.map((key) => (
+                    <li key={key}>{t(key)}</li>
+                  ))}
+                </ul>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -183,6 +224,13 @@ export default function UploadDropzone() {
             <div className="flex flex-col items-center gap-3 text-center">
               <CheckCircle2 className="h-10 w-10 text-green-500" />
               <p className="text-sm font-medium text-foreground">{t("uploadSuccess")}</p>
+              {formatLabelKey && (
+                <p className="text-xs text-muted-foreground transition-opacity duration-250">
+                  <CheckCircle2 className="mr-1 inline h-3 w-3 text-green-500" />
+                  {t(formatLabelKey)}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground/70">{t("trustMessage")}</p>
             </div>
           )}
 

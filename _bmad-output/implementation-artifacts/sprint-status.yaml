@@ -54,7 +54,7 @@ development_status:
   # Epic 2: Statement Upload & Data Ingestion
   epic-2: in-progress
   2-1-file-upload-ui-s3-storage: done
-  2-2-file-validation-format-detection: backlog
+  2-2-file-validation-format-detection: done
   2-3-monobank-csv-parser: backlog
   2-4-additional-bank-format-parser: backlog
   2-5-async-pipeline-processing-with-celery: backlog

@@ -14,24 +14,28 @@ interface UseUploadReturn {
   isUploading: boolean;
   error: UploadError | null;
   clearError: () => void;
+  formatResult: UploadResponse | null;
 }
 
 export function useUpload(): UseUploadReturn {
   const { data: session } = useSession();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<UploadError | null>(null);
+  const [formatResult, setFormatResult] = useState<UploadResponse | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
   const upload = useCallback(
     async (file: File): Promise<UploadResponse | null> => {
       setError(null);
+      setFormatResult(null);
 
       // Client-side validation
       if (!ALLOWED_TYPES.includes(file.type)) {
         setError({
           code: "INVALID_FILE_TYPE",
           message: "INVALID_FILE_TYPE",
+          suggestions: ["Try exporting your bank statement as CSV."],
         });
         return null;
       }
@@ -68,12 +72,18 @@ export function useUpload(): UseUploadReturn {
 
         if (!res.ok) {
           const data = await res.json();
-          const err = data.error || { code: "UPLOAD_FAILED", message: "UPLOAD_FAILED" };
-          setError(err);
+          const serverError = data.error || { code: "UPLOAD_FAILED", message: "UPLOAD_FAILED" };
+          setError({
+            code: serverError.code,
+            message: serverError.message,
+            details: serverError.details,
+            suggestions: serverError.suggestions || [],
+          });
           return null;
         }
 
         const data: UploadResponse = await res.json();
+        setFormatResult(data);
         return data;
       } catch {
         setError({
@@ -88,5 +98,5 @@ export function useUpload(): UseUploadReturn {
     [session?.accessToken],
   );
 
-  return { upload, isUploading, error, clearError };
+  return { upload, isUploading, error, clearError, formatResult };
 }

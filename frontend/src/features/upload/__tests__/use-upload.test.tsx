@@ -180,6 +180,79 @@ describe("useUpload", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("returns formatResult after successful upload with format detection", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          jobId: "job-456",
+          statusUrl: "/api/v1/jobs/job-456",
+          detectedFormat: "monobank",
+          encoding: "windows-1251",
+          columnCount: 10,
+        }),
+    });
+
+    const { result } = renderHook(() => useUpload());
+    const file = createFile("statement.csv", 1024, "text/csv");
+
+    await act(async () => {
+      await result.current.upload(file);
+    });
+
+    expect(result.current.formatResult).toEqual(
+      expect.objectContaining({
+        detectedFormat: "monobank",
+        encoding: "windows-1251",
+        columnCount: 10,
+      }),
+    );
+  });
+
+  it("parses suggestions from server error response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: () =>
+        Promise.resolve({
+          error: {
+            code: "UNSUPPORTED_BANK_FORMAT",
+            message: "Unsupported",
+            suggestions: ["Try Monobank CSV", "Other banks coming soon"],
+          },
+        }),
+    });
+
+    const { result } = renderHook(() => useUpload());
+    const file = createFile("statement.csv", 1024, "text/csv");
+
+    await act(async () => {
+      await result.current.upload(file);
+    });
+
+    expect(result.current.error).toEqual(
+      expect.objectContaining({
+        code: "UNSUPPORTED_BANK_FORMAT",
+        suggestions: ["Try Monobank CSV", "Other banks coming soon"],
+      }),
+    );
+  });
+
+  it("includes suggestions for client-side invalid file type", async () => {
+    const { result } = renderHook(() => useUpload());
+    const file = createFile("image.jpg", 1024, "image/jpeg");
+
+    await act(async () => {
+      await result.current.upload(file);
+    });
+
+    expect(result.current.error).toEqual(
+      expect.objectContaining({
+        code: "INVALID_FILE_TYPE",
+        suggestions: ["Try exporting your bank statement as CSV."],
+      }),
+    );
+  });
+
   it("sets isUploading during API call", async () => {
     let resolveUpload: (value: unknown) => void;
     mockFetch.mockReturnValue(

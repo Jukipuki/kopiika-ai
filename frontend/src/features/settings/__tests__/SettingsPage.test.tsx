@@ -18,21 +18,11 @@ vi.mock("next-auth/react", () => ({
 }));
 
 // Mock @/i18n/navigation
-const mockReplace = vi.fn();
 vi.mock("@/i18n/navigation", () => ({
-  useRouter: () => ({ replace: mockReplace }),
   usePathname: () => "/settings",
   Link: ({ children, ...props }: { children: React.ReactNode; href: string }) => (
     <a {...props}>{children}</a>
   ),
-}));
-
-// Mock @/i18n/routing
-vi.mock("@/i18n/routing", () => ({
-  routing: {
-    locales: ["uk", "en"],
-    defaultLocale: "uk",
-  },
 }));
 
 // Mock sonner
@@ -58,6 +48,8 @@ const mockProfile = {
 };
 
 describe("SettingsPage", () => {
+  const originalLocation = window.location;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocale = "en";
@@ -68,6 +60,11 @@ describe("SettingsPage", () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockProfile),
+    });
+    // Mock window.location for locale navigation
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { ...originalLocation, href: "http://localhost:3000/en/settings" },
     });
   });
 
@@ -185,7 +182,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("8.6 shows toast on successful language change", async () => {
+  it("8.6 shows toast and navigates on successful language change", async () => {
     const user = userEvent.setup();
 
     render(<SettingsPage />);
@@ -208,6 +205,9 @@ describe("SettingsPage", () => {
         duration: 2000,
       });
     });
+
+    // Full page navigation to new locale
+    expect(window.location.href).toBe("/uk/settings");
   });
 
   it("8.7 shows error state when GET /api/v1/auth/me fails", async () => {

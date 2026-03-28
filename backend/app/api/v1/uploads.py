@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
@@ -21,6 +21,9 @@ class UploadResponse(BaseModel):
 
     job_id: str
     status_url: str
+    detected_format: Optional[str] = None
+    encoding: Optional[str] = None
+    column_count: Optional[int] = None
 
 
 @router.post("", status_code=202, response_model=UploadResponse)
@@ -42,13 +45,18 @@ async def create_upload(
     file_size = len(file_content)
     upload_service.validate_file_size(file_size)
 
+    # Enhanced validation: magic bytes, sanitization, CSV structure, format detection
+    format_result = upload_service.validate_and_detect_format(
+        file_content, file.content_type or "application/octet-stream"
+    )
+
     # Generate S3 key and upload
     job_id = uuid.uuid4()
     s3_key = upload_service.generate_s3_key(user_id, job_id, file.filename or "unknown.bin")
 
     await upload_service.upload_to_s3(s3_key, file_content, file.content_type or "application/octet-stream")
 
-    # Create DB records
+    # Create DB records with format detection results
     upload_record, job = await upload_service.create_upload_record(
         session=session,
         user_id=user_id,
@@ -57,6 +65,8 @@ async def create_upload(
         file_size=file_size,
         mime_type=file.content_type or "application/octet-stream",
         job_id=job_id,
+        detected_format=format_result.bank_format if format_result else None,
+        detected_encoding=format_result.encoding if format_result else None,
     )
 
     logger.info(
@@ -67,10 +77,14 @@ async def create_upload(
             "upload_id": str(upload_record.id),
             "job_id": str(job.id),
             "file_size": file_size,
+            "detected_format": format_result.bank_format if format_result else None,
         },
     )
 
     return UploadResponse(
         job_id=str(job.id),
         status_url=f"/api/v1/jobs/{job.id}",
+        detected_format=format_result.bank_format if format_result else None,
+        encoding=format_result.encoding if format_result else None,
+        column_count=format_result.column_count if format_result else None,
     )

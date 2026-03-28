@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
@@ -17,4 +18,6 @@ class Upload(SQLModel, table=True):
     s3_key: str = Field()
     file_size: int = Field()
     mime_type: str = Field()
+    detected_format: Optional[str] = Field(default=None)
+    detected_encoding: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)

@@ -220,7 +220,7 @@ async def test_upload_creates_db_records(mock_s3_factory, client, async_session,
         jobs = (await async_session.exec(select(ProcessingJob))).all()
         assert len(jobs) == 1
         assert jobs[0].upload_id == uploads[0].id
-        assert jobs[0].status == "pending"
+        assert jobs[0].status == "validated"
     finally:
         app.dependency_overrides.pop(get_current_user_payload, None)
 

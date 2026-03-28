@@ -233,13 +233,24 @@ def test_alembic_migration_file_exists_and_correct():
     ]
     assert len(migration_files) >= 1, "No migration files found"
 
-    # Load and verify the migration module is importable with upgrade/downgrade
-    migration_path = os.path.join(migration_dir, migration_files[0])
+    # Find the initial migration (down_revision is None) regardless of alphabetical order
+    initial_migration_path = None
+    for mf in migration_files:
+        mp = os.path.join(migration_dir, mf)
+        s = importlib.util.spec_from_file_location("migration_scan", mp)
+        m = importlib.util.module_from_spec(s)
+        s.loader.exec_module(m)
+        if getattr(m, "down_revision", "MISSING") is None:
+            initial_migration_path = mp
+            break
+    assert initial_migration_path is not None, "No initial migration (down_revision=None) found"
+
+    # Load and verify the initial migration module
+    migration_path = initial_migration_path
     spec = importlib.util.spec_from_file_location("migration", migration_path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
 
-    # Verify it's the initial migration
     assert migration.down_revision is None, "First migration should have no parent"
     assert callable(getattr(migration, "upgrade", None)), "Migration must have upgrade()"
     assert callable(getattr(migration, "downgrade", None)), "Migration must have downgrade()"

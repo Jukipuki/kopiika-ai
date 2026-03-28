@@ -129,7 +129,7 @@ describe("UploadDropzone", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Only CSV and PDF files are supported. Try exporting your bank statement as CSV.",
+          "Only CSV and PDF files are supported.",
         ),
       ).toBeInTheDocument();
     });
@@ -258,5 +258,127 @@ describe("UploadDropzone", () => {
     });
 
     expect(mockToastSuccess).toHaveBeenCalledWith("File uploaded successfully!");
+  });
+
+  // ==================== Story 2.2: Error Suggestions & Format Detection ====================
+
+  it("displays error suggestions from server", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: () =>
+        Promise.resolve({
+          error: {
+            code: "UNSUPPORTED_BANK_FORMAT",
+            message: "Unsupported bank format",
+            suggestions: [
+              "We currently support Monobank CSV",
+              "Try uploading a Monobank statement",
+            ],
+          },
+        }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("We couldn't recognize this bank statement format."),
+      ).toBeInTheDocument();
+    });
+
+    // Suggestions should be rendered
+    expect(
+      screen.getByText("We currently support Monobank CSV"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Try uploading a Monobank statement"),
+    ).toBeInTheDocument();
+  });
+
+  it("displays format detection feedback after successful upload", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          jobId: "job-456",
+          statusUrl: "/api/v1/jobs/job-456",
+          detectedFormat: "monobank",
+          encoding: "windows-1251",
+          columnCount: 10,
+        }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Monobank statement detected"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("displays unsupported bank format error with suggestions", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: () =>
+        Promise.resolve({
+          error: {
+            code: "INVALID_FILE_STRUCTURE",
+            message: "Invalid structure",
+            suggestions: [
+              "Check that the file is a .csv with transaction data",
+              "Try re-exporting from your bank app",
+            ],
+          },
+        }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("data.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This file doesn't look like a bank statement."),
+      ).toBeInTheDocument();
+    });
+
+    // Suggestion list should be visible
+    const suggestions = screen.getByRole("list", { name: "Suggestions" });
+    expect(suggestions).toBeInTheDocument();
+    expect(suggestions.querySelectorAll("li")).toHaveLength(2);
+  });
+
+  it("shows invalid file type error with suggestion", async () => {
+    render(<UploadDropzone />);
+
+    const file = createFile("spreadsheet.xlsx", 1024, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Only CSV and PDF files are supported."),
+      ).toBeInTheDocument();
+    });
+
+    // Suggestion from client-side validation
+    expect(
+      screen.getByText("Try exporting your bank statement as CSV."),
+    ).toBeInTheDocument();
   });
 });
