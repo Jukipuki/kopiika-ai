@@ -625,25 +625,22 @@ class TestParserSelection:
             )
 
     @pytest.mark.asyncio
-    async def test_privatbank_format_raises_error(self, async_session):
-        """PrivatBank parser not yet implemented — should raise UnsupportedFormatError."""
-        format_result = FormatDetectionResult(
-            bank_format="privatbank",
+    async def test_privatbank_format_selects_parser(self, async_session):
+        """PrivatBank parser is now implemented — should not raise UnsupportedFormatError."""
+        from app.agents.ingestion.parsers.privatbank import PrivatBankParser
+        from app.services.parser_service import _PARSERS
+
+        assert "privatbank" in _PARSERS
+        assert _PARSERS["privatbank"] is PrivatBankParser
+
+        # Verify the parser actually works through instantiation
+        parser = PrivatBankParser()
+        result = parser.parse(
+            b"\xef\xbb\xbf\xd0\x94\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xbe\xd0\xbf\xd0\xb5\xd1\x80\xd0\xb0\xd1\x86\xd1\x96\xd1\x97",  # BOM + "Дата операції" header only
             encoding="utf-8",
             delimiter=",",
-            column_count=5,
-            confidence_score=0.9,
-            header_row=[],
         )
-
-        with pytest.raises(UnsupportedFormatError):
-            await parse_and_store_transactions(
-                session=async_session,
-                user_id=uuid.uuid4(),
-                upload_id=uuid.uuid4(),
-                file_bytes=b"a,b,c\n1,2,3",
-                format_result=format_result,
-            )
+        assert result.parsed_count == 0
 
 
 # ==================== Edge Cases (M3) ====================

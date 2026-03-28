@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.agents.ingestion.parsers.base import AbstractParser, ParseResult
+from app.agents.ingestion.parsers.generic import GenericParser
 from app.agents.ingestion.parsers.monobank import MonobankParser
+from app.agents.ingestion.parsers.privatbank import PrivatBankParser
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.transaction import Transaction
 from app.services.format_detector import FormatDetectionResult
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _PARSERS: dict[str, type[AbstractParser]] = {
     "monobank": MonobankParser,
+    "privatbank": PrivatBankParser,
 }
 
 
@@ -41,17 +44,27 @@ async def parse_and_store_transactions(
     NOTE: Does NOT commit the session — caller controls the transaction boundary.
     """
     parser_cls = _PARSERS.get(format_result.bank_format)
-    if parser_cls is None:
-        raise UnsupportedFormatError(
-            f"No parser available for format: {format_result.bank_format}"
-        )
 
-    parser = parser_cls()
-    result: ParseResult = parser.parse(
-        file_bytes=file_bytes,
-        encoding=format_result.encoding,
-        delimiter=format_result.delimiter,
-    )
+    if parser_cls is not None:
+        parser = parser_cls()
+        result = parser.parse(
+            file_bytes=file_bytes,
+            encoding=format_result.encoding,
+            delimiter=format_result.delimiter,
+        )
+    else:
+        # Try GenericParser as fallback for unknown formats
+        generic = GenericParser()
+        result = generic.parse(
+            file_bytes=file_bytes,
+            encoding=format_result.encoding,
+            delimiter=format_result.delimiter,
+        )
+        if result.parsed_count == 0:
+            raise UnsupportedFormatError(
+                "This file format is not yet supported. "
+                "Currently supported: Monobank CSV, PrivatBank CSV."
+            )
 
     # Bulk-add successfully parsed transactions
     transactions = [

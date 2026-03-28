@@ -171,7 +171,12 @@
       "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/.venv/bin/python*)",
       "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python*)",
       "Bash(.venv/bin/python -m pytest tests/test_monobank_parser.py -v --tb=short)",
-      "Bash(.venv/bin/python -m pytest tests/ -v --tb=short)"
+      "Bash(.venv/bin/python -m pytest tests/ -v --tb=short)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python -m pytest tests/test_privatbank_parser.py tests/test_generic_parser.py -v)",
+      "Bash(python -m pytest -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_privatbank_parser.py tests/test_generic_parser.py tests/test_monobank_parser.py -v --tb=short)",
+      "Bash(.venv/bin/python -m pytest --tb=short)"
     ]
   }
 }

@@ -56,7 +56,7 @@ development_status:
   2-1-file-upload-ui-s3-storage: done
   2-2-file-validation-format-detection: done
   2-3-monobank-csv-parser: done
-  2-4-additional-bank-format-parser: backlog
+  2-4-additional-bank-format-parser: done
   2-5-async-pipeline-processing-with-celery: backlog
   2-6-real-time-processing-progress-via-sse: backlog
   2-7-multiple-statement-uploads-cumulative-history: backlog
