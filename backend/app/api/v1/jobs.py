@@ -1,15 +1,24 @@
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncGenerator
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
+from app.core.redis import get_job_state, subscribe_job_progress
+from app.core.security import verify_token
 from app.models.processing_job import ProcessingJob
+from app.models.user import User
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+SSE_HEARTBEAT_INTERVAL = 15  # seconds
 
 
 class JobError(BaseModel):
@@ -77,4 +86,116 @@ async def get_job_status(
         result=result,
         created_at=job.created_at.isoformat(),
         updated_at=job.updated_at.isoformat(),
+    )
+
+
+async def _get_user_id_from_token(
+    token: str,
+    session: SQLModelAsyncSession,
+) -> uuid.UUID:
+    """Extract user_id from a JWT token (for SSE query-param auth).
+
+    NOTE: Duplicates cognito_sub→user_id lookup from deps.get_current_user_id.
+    Needed because EventSource doesn't support Authorization headers.
+    If deps.py auth logic changes, update this function too.
+    """
+    from sqlmodel import select
+
+    payload = await verify_token(token)
+    cognito_sub = payload.get("sub")
+    if not cognito_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "INVALID_TOKEN", "message": "Token missing sub claim"}},
+        )
+    result = await session.exec(select(User.id).where(User.cognito_sub == cognito_sub))
+    user_id = result.first()
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "USER_NOT_FOUND", "message": "User not found"}},
+        )
+    return user_id
+
+
+@router.get("/{job_id}/stream")
+async def stream_job_progress(
+    job_id: uuid.UUID,
+    request: Request,
+    token: str,
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    """SSE endpoint for real-time job progress updates.
+
+    Auth via query param: ?token=<JWT> (EventSource doesn't support headers).
+    """
+    user_id = await _get_user_id_from_token(token, session)
+
+    # Verify job exists and belongs to user (tenant isolation)
+    job = await session.get(ProcessingJob, job_id)
+    if job is None or job.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "JOB_NOT_FOUND", "message": "Job not found"}},
+        )
+
+    job_id_str = str(job_id)
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        # Subscribe FIRST, then check state — avoids race condition where
+        # events published between state-check and subscribe would be lost.
+        subscriber = subscribe_job_progress(job_id_str)
+        try:
+            # Send current state immediately (supports reconnection — AC #5)
+            current_state = await get_job_state(job_id_str)
+            if current_state:
+                event_type = current_state.get("event", "pipeline-progress")
+                yield f"event: {event_type}\ndata: {json.dumps(current_state)}\n\n"
+                # If job already terminal, close stream
+                if event_type in ("job-complete", "job-failed"):
+                    return
+
+            # If the DB already shows a terminal status and no Redis state,
+            # send a synthetic terminal event
+            if job.status == "completed":
+                yield (
+                    f"event: job-complete\n"
+                    f"data: {json.dumps({'jobId': job_id_str, 'status': 'completed', 'totalInsights': 0})}\n\n"
+                )
+                return
+            if job.status == "failed":
+                yield (
+                    f"event: job-failed\n"
+                    f"data: {json.dumps({'jobId': job_id_str, 'status': 'failed', 'error': {'code': job.error_code or 'UNKNOWN_ERROR', 'message': job.error_message or 'Processing failed'}})}\n\n"
+                )
+                return
+
+            # Stream live progress events
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(
+                        subscriber.__anext__(), timeout=SSE_HEARTBEAT_INTERVAL
+                    )
+                    event_type = data.get("event", "pipeline-progress")
+                    yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+                    if event_type in ("job-complete", "job-failed"):
+                        break
+                except asyncio.TimeoutError:
+                    # Send heartbeat/keepalive to prevent proxy timeouts
+                    yield ": heartbeat\n\n"
+                except StopAsyncIteration:
+                    break
+        finally:
+            await subscriber.aclose()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

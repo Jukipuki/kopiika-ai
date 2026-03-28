@@ -58,7 +58,7 @@ development_status:
   2-3-monobank-csv-parser: done
   2-4-additional-bank-format-parser: done
   2-5-async-pipeline-processing-with-celery: done
-  2-6-real-time-processing-progress-via-sse: backlog
+  2-6-real-time-processing-progress-via-sse: done
   2-7-multiple-statement-uploads-cumulative-history: backlog
   epic-2-retrospective: optional
 

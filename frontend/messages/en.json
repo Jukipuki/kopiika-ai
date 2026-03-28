@@ -121,7 +121,27 @@
     "suggestionWaitAndRetry": "Please try again in a few minutes.",
     "formatDetectedMonobank": "Monobank statement detected",
     "formatDetectedPrivatbank": "PrivatBank statement detected",
-    "formatDetectedUnknown": "Bank statement detected"
+    "formatDetectedUnknown": "Bank statement detected",
+    "processing": {
+      "ariaLabel": "Processing your bank statement",
+      "stages": {
+        "readingTransactions": "Reading your transactions...",
+        "categorizingSpending": "Categorizing your spending...",
+        "detectingPatterns": "Detecting patterns...",
+        "scoringHealth": "Scoring your financial health...",
+        "generatingInsights": "Generating personalized insights..."
+      },
+      "education": {
+        "readingTransactions": "We're securely reading each transaction from your statement",
+        "categorizingSpending": "Organizing transactions into categories like food, transport, entertainment",
+        "detectingPatterns": "Looking for recurring charges and spending trends",
+        "scoringHealth": "Calculating your financial health based on spending habits",
+        "generatingInsights": "Creating personalized tips to help you save more"
+      },
+      "errorMessage": "We couldn't process this file. Please try again.",
+      "retry": "Try again",
+      "complete": "Processing complete!"
+    }
   },
   "settings": {
     "title": "Account Settings",

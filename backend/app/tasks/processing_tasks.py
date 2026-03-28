@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.core.database import get_sync_session
+from app.core.redis import publish_job_progress
 from app.models.processing_job import ProcessingJob
 from app.models.upload import Upload
 from app.services.format_detector import FormatDetectionResult
@@ -50,6 +51,14 @@ def process_upload(self, job_id: str) -> dict:
         session.add(job)
         session.commit()
 
+        publish_job_progress(job_id, {
+            "event": "pipeline-progress",
+            "jobId": job_id,
+            "step": "ingestion",
+            "progress": 10,
+            "message": "Reading transactions...",
+        })
+
         try:
             # 3. Load Upload record for s3_key, format, encoding
             upload = session.get(Upload, job.upload_id)
@@ -68,6 +77,14 @@ def process_upload(self, job_id: str) -> dict:
             job.updated_at = _utcnow()
             session.add(job)
             session.commit()
+
+            publish_job_progress(job_id, {
+                "event": "pipeline-progress",
+                "jobId": job_id,
+                "step": "ingestion",
+                "progress": 30,
+                "message": "Parsing complete",
+            })
 
             # 5. Reconstruct FormatDetectionResult
             format_result = FormatDetectionResult(
@@ -101,6 +118,13 @@ def process_upload(self, job_id: str) -> dict:
             job.updated_at = _utcnow()
             session.add(job)
             session.commit()
+
+            publish_job_progress(job_id, {
+                "event": "job-complete",
+                "jobId": job_id,
+                "status": "completed",
+                "totalInsights": 0,
+            })
 
             logger.info(
                 "Upload processing completed",
@@ -171,6 +195,14 @@ def _mark_failed(session, job: ProcessingJob, error_code: str, error_message: st
     job.updated_at = _utcnow()
     session.add(job)
     session.commit()
+
+    publish_job_progress(str(job.id), {
+        "event": "job-failed",
+        "jobId": str(job.id),
+        "status": "failed",
+        "error": {"code": error_code, "message": error_message},
+    })
+
     logger.warning(
         "Upload processing failed",
         extra={"job_id": str(job.id), "error_code": error_code, "error_message": error_message},

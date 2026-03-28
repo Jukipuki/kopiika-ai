@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useUpload } from "../hooks/use-upload";
+import { useJobStatus } from "../hooks/use-job-status";
 import UploadProgress from "./UploadProgress";
 import FileFormatGuide from "./FileFormatGuide";
 import type { UploadState, UploadResponse } from "../types";
@@ -49,14 +50,20 @@ export default function UploadDropzone() {
   const { upload, isUploading, error, clearError, formatResult } = useUpload();
   const [dragState, setDragState] = useState<UploadState>("idle");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadComplete, setUploadComplete] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [lastUploadResult, setLastUploadResult] = useState<UploadResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
+  const jobStatus = useJobStatus(activeJobId);
+
+  const isProcessing = activeJobId !== null && jobStatus.status !== "completed" && jobStatus.status !== "failed" && jobStatus.status !== "idle";
+  const processingComplete = jobStatus.status === "completed";
+  const processingFailed = jobStatus.status === "failed";
+
   const getState = (): UploadState => {
     if (error) return "error";
-    if (isUploading) return "uploading";
+    if (isUploading || isProcessing) return "uploading";
     if (dragState === "drag-over") return "drag-over";
     if (selectedFile) return "selected";
     return "idle";
@@ -66,23 +73,16 @@ export default function UploadDropzone() {
     async (file: File) => {
       clearError();
       setSelectedFile(file);
-      setUploadComplete(false);
+      setActiveJobId(null);
       setLastUploadResult(null);
 
       const result = await upload(file);
       if (result) {
-        setUploadComplete(true);
         setLastUploadResult(result);
-        toast.success(t("uploadSuccess"));
-        // Reset after showing success
-        setTimeout(() => {
-          setSelectedFile(null);
-          setUploadComplete(false);
-          setLastUploadResult(null);
-        }, 3000);
+        setActiveJobId(result.jobId);
       }
     },
-    [upload, clearError, t],
+    [upload, clearError],
   );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -134,10 +134,10 @@ export default function UploadDropzone() {
   );
 
   const handleClick = useCallback(() => {
-    if (!isUploading) {
+    if (!isUploading && !isProcessing) {
       fileInputRef.current?.click();
     }
-  }, [isUploading]);
+  }, [isUploading, isProcessing]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -192,7 +192,15 @@ export default function UploadDropzone() {
             aria-hidden="true"
           />
 
-          {state === "uploading" && <UploadProgress />}
+          {state === "uploading" && (
+            <UploadProgress
+              jobStatus={activeJobId ? jobStatus : null}
+              onRetry={() => {
+                setActiveJobId(null);
+                setSelectedFile(null);
+              }}
+            />
+          )}
 
           {state === "error" && (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -212,6 +220,7 @@ export default function UploadDropzone() {
                   e.stopPropagation();
                   clearError();
                   setSelectedFile(null);
+                  setActiveJobId(null);
                 }}
                 className="min-h-[44px] min-w-[44px]"
               >
@@ -220,7 +229,26 @@ export default function UploadDropzone() {
             </div>
           )}
 
-          {uploadComplete && (
+          {processingFailed && state !== "uploading" && (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <AlertCircle className="h-10 w-10 text-destructive" />
+              <p className="text-sm text-destructive">{t("processing.errorMessage")}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveJobId(null);
+                  setSelectedFile(null);
+                }}
+                className="min-h-[44px] min-w-[44px]"
+              >
+                {t("tryAgain")}
+              </Button>
+            </div>
+          )}
+
+          {processingComplete && (
             <div className="flex flex-col items-center gap-3 text-center">
               <CheckCircle2 className="h-10 w-10 text-green-500" />
               <p className="text-sm font-medium text-foreground">{t("uploadSuccess")}</p>
@@ -234,7 +262,7 @@ export default function UploadDropzone() {
             </div>
           )}
 
-          {state === "selected" && !isUploading && !uploadComplete && (
+          {state === "selected" && !isUploading && !processingComplete && !processingFailed && (
             <div className="flex flex-col items-center gap-3 text-center">
               <FileUp className="h-10 w-10 text-primary" />
               <div>

@@ -14,7 +14,7 @@ export function createUseTranslations() {
     const nsObj = getNestedValue(en as Record<string, unknown>, namespace);
     return (key: string, values?: Record<string, unknown>) => {
       let val = nsObj && typeof nsObj === "object"
-        ? (nsObj as Record<string, unknown>)[key]
+        ? getNestedValue(nsObj as Record<string, unknown>, key)
         : undefined;
       if (val === undefined) return `${namespace}.${key}`;
       if (values && typeof val === "string") {

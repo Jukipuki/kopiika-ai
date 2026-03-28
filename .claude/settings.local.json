@@ -186,7 +186,23 @@
       "Bash(python -m pytest tests/test_processing_tasks.py -x -v)",
       "Bash(python -m pytest tests/test_jobs.py -v)",
       "Bash(python -m ruff check app/ tests/)",
-      "Bash(python -m pytest tests/ -x -q --timeout=60)"
+      "Bash(python -m pytest tests/ -x -q --timeout=60)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src -name *job* -o -name *status* -o -name *stream*)",
+      "Bash(.venv/bin/python -c \"from app.core.redis import publish_job_progress, subscribe_job_progress, get_job_state; print\\(''OK''\\)\")",
+      "Bash(.venv/bin/python -c \"from app.tasks.processing_tasks import process_upload; print\\(''OK''\\)\")",
+      "Bash(.venv/bin/python -c \"from app.api.v1.jobs import router; print\\(''OK''\\)\")",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib -type f -name *.ts -o -name *.tsx)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src -maxdepth 2 -name *dashboard* -o -name *layout*)",
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py -x -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py -x -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py::TestSSEEndpointTenantIsolation::test_sse_returns_404_for_other_users_job -x --tb=long)",
+      "Bash(.venv/bin/python -m pytest -x -q)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src -name *.test.* -o -name *.spec.*)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/vitest*)",
+      "Bash(.venv/bin/ruff check:*)",
+      "Bash(python -m pytest tests/test_sse_streaming.py -v)",
+      "Bash(python -m pytest tests/test_sse_streaming.py::TestSSEHeartbeat -v)",
+      "Bash(python -m pytest --tb=short)"
     ]
   }
 }

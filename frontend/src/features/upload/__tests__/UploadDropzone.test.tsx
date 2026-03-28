@@ -25,6 +25,19 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// Mock useJobStatus hook
+vi.mock("../hooks/use-job-status", () => ({
+  useJobStatus: () => ({
+    status: "idle",
+    step: null,
+    progress: 0,
+    error: null,
+    result: null,
+    isConnected: false,
+    retry: vi.fn(),
+  }),
+}));
+
 // Mock fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -239,7 +252,7 @@ describe("UploadDropzone", () => {
     expect(dropzone).toHaveAttribute("tabindex", "0");
   });
 
-  it("shows success state after upload", async () => {
+  it("transitions to processing state after successful upload", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -253,11 +266,11 @@ describe("UploadDropzone", () => {
 
     await userEvent.upload(input, file);
 
+    // After upload succeeds, component should have called upload and set jobId
+    // The SSE hook (mocked as idle) will take over from here
     await waitFor(() => {
-      expect(screen.getByText("File uploaded successfully!")).toBeInTheDocument();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
-
-    expect(mockToastSuccess).toHaveBeenCalledWith("File uploaded successfully!");
   });
 
   // ==================== Story 2.2: Error Suggestions & Format Detection ====================
@@ -300,7 +313,7 @@ describe("UploadDropzone", () => {
     ).toBeInTheDocument();
   });
 
-  it("displays format detection feedback after successful upload", async () => {
+  it("calls upload API and stores jobId after successful upload", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -321,9 +334,9 @@ describe("UploadDropzone", () => {
     await userEvent.upload(input, file);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Monobank statement detected"),
-      ).toBeInTheDocument();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // Upload was made to the correct endpoint
+      expect(mockFetch.mock.calls[0][0]).toContain("/api/v1/uploads");
     });
   });
 

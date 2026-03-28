@@ -121,7 +121,27 @@
     "suggestionWaitAndRetry": "Спробуйте ще раз через кілька хвилин.",
     "formatDetectedMonobank": "Виявлено виписку Monobank",
     "formatDetectedPrivatbank": "Виявлено виписку PrivatBank",
-    "formatDetectedUnknown": "Виявлено банківську виписку"
+    "formatDetectedUnknown": "Виявлено банківську виписку",
+    "processing": {
+      "ariaLabel": "Обробка вашої банківської виписки",
+      "stages": {
+        "readingTransactions": "Читаємо ваші транзакції...",
+        "categorizingSpending": "Категоризуємо витрати...",
+        "detectingPatterns": "Виявляємо закономірності...",
+        "scoringHealth": "Оцінюємо фінансове здоров'я...",
+        "generatingInsights": "Генеруємо персональні поради..."
+      },
+      "education": {
+        "readingTransactions": "Ми безпечно зчитуємо кожну транзакцію з вашої виписки",
+        "categorizingSpending": "Розподіляємо транзакції за категоріями: їжа, транспорт, розваги",
+        "detectingPatterns": "Шукаємо регулярні платежі та тенденції витрат",
+        "scoringHealth": "Розраховуємо фінансове здоров'я на основі ваших витрат",
+        "generatingInsights": "Створюємо персональні поради, щоб допомогти вам заощаджувати"
+      },
+      "errorMessage": "Не вдалося обробити цей файл. Спробуйте ще раз.",
+      "retry": "Спробувати ще",
+      "complete": "Обробку завершено!"
+    }
   },
   "settings": {
     "title": "Налаштування акаунту",
