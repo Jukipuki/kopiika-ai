@@ -55,7 +55,7 @@ development_status:
   epic-2: in-progress
   2-1-file-upload-ui-s3-storage: done
   2-2-file-validation-format-detection: done
-  2-3-monobank-csv-parser: backlog
+  2-3-monobank-csv-parser: done
   2-4-additional-bank-format-parser: backlog
   2-5-async-pipeline-processing-with-celery: backlog
   2-6-real-time-processing-progress-via-sse: backlog

@@ -161,7 +161,17 @@
       "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/backend/alembic/versions/*.py)",
       "Bash(find /Users/ohumennyi/Personal/kopiika-ai -maxdepth 2 -type f \\\\\\(-name next-intl.config.* -o -name .next-intl* \\\\\\))",
       "Bash(grep -r locale /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib --include=*.ts --include=*.tsx)",
-      "Bash(grep '\"\"next-intl\"\"' package.json)"
+      "Bash(grep '\"\"next-intl\"\"' package.json)",
+      "Bash(python -m pytest tests/test_monobank_parser.py -v)",
+      "Bash(python3 -m pytest tests/test_monobank_parser.py -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_monobank_parser.py -v)",
+      "Bash(python -m pytest tests/test_monobank_parser.py -v --tb=short)",
+      "Bash(python3 -m pytest tests/test_monobank_parser.py -v --tb=short)",
+      "Bash(.venv/bin/python -m pytest backend/tests/test_monobank_parser.py -v --tb=short)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/.venv/bin/python*)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python*)",
+      "Bash(.venv/bin/python -m pytest tests/test_monobank_parser.py -v --tb=short)",
+      "Bash(.venv/bin/python -m pytest tests/ -v --tb=short)"
     ]
   }
 }
