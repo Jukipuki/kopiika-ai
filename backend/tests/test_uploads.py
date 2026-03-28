@@ -49,8 +49,9 @@ def _pdf_file(content: bytes = b"%PDF-1.4 fake content", name: str = "statement.
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.uploads.process_upload.delay")
 @patch("app.services.upload_service._get_s3_client")
-async def test_upload_csv_success(mock_s3_factory, client, mock_rate_limiter):
+async def test_upload_csv_success(mock_s3_factory, mock_celery_delay, client, mock_rate_limiter):
     """Successful CSV upload returns 202 with jobId and statusUrl."""
     mock_s3 = mock_s3_factory.return_value
     mock_s3.put_object.return_value = {}
@@ -72,8 +73,9 @@ async def test_upload_csv_success(mock_s3_factory, client, mock_rate_limiter):
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.uploads.process_upload.delay")
 @patch("app.services.upload_service._get_s3_client")
-async def test_upload_pdf_success(mock_s3_factory, client, mock_rate_limiter):
+async def test_upload_pdf_success(mock_s3_factory, mock_celery_delay, client, mock_rate_limiter):
     """Successful PDF upload returns 202."""
     mock_s3 = mock_s3_factory.return_value
     mock_s3.put_object.return_value = {}
@@ -193,8 +195,9 @@ async def test_upload_s3_failure(mock_s3_factory, client, mock_rate_limiter):
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.uploads.process_upload.delay")
 @patch("app.services.upload_service._get_s3_client")
-async def test_upload_creates_db_records(mock_s3_factory, client, async_session, mock_rate_limiter):
+async def test_upload_creates_db_records(mock_s3_factory, mock_celery_delay, client, async_session, mock_rate_limiter):
     """Upload creates both upload and processing_job records in DB."""
     mock_s3 = mock_s3_factory.return_value
     mock_s3.put_object.return_value = {}
@@ -226,8 +229,31 @@ async def test_upload_creates_db_records(mock_s3_factory, client, async_session,
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.uploads.process_upload.delay")
 @patch("app.services.upload_service._get_s3_client")
-async def test_upload_s3_key_format(mock_s3_factory, client, mock_rate_limiter):
+async def test_upload_dispatches_celery_task(mock_s3_factory, mock_celery_delay, client, mock_rate_limiter):
+    """Upload dispatches Celery task after DB commit (Story 2.5)."""
+    mock_s3 = mock_s3_factory.return_value
+    mock_s3.put_object.return_value = {}
+
+    cognito_sub = await _create_test_user(client)
+    app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+
+    try:
+        response = await client.post("/api/v1/uploads", files=_csv_file())
+
+        assert response.status_code == 202
+        data = response.json()
+        # Verify Celery task was dispatched with the job_id
+        mock_celery_delay.assert_called_once_with(data["jobId"])
+    finally:
+        app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.uploads.process_upload.delay")
+@patch("app.services.upload_service._get_s3_client")
+async def test_upload_s3_key_format(mock_s3_factory, mock_celery_delay, client, mock_rate_limiter):
     """S3 key follows {user_id}/{job_id}_original.{ext} pattern."""
     mock_s3 = mock_s3_factory.return_value
     mock_s3.put_object.return_value = {}

@@ -271,6 +271,7 @@ async def create_upload_record(
     job_id: uuid.UUID,
     detected_format: Optional[str] = None,
     detected_encoding: Optional[str] = None,
+    detected_delimiter: Optional[str] = None,
 ) -> tuple[Upload, ProcessingJob]:
     upload = Upload(
         user_id=user_id,
@@ -280,6 +281,7 @@ async def create_upload_record(
         mime_type=mime_type,
         detected_format=detected_format,
         detected_encoding=detected_encoding,
+        detected_delimiter=detected_delimiter,
     )
     session.add(upload)
     await session.flush()

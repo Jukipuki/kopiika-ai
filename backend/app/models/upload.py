@@ -20,4 +20,5 @@ class Upload(SQLModel, table=True):
     mime_type: str = Field()
     detected_format: Optional[str] = Field(default=None)
     detected_encoding: Optional[str] = Field(default=None)
+    detected_delimiter: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)

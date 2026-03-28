@@ -176,7 +176,17 @@
       "Bash(python -m pytest tests/test_privatbank_parser.py tests/test_generic_parser.py -v)",
       "Bash(python -m pytest -v)",
       "Bash(.venv/bin/python -m pytest tests/test_privatbank_parser.py tests/test_generic_parser.py tests/test_monobank_parser.py -v --tb=short)",
-      "Bash(.venv/bin/python -m pytest --tb=short)"
+      "Bash(.venv/bin/python -m pytest --tb=short)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/backend/app -type f -name *.py)",
+      "Bash(xargs ls:*)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai -name story-2.5* -o -name *async*pipeline* -o -name *celery*)",
+      "Bash(grep -r \"Story 2.5\\\\|story 2.5\\\\|async.*processing\\\\|celery.*task\" /Users/ohumennyi/Personal/kopiika-ai/_bmad-output/planning-artifacts --include=*.md)",
+      "Bash(python -m pytest tests/ -x -v --timeout=120)",
+      "Bash(python -m pytest tests/ -x -v)",
+      "Bash(python -m pytest tests/test_processing_tasks.py -x -v)",
+      "Bash(python -m pytest tests/test_jobs.py -v)",
+      "Bash(python -m ruff check app/ tests/)",
+      "Bash(python -m pytest tests/ -x -q --timeout=60)"
     ]
   }
 }

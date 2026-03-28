@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
 
@@ -20,5 +21,6 @@ class ProcessingJob(SQLModel, table=True):
     progress: int = Field(default=0)
     error_code: Optional[str] = Field(default=None)
     error_message: Optional[str] = Field(default=None)
+    result_data: Optional[dict] = Field(default=None, sa_type=sa.JSON)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)

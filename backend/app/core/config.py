@@ -32,6 +32,13 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
+    @property
+    def SYNC_DATABASE_URL(self) -> str:
+        """Derive sync URL from async DATABASE_URL for Celery workers."""
+        return self.DATABASE_URL.replace(
+            "postgresql+asyncpg://", "postgresql+psycopg2://"
+        ).replace("sqlite+aiosqlite://", "sqlite://")
+
 
 settings = Settings()
 

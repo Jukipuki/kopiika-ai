@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 from app.api.deps import get_current_user_id, get_db, get_rate_limiter
 from app.services import upload_service
 from app.services.rate_limiter import RateLimiter
+from app.tasks.processing_tasks import process_upload
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,11 @@ async def create_upload(
         job_id=job_id,
         detected_format=format_result.bank_format if format_result else None,
         detected_encoding=format_result.encoding if format_result else None,
+        detected_delimiter=format_result.delimiter if format_result else None,
     )
+
+    # Dispatch Celery task AFTER DB commit so worker can find the ProcessingJob
+    process_upload.delay(str(job.id))
 
     logger.info(
         "Upload created",
