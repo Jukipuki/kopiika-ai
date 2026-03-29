@@ -22,4 +22,5 @@ class Transaction(SQLModel, table=True):
     balance: Optional[int] = Field(default=None)  # Integer kopiykas
     currency_code: int = Field(default=980)  # ISO 4217 numeric (980 = UAH)
     raw_data: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    dedup_hash: str = Field(index=True)
     created_at: datetime = Field(default_factory=_utcnow)

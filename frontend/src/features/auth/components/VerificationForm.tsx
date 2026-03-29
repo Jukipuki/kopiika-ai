@@ -111,7 +111,7 @@ export default function VerificationForm({ email }: VerificationFormProps) {
   }
 
   return (
-    <form onSubmit={handleVerify} className="space-y-5">
+    <form onSubmit={handleVerify} method="POST" className="space-y-5">
       <p className="text-sm text-foreground/60 text-center">
         {t("instructions")}{" "}
         <span className="font-medium text-foreground">{email}</span>

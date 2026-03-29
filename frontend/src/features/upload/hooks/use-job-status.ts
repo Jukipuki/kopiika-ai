@@ -81,7 +81,11 @@ export function useJobStatus(jobId: string | null): JobStatusState & { retry: ()
           step: null,
           progress: 100,
           error: null,
-          result: { totalInsights: data.totalInsights },
+          result: {
+            totalInsights: data.totalInsights,
+            duplicatesSkipped: data.duplicatesSkipped,
+            newTransactions: data.newTransactions,
+          },
           isConnected: false,
         });
         es.close();

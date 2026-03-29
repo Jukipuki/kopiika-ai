@@ -2,7 +2,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.agents.ingestion.parsers.base import AbstractParser, ParseResult
@@ -12,6 +12,7 @@ from app.agents.ingestion.parsers.privatbank import PrivatBankParser
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.transaction import Transaction
 from app.services.format_detector import FormatDetectionResult
+from app.services.transaction_service import compute_dedup_hash
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class ParseAndStoreResult:
     parsed_count: int
     flagged_count: int
     persisted_count: int
+    duplicates_skipped: int = 0
 
 
 class UnsupportedFormatError(Exception):
@@ -73,6 +75,9 @@ def _parse_and_build_records(
             balance=txn_data.balance,
             currency_code=txn_data.currency_code,
             raw_data=txn_data.raw_data,
+            dedup_hash=compute_dedup_hash(
+                user_id, txn_data.date, txn_data.amount, txn_data.description,
+            ),
         )
         for txn_data in result.transactions
     ]
@@ -99,6 +104,26 @@ def _parse_and_build_records(
     return transactions, flagged_records, store_result
 
 
+def _filter_duplicates(
+    transactions: list[Transaction],
+    existing_hashes: set[str],
+) -> tuple[list[Transaction], int]:
+    """Filter out transactions whose dedup_hash already exists.
+
+    Returns (new_transactions, duplicates_skipped_count).
+    """
+    new_txns = []
+    seen: set[str] = set()
+    duplicates = 0
+    for txn in transactions:
+        if txn.dedup_hash in existing_hashes or txn.dedup_hash in seen:
+            duplicates += 1
+        else:
+            seen.add(txn.dedup_hash)
+            new_txns.append(txn)
+    return new_txns, duplicates
+
+
 async def parse_and_store_transactions(
     session: SQLModelAsyncSession,
     user_id: uuid.UUID,
@@ -108,12 +133,23 @@ async def parse_and_store_transactions(
 ) -> ParseAndStoreResult:
     """Select parser based on format, parse transactions, and add to session.
 
+    Deduplicates against existing transactions for this user.
     NOTE: Does NOT commit the session — caller controls the transaction boundary.
     """
     transactions, flagged_records, result = _parse_and_build_records(
         user_id, upload_id, file_bytes, format_result,
     )
-    session.add_all(transactions)
+
+    # Query existing dedup hashes for this user
+    stmt = select(Transaction.dedup_hash).where(Transaction.user_id == user_id)
+    rows = await session.exec(stmt)
+    existing_hashes = set(rows.all())
+
+    new_txns, duplicates_skipped = _filter_duplicates(transactions, existing_hashes)
+    result.duplicates_skipped = duplicates_skipped
+    result.persisted_count = len(new_txns) + len(flagged_records)
+
+    session.add_all(new_txns)
     session.add_all(flagged_records)
 
     logger.info(
@@ -124,6 +160,7 @@ async def parse_and_store_transactions(
             "parsed": result.parsed_count,
             "flagged": result.flagged_count,
             "persisted": result.persisted_count,
+            "duplicates_skipped": duplicates_skipped,
         },
     )
 
@@ -139,12 +176,22 @@ def sync_parse_and_store_transactions(
 ) -> ParseAndStoreResult:
     """Synchronous version for Celery worker context.
 
+    Deduplicates against existing transactions for this user.
     NOTE: Does NOT commit the session — caller controls the transaction boundary.
     """
     transactions, flagged_records, result = _parse_and_build_records(
         user_id, upload_id, file_bytes, format_result,
     )
-    session.add_all(transactions)
+
+    # Query existing dedup hashes for this user
+    stmt = select(Transaction.dedup_hash).where(Transaction.user_id == user_id)
+    existing_hashes = set(session.exec(stmt).all())
+
+    new_txns, duplicates_skipped = _filter_duplicates(transactions, existing_hashes)
+    result.duplicates_skipped = duplicates_skipped
+    result.persisted_count = len(new_txns) + len(flagged_records)
+
+    session.add_all(new_txns)
     session.add_all(flagged_records)
 
     logger.info(
@@ -155,6 +202,7 @@ def sync_parse_and_store_transactions(
             "parsed": result.parsed_count,
             "flagged": result.flagged_count,
             "persisted": result.persisted_count,
+            "duplicates_skipped": duplicates_skipped,
         },
     )
 

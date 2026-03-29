@@ -117,7 +117,7 @@ export default function LoginForm() {
   const isRateLimited = rateLimitSeconds > 0;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} method="POST" className="space-y-5" noValidate>
       {/* Email */}
       <div>
         <label

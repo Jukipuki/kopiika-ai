@@ -6,6 +6,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import QueryProvider from "@/lib/query/query-provider";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -30,10 +31,12 @@ export default async function RootLayout({
     <html lang={locale} className={cn("dark h-full antialiased", dmSans.variable)}>
       <body className="min-h-full flex flex-col font-sans">
         <SessionProvider>
-          <NextIntlClientProvider locale={locale} messages={messages}>
-            {children}
-            <Toaster position="top-right" richColors />
-          </NextIntlClientProvider>
+          <QueryProvider>
+            <NextIntlClientProvider locale={locale} messages={messages}>
+              {children}
+              <Toaster position="top-right" richColors />
+            </NextIntlClientProvider>
+          </QueryProvider>
         </SessionProvider>
       </body>
     </html>

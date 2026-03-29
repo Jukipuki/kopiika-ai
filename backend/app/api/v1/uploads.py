@@ -2,7 +2,7 @@ import logging
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
@@ -92,4 +92,61 @@ async def create_upload(
         detected_format=format_result.bank_format if format_result else None,
         encoding=format_result.encoding if format_result else None,
         column_count=format_result.column_count if format_result else None,
+    )
+
+
+class UploadHistoryItem(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: str
+    file_name: str
+    detected_format: Optional[str] = None
+    created_at: str
+    transaction_count: int
+    duplicates_skipped: int
+    status: str
+
+
+class UploadListResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    items: list[UploadHistoryItem]
+    total: int
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+
+@router.get("", response_model=UploadListResponse)
+async def list_uploads(
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+    cursor: Optional[str] = Query(default=None),
+    page_size: int = Query(default=20, ge=1, le=50, alias="pageSize"),
+) -> UploadListResponse:
+    """List upload history for the authenticated user with cursor-based pagination."""
+    result = await upload_service.get_uploads_for_user(
+        session=session,
+        user_id=user_id,
+        cursor=cursor,
+        page_size=page_size,
+    )
+
+    items = [
+        UploadHistoryItem(
+            id=item["id"],
+            file_name=item["file_name"],
+            detected_format=item["detected_format"],
+            created_at=item["created_at"],
+            transaction_count=item["transaction_count"],
+            duplicates_skipped=item["duplicates_skipped"],
+            status=item["status"],
+        )
+        for item in result["items"]
+    ]
+
+    return UploadListResponse(
+        items=items,
+        total=result["total"],
+        next_cursor=result["next_cursor"],
+        has_more=result["has_more"],
     )

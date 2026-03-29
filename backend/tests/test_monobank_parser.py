@@ -571,6 +571,8 @@ class TestTransactionModel:
         session.add(upload)
         await session.commit()
 
+        from app.services.transaction_service import compute_dedup_hash
+
         txn = Transaction(
             user_id=user_id,
             upload_id=upload_id,
@@ -581,6 +583,7 @@ class TestTransactionModel:
             balance=1000000,
             currency_code=980,
             raw_data={"test": "data"},
+            dedup_hash=compute_dedup_hash(user_id, datetime(2024, 1, 1, 12, 0, 0), -15050, "Test transaction"),
         )
         session.add(txn)
         await session.commit()

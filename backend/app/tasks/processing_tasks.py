@@ -106,6 +106,7 @@ def process_upload(self, job_id: str) -> dict:
             )
 
             # 7. Update ProcessingJob to "completed"
+            new_transactions = result.persisted_count - result.flagged_count
             job.status = "completed"
             job.step = "done"
             job.progress = 100
@@ -114,6 +115,7 @@ def process_upload(self, job_id: str) -> dict:
                 "parsed_count": result.parsed_count,
                 "flagged_count": result.flagged_count,
                 "persisted_count": result.persisted_count,
+                "duplicates_skipped": result.duplicates_skipped,
             }
             job.updated_at = _utcnow()
             session.add(job)
@@ -123,6 +125,8 @@ def process_upload(self, job_id: str) -> dict:
                 "event": "job-complete",
                 "jobId": job_id,
                 "status": "completed",
+                "duplicatesSkipped": result.duplicates_skipped,
+                "newTransactions": new_transactions,
                 "totalInsights": 0,
             })
 

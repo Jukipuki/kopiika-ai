@@ -20,4 +20,4 @@ celery_app.conf.update(
     # Worker concurrency: default prefork pool, concurrency=2 for dev
 )
 
-celery_app.autodiscover_tasks(["app.tasks"])
+celery_app.conf.update(include=["app.tasks.processing_tasks"])

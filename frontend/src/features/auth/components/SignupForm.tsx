@@ -98,7 +98,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} method="POST" className="space-y-5" noValidate>
       {/* Email */}
       <div>
         <label

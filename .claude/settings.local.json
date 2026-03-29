@@ -202,7 +202,16 @@
       "Bash(.venv/bin/ruff check:*)",
       "Bash(python -m pytest tests/test_sse_streaming.py -v)",
       "Bash(python -m pytest tests/test_sse_streaming.py::TestSSEHeartbeat -v)",
-      "Bash(python -m pytest --tb=short)"
+      "Bash(python -m pytest --tb=short)",
+      "Bash(cat /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(dashboard\\\\\\)/upload/page.tsx)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/frontend/src/app/[locale]/\\\\\\(dashboard\\\\\\) -type f -name \"page.tsx\" -o -type d)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai/backend -name \"*.py\" -type f -exec grep -l \"Transaction\" {})",
+      "Bash(python -m pytest tests/test_transactions.py -v)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(node -e \"require\\(''@tanstack/react-query''\\); console.log\\(require\\(''@tanstack/react-query/package.json''\\).version\\)\")",
+      "Bash(backend/.venv/bin/python -c \":*)",
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai -name *.env* -o -name docker-compose*.yml -o -name .env.example)"
     ]
   }
 }

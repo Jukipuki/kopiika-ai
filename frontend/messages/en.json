@@ -67,9 +67,20 @@
   "dashboard": {
     "title": "Kopiika AI",
     "settings": "Settings",
+    "history": "Upload history",
     "logOut": "Log out",
     "logOutSuccess": "You've been logged out successfully",
     "upload": "Upload statement"
+  },
+  "history": {
+    "title": "Upload History",
+    "noUploads": "No uploads yet. Upload a bank statement to get started.",
+    "loadMore": "Load more",
+    "transactionCount": "{count, plural, one {# transaction} other {# transactions}}",
+    "duplicatesSkipped": "{count, plural, one {# duplicate skipped} other {# duplicates skipped}}",
+    "statusCompleted": "Completed",
+    "statusProcessing": "Processing",
+    "statusFailed": "Failed"
   },
   "common": {
     "loading": "Loading...",
@@ -96,6 +107,9 @@
     "trustMessage": "Your data stays encrypted and private",
     "analyzing": "Analyzing your transactions...",
     "uploadSuccess": "File uploaded successfully!",
+    "completionSummary": "{newCount, plural, one {# new transaction} other {# new transactions}} added, {skippedCount, plural, one {# duplicate} other {# duplicates}} skipped",
+    "uploadAnother": "Upload another file",
+    "viewHistory": "View upload history",
     "tryAgain": "Try again",
     "errorInvalidFileType": "Only CSV and PDF files are supported.",
     "errorFileTooLarge": "This file is too large. Please upload files under 10MB.",

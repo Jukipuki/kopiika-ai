@@ -31,6 +31,8 @@ export interface JobCompleteEvent {
   jobId: string;
   status: "completed";
   totalInsights: number;
+  duplicatesSkipped?: number;
+  newTransactions?: number;
 }
 
 export interface JobFailedEvent {
@@ -47,6 +49,6 @@ export interface JobStatusState {
   step: string | null;
   progress: number;
   error: { code: string; message: string } | null;
-  result: { totalInsights: number } | null;
+  result: { totalInsights: number; duplicatesSkipped?: number; newTransactions?: number } | null;
   isConnected: boolean;
 }

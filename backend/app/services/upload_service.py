@@ -9,11 +9,13 @@ from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
+from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ValidationError
 from app.models.processing_job import ProcessingJob
+from app.models.transaction import Transaction
 from app.models.upload import Upload
 from app.services.format_detector import FormatDetectionResult, detect_format
 
@@ -298,3 +300,96 @@ async def create_upload_record(
     await session.refresh(job)
 
     return upload, job
+
+
+async def get_uploads_for_user(
+    session: SQLModelAsyncSession,
+    user_id: uuid.UUID,
+    cursor: str | None = None,
+    page_size: int = 20,
+) -> dict:
+    """Get paginated upload history for a user with transaction counts and job status.
+
+    Returns dict with items, total, next_cursor, has_more.
+    """
+    page_size = min(max(page_size, 1), 50)
+
+    # Total count
+    count_stmt = select(func.count()).select_from(Upload).where(Upload.user_id == user_id)
+    total = (await session.exec(count_stmt)).one()
+
+    # Main query with joined data
+    # We need: upload fields + transaction count + job status + duplicates_skipped
+    stmt = (
+        select(Upload)
+        .where(Upload.user_id == user_id)
+        .order_by(col(Upload.created_at).desc())
+    )
+
+    if cursor:
+        try:
+            cursor_upload = await session.get(Upload, uuid.UUID(cursor))
+        except ValueError:
+            cursor_upload = None
+        if cursor_upload:
+            stmt = stmt.where(
+                (col(Upload.created_at) < cursor_upload.created_at)
+                | (
+                    (col(Upload.created_at) == cursor_upload.created_at)
+                    & (col(Upload.id) < cursor_upload.id)
+                )
+            )
+
+    stmt = stmt.limit(page_size + 1)
+    uploads = list((await session.exec(stmt)).all())
+
+    has_more = len(uploads) > page_size
+    uploads = uploads[:page_size]
+    next_cursor = str(uploads[-1].id) if has_more and uploads else None
+
+    if not uploads:
+        return {"items": [], "total": total, "next_cursor": None, "has_more": False}
+
+    upload_ids = [upload.id for upload in uploads]
+
+    # Batch-load transaction counts — one query instead of N
+    txn_counts_stmt = (
+        select(Transaction.upload_id, func.count(Transaction.id).label("cnt"))
+        .where(col(Transaction.upload_id).in_(upload_ids))
+        .group_by(col(Transaction.upload_id))
+    )
+    txn_count_rows = (await session.exec(txn_counts_stmt)).all()
+    txn_counts: dict[uuid.UUID, int] = {row[0]: row[1] for row in txn_count_rows}
+
+    # Batch-load jobs — one query instead of N
+    jobs_stmt = select(ProcessingJob).where(col(ProcessingJob.upload_id).in_(upload_ids))
+    jobs = (await session.exec(jobs_stmt)).all()
+    jobs_by_upload: dict[uuid.UUID, ProcessingJob] = {job.upload_id: job for job in jobs}
+
+    items = []
+    for upload in uploads:
+        job = jobs_by_upload.get(upload.id)
+        txn_count = txn_counts.get(upload.id, 0)
+        duplicates_skipped = 0
+        job_status = "unknown"
+        if job:
+            job_status = job.status
+            if job.result_data and "duplicates_skipped" in job.result_data:
+                duplicates_skipped = job.result_data["duplicates_skipped"]
+
+        items.append({
+            "id": str(upload.id),
+            "file_name": upload.file_name,
+            "detected_format": upload.detected_format,
+            "created_at": upload.created_at.isoformat() + "Z",
+            "transaction_count": txn_count,
+            "duplicates_skipped": duplicates_skipped,
+            "status": job_status,
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }

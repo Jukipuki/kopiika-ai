@@ -2,10 +2,11 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { Upload, FileUp, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Upload, FileUp, AlertCircle, CheckCircle2, History } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Link } from "@/i18n/navigation";
 import { useUpload } from "../hooks/use-upload";
 import { useJobStatus } from "../hooks/use-job-status";
 import UploadProgress from "./UploadProgress";
@@ -252,13 +253,44 @@ export default function UploadDropzone() {
             <div className="flex flex-col items-center gap-3 text-center">
               <CheckCircle2 className="h-10 w-10 text-green-500" />
               <p className="text-sm font-medium text-foreground">{t("uploadSuccess")}</p>
+              {jobStatus.result && (
+                <p className="text-xs text-muted-foreground">
+                  {t("completionSummary", {
+                    newCount: jobStatus.result.newTransactions ?? 0,
+                    skippedCount: jobStatus.result.duplicatesSkipped ?? 0,
+                  })}
+                </p>
+              )}
               {formatLabelKey && (
                 <p className="text-xs text-muted-foreground transition-opacity duration-250">
                   <CheckCircle2 className="mr-1 inline h-3 w-3 text-green-500" />
                   {t(formatLabelKey)}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground/70">{t("trustMessage")}</p>
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveJobId(null);
+                    setSelectedFile(null);
+                    setLastUploadResult(null);
+                    clearError();
+                  }}
+                  className="min-h-[44px]"
+                >
+                  {t("uploadAnother")}
+                </Button>
+                <Link
+                  href="/history"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  {t("viewHistory")}
+                </Link>
+              </div>
             </div>
           )}
 

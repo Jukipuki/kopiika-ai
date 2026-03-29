@@ -142,9 +142,11 @@ async def stream_job_progress(
     job_id_str = str(job_id)
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        # Subscribe FIRST, then check state — avoids race condition where
-        # events published between state-check and subscribe would be lost.
-        subscriber = subscribe_job_progress(job_id_str)
+        # Await subscribe_job_progress so the Redis subscription is ACTIVE
+        # before we read stored state — prevents the race condition where a
+        # fast-completing task publishes job-complete between state-check and
+        # subscribe, causing the stream to hang indefinitely.
+        subscriber = await subscribe_job_progress(job_id_str)
         try:
             # Send current state immediately (supports reconnection — AC #5)
             current_state = await get_job_state(job_id_str)
@@ -183,7 +185,13 @@ async def stream_job_progress(
                     if event_type in ("job-complete", "job-failed"):
                         break
                 except asyncio.TimeoutError:
-                    # Send heartbeat/keepalive to prevent proxy timeouts
+                    # Fallback: re-check Redis state in case an event was
+                    # published in the window before subscription was active.
+                    latest = await get_job_state(job_id_str)
+                    if latest and latest.get("event") in ("job-complete", "job-failed"):
+                        event_type = latest["event"]
+                        yield f"event: {event_type}\ndata: {json.dumps(latest)}\n\n"
+                        break
                     yield ": heartbeat\n\n"
                 except StopAsyncIteration:
                     break

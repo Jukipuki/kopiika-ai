@@ -16,6 +16,13 @@ vi.mock("next-auth/react", () => ({
   useSession: () => mockUseSession(),
 }));
 
+// Mock @/i18n/navigation
+vi.mock("@/i18n/navigation", () => ({
+  Link: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
 // Mock sonner
 const mockToastSuccess = vi.fn();
 vi.mock("sonner", () => ({

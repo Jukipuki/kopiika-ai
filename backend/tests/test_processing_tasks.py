@@ -227,6 +227,7 @@ class TestProcessUploadPartialResults:
             txn = Transaction(
                 user_id=user_id, upload_id=upload_id, date=_utcnow(),
                 description="Partial txn", amount=-100, currency_code="UAH",
+                dedup_hash="fakehash_partial_test",
             )
             session.add(txn)
             session.flush()

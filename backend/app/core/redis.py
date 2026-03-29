@@ -67,26 +67,33 @@ async def get_job_state(job_id: str) -> dict | None:
 
 
 async def subscribe_job_progress(job_id: str) -> AsyncGenerator[dict, None]:
-    """Subscribe to job progress events via Redis pub/sub.
+    """Subscribe to job progress events via Redis pub/sub (subscribes EAGERLY).
 
-    Yields parsed event dicts. Terminates when a terminal event
-    (job-complete or job-failed) is received.
+    This is a coroutine that subscribes to the channel before returning, so
+    the subscription is active before the caller checks stored state — preventing
+    the race condition where a fast-completing task publishes events before the
+    caller starts listening.
+
+    Returns an async generator that yields parsed event dicts and terminates
+    after a terminal event (job-complete or job-failed).
     """
     channel = JOB_PROGRESS_CHANNEL.format(job_id=job_id)
     client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
     pubsub = client.pubsub()
-    try:
-        await pubsub.subscribe(channel)
-        async for message in pubsub.listen():
-            if message["type"] != "message":
-                continue
-            data = json.loads(message["data"])
-            yield data
-            # Stop after terminal events
-            event_type = data.get("event")
-            if event_type in ("job-complete", "job-failed"):
-                break
-    finally:
-        await pubsub.unsubscribe(channel)
-        await pubsub.aclose()
-        await client.aclose()
+    await pubsub.subscribe(channel)  # Subscribe NOW, before caller checks state
+
+    async def _listener() -> AsyncGenerator[dict, None]:
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                data = json.loads(message["data"])
+                yield data
+                if data.get("event") in ("job-complete", "job-failed"):
+                    break
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+            await client.aclose()
+
+    return _listener()

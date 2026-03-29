@@ -67,9 +67,20 @@
   "dashboard": {
     "title": "Копійка AI",
     "settings": "Налаштування",
+    "history": "Історія завантажень",
     "logOut": "Вийти",
     "logOutSuccess": "Ви успішно вийшли з облікового запису",
     "upload": "Завантажити виписку"
+  },
+  "history": {
+    "title": "Історія завантажень",
+    "noUploads": "Ще немає завантажень. Завантажте банківську виписку, щоб почати.",
+    "loadMore": "Завантажити ще",
+    "transactionCount": "{count, plural, one {# транзакція} few {# транзакції} many {# транзакцій} other {# транзакцій}}",
+    "duplicatesSkipped": "{count, plural, one {# дублікат пропущено} few {# дублікати пропущено} many {# дублікатів пропущено} other {# дублікатів пропущено}}",
+    "statusCompleted": "Завершено",
+    "statusProcessing": "Обробка",
+    "statusFailed": "Помилка"
   },
   "common": {
     "loading": "Завантаження...",
@@ -96,6 +107,9 @@
     "trustMessage": "Ваші дані зашифровані та захищені",
     "analyzing": "Аналізуємо ваші транзакції...",
     "uploadSuccess": "Файл успішно завантажено!",
+    "completionSummary": "{newCount, plural, one {# нова транзакція} few {# нових транзакції} many {# нових транзакцій} other {# нових транзакцій}} додано, {skippedCount, plural, one {# дублікат} few {# дублікати} many {# дублікатів} other {# дублікатів}} пропущено",
+    "uploadAnother": "Завантажити ще файл",
+    "viewHistory": "Історія завантажень",
     "tryAgain": "Спробувати ще",
     "errorInvalidFileType": "Підтримуються лише файли CSV та PDF.",
     "errorFileTooLarge": "Цей файл занадто великий. Завантажуйте файли розміром до 10 МБ.",
