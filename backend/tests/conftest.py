@@ -1,6 +1,8 @@
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis
+import fakeredis.aioredis
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -14,6 +16,55 @@ from app.services.cognito_service import CognitoService
 from app.services.rate_limiter import RateLimiter
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+
+
+# ---------------------------------------------------------------------------
+# Redis isolation: replace all Redis connections with in-memory fakeredis.
+# This prevents tests from requiring a live Redis instance.
+#
+# Root causes addressed:
+#   1. publish_job_progress() creates a fresh sync Redis connection per call.
+#   2. Celery's Redis backend tries to store/subscribe to task results.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session", autouse=True)
+def celery_memory_backend():
+    """Reconfigure Celery to use in-memory broker + backend for the test session.
+
+    Without this, calling process_upload() directly (even without .delay()) goes
+    through Celery's task machinery, which tries to store the result in Redis.
+    """
+    from app.tasks.celery_app import celery_app
+
+    original_broker = celery_app.conf.broker_url
+    original_backend = celery_app.conf.result_backend
+    celery_app.conf.update(
+        broker_url="memory://",
+        result_backend="cache+memory://",
+    )
+    yield
+    celery_app.conf.update(
+        broker_url=original_broker,
+        result_backend=original_backend,
+    )
+
+
+@pytest.fixture(autouse=True)
+def fake_redis():
+    """Patch all Redis connections in app.core.redis with in-memory fakeredis.
+
+    A shared FakeServer keeps sync and async clients in the same keyspace so
+    pub/sub tests that publish from sync and subscribe from async still work.
+    """
+    server = fakeredis.FakeServer()
+    sync_client = fakeredis.FakeRedis(server=server, decode_responses=True)
+    async_client = fakeredis.aioredis.FakeRedis(server=server, decode_responses=True)
+
+    with (
+        patch("app.core.redis.sync_redis.from_url", return_value=sync_client),
+        patch("app.core.redis.aioredis.from_url", return_value=async_client),
+    ):
+        yield
 
 
 @pytest_asyncio.fixture

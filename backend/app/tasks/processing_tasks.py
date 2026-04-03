@@ -6,11 +6,15 @@ import boto3
 from botocore.exceptions import ClientError
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy.exc import OperationalError
+from sqlmodel import select
 
+from app.agents.pipeline import financial_pipeline
+from app.agents.state import FinancialPipelineState
 from app.core.config import settings
 from app.core.database import get_sync_session
 from app.core.redis import publish_job_progress
 from app.models.processing_job import ProcessingJob
+from app.models.transaction import Transaction
 from app.models.upload import Upload
 from app.services.format_detector import FormatDetectionResult
 from app.services.parser_service import (
@@ -105,10 +109,92 @@ def process_upload(self, job_id: str) -> dict:
                 format_result=format_result,
             )
 
-            # 7. Update ProcessingJob to "completed"
+            # 7. Run categorization pipeline
             new_transactions = result.persisted_count - result.flagged_count
+            categorization_count = 0
+            flagged_count_categorization = 0
+            total_tokens_used = 0
+
+            publish_job_progress(job_id, {
+                "event": "pipeline-progress",
+                "jobId": job_id,
+                "step": "categorization",
+                "progress": 40,
+                "message": f"Categorizing {new_transactions} transactions...",
+            })
+
+            try:
+                # Query stored transactions for this upload
+                transactions_for_pipeline = session.exec(
+                    select(Transaction).where(Transaction.upload_id == upload.id)
+                ).all()
+
+                initial_state: FinancialPipelineState = {
+                    "job_id": job_id,
+                    "user_id": str(job.user_id),
+                    "upload_id": str(upload.id),
+                    "transactions": [
+                        {
+                            "id": str(t.id),
+                            "mcc": t.mcc,
+                            "description": t.description,
+                            "amount": t.amount,
+                            "date": str(t.date),
+                        }
+                        for t in transactions_for_pipeline
+                    ],
+                    "categorized_transactions": [],
+                    "errors": [],
+                    "step": "categorization",
+                    "total_tokens_used": 0,
+                }
+
+                result_state = financial_pipeline.invoke(initial_state)
+
+                # Bulk-update transactions with categorization results
+                cat_lookup = {
+                    cat["transaction_id"]: cat
+                    for cat in result_state["categorized_transactions"]
+                }
+                txns = session.exec(
+                    select(Transaction).where(Transaction.upload_id == upload.id)
+                ).all()
+                for txn in txns:
+                    cat = cat_lookup.get(str(txn.id))
+                    if cat:
+                        txn.category = cat["category"]
+                        txn.confidence_score = cat["confidence_score"]
+                        txn.is_flagged_for_review = cat["flagged"]
+                        session.add(txn)
+                session.commit()
+
+                categorization_count = len(result_state["categorized_transactions"])
+                flagged_count_categorization = sum(
+                    1 for c in result_state["categorized_transactions"] if c.get("flagged")
+                )
+                total_tokens_used = result_state.get("total_tokens_used", 0)
+
+                publish_job_progress(job_id, {
+                    "event": "pipeline-progress",
+                    "jobId": job_id,
+                    "step": "categorization",
+                    "progress": 70,
+                    "message": "Categorization complete",
+                })
+
+            except Exception as cat_exc:
+                logger.warning(
+                    "Categorization failed (job stays completed): %s",
+                    cat_exc,
+                    extra={"job_id": job_id},
+                )
+                job.step = "categorization_failed"
+                # Continue — transactions are stored even without categories
+
+            # 8. Update ProcessingJob to "completed"
             job.status = "completed"
-            job.step = "done"
+            if job.step != "categorization_failed":
+                job.step = "done"
             job.progress = 100
             job.result_data = {
                 "total_rows": result.total_rows,
@@ -116,6 +202,9 @@ def process_upload(self, job_id: str) -> dict:
                 "flagged_count": result.flagged_count,
                 "persisted_count": result.persisted_count,
                 "duplicates_skipped": result.duplicates_skipped,
+                "categorization_count": categorization_count,
+                "flagged_count_categorization": flagged_count_categorization,
+                "total_tokens_used": total_tokens_used,
             }
             job.updated_at = _utcnow()
             session.add(job)

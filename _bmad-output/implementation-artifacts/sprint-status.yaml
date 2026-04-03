@@ -63,8 +63,8 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: AI-Powered Financial Insights & Teaching Feed
-  epic-3: backlog
-  3-1-transaction-categorization-agent: backlog
+  epic-3: in-progress
+  3-1-transaction-categorization-agent: done
   3-2-rag-financial-literacy-corpus-creation: backlog
   3-3-rag-knowledge-base-education-agent: backlog
   3-4-teaching-feed-api-data-model: backlog
@@ -73,6 +73,41 @@ development_status:
   3-7-progressive-card-appearance-sse-integration: backlog
   3-8-adaptive-education-depth: backlog
   epic-3-retrospective: optional
+
+  # ── POST-EPIC 3 ACTION: Migrate LLM clients to AWS Bedrock ──────────────
+  # (See also: AgentCore note below — do Bedrock migration first)
+  # When all Epic 3 stories are done, migrate before going to production:
+  #   - Replace langchain-anthropic (ChatAnthropic) + langchain-openai (ChatOpenAI)
+  #     with langchain-aws (ChatBedrock) in backend/app/agents/categorization/node.py
+  #   - Change points: _get_llm_client() and _get_fallback_llm_client() only
+  #   - Choose a Bedrock-hosted fallback model (Llama 3 / Mistral) — gpt-4o-mini
+  #     is NOT on Bedrock and will need a replacement
+  #   - Add bedrock:InvokeModel permission to ECS Celery worker task role (IAM)
+  #   - Verify claude-haiku model availability in eu-central-1; may need
+  #     cross-region inference profile if the model isn't in Frankfurt yet
+  #   - Rationale: financial transaction data stays inside AWS VPC (GDPR/data
+  #     residency), no API key rotation, IAM ambient auth, consolidated billing
+  #   - Estimated effort: 1–2 days after agent architecture is stable
+  # ────────────────────────────────────────────────────────────────────────
+
+  # ── FUTURE CONSIDERATION: AWS AgentCore ─────────────────────────────────
+  # Do NOT use AgentCore for Epic 3 agents — they are batch pipeline processors
+  # (LangGraph nodes invoked synchronously from Celery), not interactive agents.
+  # AgentCore solves a different problem: stateful, multi-turn, session-based agents.
+  #
+  # Revisit AgentCore if a future epic adds a conversational feature, e.g.:
+  #   - "Chat with your finances" (user asks questions, agent queries their DB)
+  #   - Proactive financial coach (agent initiates conversations on new data)
+  #   - Multi-step advisor with memory across sessions
+  #
+  # Prerequisites before adopting AgentCore:
+  #   1. Complete Bedrock migration first (see note above) — AgentCore requires Bedrock
+  #   2. Agents need to be rewritten as AgentCore-compatible session handlers
+  #   3. Celery orchestration is replaced by event-driven AgentCore invocations
+  #
+  # Cost: AgentCore adds runtime charges on top of LLM token costs.
+  # Effort: High refactoring — only justified for genuinely interactive agent features.
+  # ────────────────────────────────────────────────────────────────────────
 
   # Epic 4: Cumulative Financial Profile & Health Score
   epic-4: backlog

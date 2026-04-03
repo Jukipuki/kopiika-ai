@@ -24,3 +24,6 @@ class Transaction(SQLModel, table=True):
     raw_data: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     dedup_hash: str = Field(index=True)
     created_at: datetime = Field(default_factory=_utcnow)
+    category: Optional[str] = Field(default=None, max_length=50)
+    confidence_score: Optional[float] = Field(default=None)
+    is_flagged_for_review: bool = Field(default=False)

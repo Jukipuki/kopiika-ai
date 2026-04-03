@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -29,6 +30,12 @@ class Settings(BaseSettings):
     # S3
     S3_UPLOADS_BUCKET: str = ""
     S3_REGION: str = "eu-central-1"
+
+    # LLM API Keys
+    ANTHROPIC_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    CATEGORIZATION_CONFIDENCE_THRESHOLD: float = 0.7
+    CATEGORIZATION_BATCH_SIZE: int = 50
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

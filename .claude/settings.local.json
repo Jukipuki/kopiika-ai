@@ -211,7 +211,16 @@
       "Bash(python -m pytest tests/ -q)",
       "Bash(node -e \"require\\(''@tanstack/react-query''\\); console.log\\(require\\(''@tanstack/react-query/package.json''\\).version\\)\")",
       "Bash(backend/.venv/bin/python -c \":*)",
-      "Bash(find /Users/ohumennyi/Personal/kopiika-ai -name *.env* -o -name docker-compose*.yml -o -name .env.example)"
+      "Bash(find /Users/ohumennyi/Personal/kopiika-ai -name *.env* -o -name docker-compose*.yml -o -name .env.example)",
+      "Bash(python -c \"import langgraph; print\\(langgraph.__version__\\)\")",
+      "Bash(.venv/bin/python -m pytest tests/agents/test_categorization.py -v)",
+      "Bash(.venv/bin/python -m pytest --tb=short -q)",
+      "Bash(.venv/bin/python -m pytest --tb=no -q)",
+      "Bash(.venv/bin/python -m pytest --ignore=tests/agents --tb=no -q)",
+      "Bash(.venv/bin/python -c \"import fakeredis; import fakeredis.aioredis; print\\(''fakeredis'', fakeredis.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"import fakeredis; import fakeredis.aioredis; print\\(''ok'', fakeredis.__version__\\)\")",
+      "Bash(python -m pytest tests/agents/test_categorization.py -v)",
+      "Bash(python -m pytest --ignore=tests/agents -q)"
     ]
   }
 }

@@ -8,7 +8,12 @@ cp .env.example .env          # fill in Cognito credentials
 uv sync                       # install dependencies
 .venv/bin/alembic upgrade head # run migrations
 .venv/bin/uvicorn app.main:app --reload
-3. Frontend (Next.js on :3000)
+3. Celery worker
+
+cd backend
+source .venv/bin/activate
+celery -A app.tasks.celery_app:celery_app worker --loglevel=info --concurrency=2
+4. Frontend (Next.js on :3000)
 
 cd frontend
 cp .env.example .env.local    # fill in Cognito + NEXTAUTH_SECRET
