@@ -21,6 +21,39 @@ vi.mock("@/i18n/navigation", () => ({
     React.createElement("a", { href, ...props }, children),
 }));
 
+// HTML-safe attributes to forward to the rendered div
+const MOTION_HTML_PROPS = new Set([
+  "children",
+  "className",
+  "id",
+  "style",
+  "tabIndex",
+  "role",
+  "onClick",
+  "onKeyDown",
+  "aria-label",
+  "aria-live",
+  "data-testid",
+]);
+
+// Mock motion/react for CardStackNavigator used inside FeedContainer
+vi.mock("motion/react", () => ({
+  motion: {
+    div: (props: Record<string, unknown>) => {
+      const htmlProps: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(props)) {
+        if (MOTION_HTML_PROPS.has(k) || k.startsWith("aria-") || k.startsWith("data-")) {
+          htmlProps[k] = v;
+        }
+      }
+      return React.createElement("div", htmlProps, props.children as React.ReactNode);
+    },
+  },
+  AnimatePresence: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children),
+  useReducedMotion: () => false,
+}));
+
 const mockItems: InsightCard[] = [
   {
     id: "uuid-1",
@@ -81,7 +114,7 @@ describe("FeedContainer", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
   });
 
-  it("renders insight cards on success", async () => {
+  it("renders first insight card on success (stack shows card at index 0)", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -91,7 +124,8 @@ describe("FeedContainer", () => {
     await waitFor(() =>
       expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
     );
-    expect(screen.getByText("Utility bills increased")).toBeInTheDocument();
+    // Only the first card is visible in the stack (not all cards at once)
+    expect(screen.queryByText("Utility bills increased")).not.toBeInTheDocument();
   });
 
   it("shows empty state when items is empty array", async () => {
@@ -126,5 +160,7 @@ describe("FeedContainer", () => {
     await waitFor(() =>
       expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
     );
+    // Stack shows first card only after successful retry
+    expect(screen.queryByText("Utility bills increased")).not.toBeInTheDocument();
   });
 });

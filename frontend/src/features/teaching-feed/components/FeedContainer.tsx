@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTeachingFeed } from "../hooks/use-teaching-feed";
-import { InsightCard } from "./InsightCard";
+import { CardStackNavigator } from "./CardStackNavigator";
 import { SkeletonCard } from "./SkeletonCard";
 
 export function FeedContainer() {
@@ -58,13 +58,5 @@ export function FeedContainer() {
     );
   }
 
-  return (
-    <ul className="flex flex-col gap-4">
-      {data.map((insight) => (
-        <li key={insight.id}>
-          <InsightCard insight={insight} />
-        </li>
-      ))}
-    </ul>
-  );
+  return <CardStackNavigator cards={data} />;
 }

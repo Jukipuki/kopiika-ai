@@ -69,7 +69,7 @@ development_status:
   3-3-rag-knowledge-base-education-agent: done
   3-4-teaching-feed-api-data-model: done
   3-5-teaching-feed-card-ui-progressive-disclosure: done
-  3-6-card-stack-navigation-gestures: backlog
+  3-6-card-stack-navigation-gestures: done
   3-7-progressive-card-appearance-sse-integration: backlog
   3-8-adaptive-education-depth: backlog
   epic-3-retrospective: optional
