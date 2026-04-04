@@ -65,7 +65,7 @@ development_status:
   # Epic 3: AI-Powered Financial Insights & Teaching Feed
   epic-3: in-progress
   3-1-transaction-categorization-agent: done
-  3-2-rag-financial-literacy-corpus-creation: backlog
+  3-2-rag-financial-literacy-corpus-creation: done
   3-3-rag-knowledge-base-education-agent: backlog
   3-4-teaching-feed-api-data-model: backlog
   3-5-teaching-feed-card-ui-progressive-disclosure: backlog
