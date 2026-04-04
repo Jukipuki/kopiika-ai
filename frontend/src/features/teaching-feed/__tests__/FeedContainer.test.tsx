@@ -11,6 +11,11 @@ vi.mock("next-auth/react", () => ({
   useSession: () => mockUseSession(),
 }));
 
+// Mock use-feed-sse
+vi.mock("../hooks/use-feed-sse", () => ({
+  useFeedSSE: () => ({ pendingInsightIds: [], isStreaming: false, phase: null }),
+}));
+
 // Mock fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;

@@ -185,6 +185,7 @@ def process_upload(self, job_id: str) -> dict:
 
                 # Persist insight cards from education agent
                 insight_cards = result_state.get("insight_cards", [])
+                insights: list[Insight] = []
                 if insight_cards:
                     for card in insight_cards:
                         insight = Insight(
@@ -198,6 +199,7 @@ def process_upload(self, job_id: str) -> dict:
                             category=card.get("category", "other"),
                         )
                         session.add(insight)
+                        insights.append(insight)
                     session.commit()
 
                 publish_job_progress(job_id, {
@@ -215,6 +217,15 @@ def process_upload(self, job_id: str) -> dict:
                     "progress": 80,
                     "message": f"Generated {len(insight_cards)} financial insights",
                 })
+
+                if insights:
+                    for insight in insights:
+                        publish_job_progress(job_id, {
+                            "event": "insight-ready",
+                            "jobId": job_id,
+                            "insightId": str(insight.id),
+                            "type": insight.category,
+                        })
 
             except Exception as cat_exc:
                 logger.warning(

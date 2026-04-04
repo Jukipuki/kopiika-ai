@@ -8,11 +8,18 @@ export async function generateMetadata() {
   };
 }
 
-export default function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const { jobId } = await searchParams;
+  const jobIdStr = typeof jobId === "string" ? jobId : undefined;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold">Teaching Feed</h1>
-      <FeedContainer />
+      <FeedContainer jobId={jobIdStr} />
     </div>
   );
 }

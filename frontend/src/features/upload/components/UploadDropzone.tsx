@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Upload, FileUp, AlertCircle, CheckCircle2, History } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useUpload } from "../hooks/use-upload";
 import { useJobStatus } from "../hooks/use-job-status";
 import UploadProgress from "./UploadProgress";
@@ -48,6 +48,7 @@ const FORMAT_LABEL_MAP: Record<string, string> = {
 
 export default function UploadDropzone() {
   const t = useTranslations("upload");
+  const router = useRouter();
   const { upload, isUploading, error, clearError, formatResult } = useUpload();
   const [dragState, setDragState] = useState<UploadState>("idle");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -61,6 +62,12 @@ export default function UploadDropzone() {
   const isProcessing = activeJobId !== null && jobStatus.status !== "completed" && jobStatus.status !== "failed" && jobStatus.status !== "idle";
   const processingComplete = jobStatus.status === "completed";
   const processingFailed = jobStatus.status === "failed";
+
+  useEffect(() => {
+    if (activeJobId && lastUploadResult) {
+      router.push(`/feed?jobId=${activeJobId}`);
+    }
+  }, [activeJobId, lastUploadResult, router]);
 
   const getState = (): UploadState => {
     if (error) return "error";

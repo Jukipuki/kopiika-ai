@@ -1,18 +1,39 @@
 "use client";
 
+import { useEffect } from "react";
 import { Link } from "@/i18n/navigation";
+import { useSession } from "next-auth/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTeachingFeed } from "../hooks/use-teaching-feed";
+import { useFeedSSE } from "../hooks/use-feed-sse";
 import { CardStackNavigator } from "./CardStackNavigator";
 import { SkeletonCard } from "./SkeletonCard";
+import { ProgressiveLoadingState } from "./ProgressiveLoadingState";
 
-export function FeedContainer() {
+interface FeedContainerProps {
+  jobId?: string;
+}
+
+export function FeedContainer({ jobId }: FeedContainerProps) {
+  const { data: session } = useSession();
   const { data, isLoading, isError } = useTeachingFeed();
   const queryClient = useQueryClient();
+  const { pendingInsightIds, isStreaming, phase } = useFeedSSE(jobId ?? null, session?.accessToken);
 
-  if (isLoading) {
+  // Refetch feed data as new insights arrive from SSE
+  useEffect(() => {
+    if (pendingInsightIds.length > 0) {
+      queryClient.invalidateQueries({ queryKey: ["teaching-feed"] });
+    }
+  }, [pendingInsightIds.length, queryClient]);
+
+  if (isStreaming && (!data || data.length === 0)) {
+    return <ProgressiveLoadingState phase={phase} />;
+  }
+
+  if (isLoading && !isStreaming) {
     return (
       <ul className="flex flex-col gap-4" aria-label="Loading insights">
         {[1, 2, 3].map((i) => (
@@ -58,5 +79,10 @@ export function FeedContainer() {
     );
   }
 
-  return <CardStackNavigator cards={data} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <CardStackNavigator cards={data} />
+      {isStreaming && <ProgressiveLoadingState phase={phase} />}
+    </div>
+  );
 }

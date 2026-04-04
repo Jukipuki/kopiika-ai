@@ -3,7 +3,7 @@ import io
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -250,6 +250,118 @@ class TestProcessUploadPartialResults:
             txns = s.exec(select(Transaction)).all()
             assert len(txns) == 1
             assert txns[0].description == "Partial txn"
+
+
+class TestInsightReadySSEEvents:
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_insight_ready_events_emitted_per_insight(
+        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+    ):
+        """After batch commit, one insight-ready event is emitted per persisted insight."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        insight_cards = [
+            {
+                "headline": "Food spending up",
+                "key_metric": "₴1000",
+                "why_it_matters": "Matters",
+                "deep_dive": "Details",
+                "severity": "high",
+                "category": "food",
+            },
+            {
+                "headline": "Transport costs",
+                "key_metric": "₴500",
+                "why_it_matters": "Matters",
+                "deep_dive": "Details",
+                "severity": "medium",
+                "category": "transport",
+            },
+        ]
+
+        mock_pipeline.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": insight_cards,
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+
+        process_upload(str(job_id))
+
+        # Collect all insight-ready calls
+        insight_ready_calls = [
+            c for c in mock_publish.call_args_list
+            if c.args[1].get("event") == "insight-ready"
+        ]
+
+        assert len(insight_ready_calls) == 2
+
+        categories = {c.args[1]["type"] for c in insight_ready_calls}
+        assert categories == {"food", "transport"}
+
+        for c in insight_ready_calls:
+            payload = c.args[1]
+            assert payload["jobId"] == str(job_id)
+            assert "insightId" in payload
+            assert payload["insightId"] != ""
+
+        # Verify event ordering: education pipeline-progress must come BEFORE insight-ready
+        all_events = [c.args[1]["event"] for c in mock_publish.call_args_list]
+        education_idx = next(
+            i for i, c in enumerate(mock_publish.call_args_list)
+            if c.args[1].get("event") == "pipeline-progress" and c.args[1].get("step") == "education"
+        )
+        first_insight_idx = next(
+            i for i, c in enumerate(mock_publish.call_args_list)
+            if c.args[1].get("event") == "insight-ready"
+        )
+        assert education_idx < first_insight_idx, (
+            f"Education progress event (index {education_idx}) must come before "
+            f"first insight-ready event (index {first_insight_idx})"
+        )
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_no_insight_ready_events_when_no_insights(
+        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+    ):
+        """No insight-ready events emitted when pipeline produces no insight cards."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_pipeline.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+
+        process_upload(str(job_id))
+
+        insight_ready_calls = [
+            c for c in mock_publish.call_args_list
+            if c.args[1].get("event") == "insight-ready"
+        ]
+
+        assert len(insight_ready_calls) == 0
 
 
 class TestProcessUploadPerformance:
