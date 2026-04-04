@@ -225,7 +225,8 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('test script:', d.get\\('scripts',{}\\).get\\('test',''\\)\\); print\\('vitest dep:', 'vitest' in d.get\\('dependencies',{}\\), 'vitest devDep:', 'vitest' in d.get\\('devDependencies',{}\\)\\)\")",
       "Bash(python3 -c ':*)",
       "Bash(grep -rn '₴[0-9]\\\\{1,3\\\\},[0-9]\\\\{3\\\\}' backend/data/rag-corpus/uk/)",
-      "Bash(.venv/bin/python -m ruff check app/rag/ app/agents/education/ app/models/embedding.py app/models/insight.py app/tasks/processing_tasks.py app/agents/pipeline.py app/agents/state.py tests/agents/test_education.py tests/test_rag_retrieval.py tests/test_embeddings.py)"
+      "Bash(.venv/bin/python -m ruff check app/rag/ app/agents/education/ app/models/embedding.py app/models/insight.py app/tasks/processing_tasks.py app/agents/pipeline.py app/agents/state.py tests/agents/test_education.py tests/test_rag_retrieval.py tests/test_embeddings.py)",
+      "Bash(find frontend/src/features/teaching-feed frontend/src/app/*/\\\\\\(dashboard\\\\\\)/feed -type f)"
     ]
   }
 }

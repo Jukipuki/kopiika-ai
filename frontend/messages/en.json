@@ -70,7 +70,8 @@
     "history": "Upload history",
     "logOut": "Log out",
     "logOutSuccess": "You've been logged out successfully",
-    "upload": "Upload statement"
+    "upload": "Upload statement",
+    "feed": "Teaching Feed"
   },
   "history": {
     "title": "Upload History",
@@ -171,5 +172,8 @@
     "language": "Language",
     "preferenceSaved": "Preference saved",
     "saveFailed": "Failed to save preference"
+  },
+  "feed": {
+    "title": "Teaching Feed"
   }
 }
