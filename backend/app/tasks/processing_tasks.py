@@ -13,9 +13,11 @@ from app.agents.state import FinancialPipelineState
 from app.core.config import settings
 from app.core.database import get_sync_session
 from app.core.redis import publish_job_progress
+from app.models.insight import Insight
 from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
 from app.models.upload import Upload
+from app.models.user import User
 from app.services.format_detector import FormatDetectionResult
 from app.services.parser_service import (
     UnsupportedFormatError,
@@ -123,11 +125,16 @@ def process_upload(self, job_id: str) -> dict:
                 "message": f"Categorizing {new_transactions} transactions...",
             })
 
+            insight_cards = []
             try:
                 # Query stored transactions for this upload
                 transactions_for_pipeline = session.exec(
                     select(Transaction).where(Transaction.upload_id == upload.id)
                 ).all()
+
+                # Resolve user locale for education agent
+                user = session.get(User, job.user_id)
+                locale = user.locale if user else "uk"
 
                 initial_state: FinancialPipelineState = {
                     "job_id": job_id,
@@ -147,6 +154,8 @@ def process_upload(self, job_id: str) -> dict:
                     "errors": [],
                     "step": "categorization",
                     "total_tokens_used": 0,
+                    "locale": locale,
+                    "insight_cards": [],
                 }
 
                 result_state = financial_pipeline.invoke(initial_state)
@@ -174,12 +183,37 @@ def process_upload(self, job_id: str) -> dict:
                 )
                 total_tokens_used = result_state.get("total_tokens_used", 0)
 
+                # Persist insight cards from education agent
+                insight_cards = result_state.get("insight_cards", [])
+                if insight_cards:
+                    for card in insight_cards:
+                        insight = Insight(
+                            user_id=job.user_id,
+                            upload_id=upload.id,
+                            headline=card.get("headline", ""),
+                            key_metric=card.get("key_metric", ""),
+                            why_it_matters=card.get("why_it_matters", ""),
+                            deep_dive=card.get("deep_dive", ""),
+                            severity=card.get("severity", "medium"),
+                            category=card.get("category", "other"),
+                        )
+                        session.add(insight)
+                    session.commit()
+
                 publish_job_progress(job_id, {
                     "event": "pipeline-progress",
                     "jobId": job_id,
                     "step": "categorization",
-                    "progress": 70,
+                    "progress": 60,
                     "message": "Categorization complete",
+                })
+
+                publish_job_progress(job_id, {
+                    "event": "pipeline-progress",
+                    "jobId": job_id,
+                    "step": "education",
+                    "progress": 80,
+                    "message": f"Generated {len(insight_cards)} financial insights",
                 })
 
             except Exception as cat_exc:
@@ -216,7 +250,7 @@ def process_upload(self, job_id: str) -> dict:
                 "status": "completed",
                 "duplicatesSkipped": result.duplicates_skipped,
                 "newTransactions": new_transactions,
-                "totalInsights": 0,
+                "totalInsights": len(insight_cards),
             })
 
             logger.info(

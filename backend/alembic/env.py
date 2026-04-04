@@ -5,7 +5,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 from app.core.config import settings
-from app.models import ProcessingJob, Upload, User  # noqa: F401 — ensure models are registered
+from app.models import DocumentEmbedding, FlaggedImportRow, Insight, ProcessingJob, Transaction, Upload, User  # noqa: F401
 
 config = context.config
 

@@ -66,7 +66,7 @@ development_status:
   epic-3: in-progress
   3-1-transaction-categorization-agent: done
   3-2-rag-financial-literacy-corpus-creation: done
-  3-3-rag-knowledge-base-education-agent: backlog
+  3-3-rag-knowledge-base-education-agent: done
   3-4-teaching-feed-api-data-model: backlog
   3-5-teaching-feed-card-ui-progressive-disclosure: backlog
   3-6-card-stack-navigation-gestures: backlog
@@ -78,16 +78,19 @@ development_status:
   # (See also: AgentCore note below — do Bedrock migration first)
   # When all Epic 3 stories are done, migrate before going to production:
   #   - Replace langchain-anthropic (ChatAnthropic) + langchain-openai (ChatOpenAI)
-  #     with langchain-aws (ChatBedrock) in backend/app/agents/categorization/node.py
-  #   - Change points: _get_llm_client() and _get_fallback_llm_client() only
+  #     with langchain-aws (ChatBedrock) in backend/app/agents/llm.py (shared module)
+  #   - Change points: get_llm_client() and get_fallback_llm_client() only (single file)
   #   - Choose a Bedrock-hosted fallback model (Llama 3 / Mistral) — gpt-4o-mini
   #     is NOT on Bedrock and will need a replacement
+  #   - Replace OpenAI text-embedding-3-small with Amazon Titan Text Embeddings V2
+  #     in backend/app/rag/embeddings.py (1536→1024 dims, re-run seed script,
+  #     update pgvector column + HNSW index via new Alembic migration)
   #   - Add bedrock:InvokeModel permission to ECS Celery worker task role (IAM)
   #   - Verify claude-haiku model availability in eu-central-1; may need
   #     cross-region inference profile if the model isn't in Frankfurt yet
   #   - Rationale: financial transaction data stays inside AWS VPC (GDPR/data
   #     residency), no API key rotation, IAM ambient auth, consolidated billing
-  #   - Estimated effort: 1–2 days after agent architecture is stable
+  #   - Estimated effort: 2–3 days after agent architecture is stable (includes embeddings migration)
   # ────────────────────────────────────────────────────────────────────────
 
   # ── FUTURE CONSIDERATION: AWS AgentCore ─────────────────────────────────

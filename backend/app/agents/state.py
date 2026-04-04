@@ -10,3 +10,5 @@ class FinancialPipelineState(TypedDict):
     errors: list[dict]                    # list of {step, error_code, message}
     step: str                             # current pipeline step name
     total_tokens_used: int                # LLM token tracking
+    locale: str                           # 'en' or 'uk', from user.locale
+    insight_cards: list[dict]             # output of education node

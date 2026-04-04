@@ -12,6 +12,7 @@ dependencies = [
     "langchain-anthropic>=0.3.0",
     "langchain-core>=0.3.0",
     "langchain-openai>=0.3.0",
+    "pgvector>=0.3.0",
     "langgraph>=0.2.0",
     "charset-normalizer>=3.4.0",
     "fastapi>=0.135.1",

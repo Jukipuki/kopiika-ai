@@ -12,32 +12,11 @@ from typing import Any
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.agents.categorization.mcc_mapping import VALID_CATEGORIES, get_mcc_category
+from app.agents.llm import get_fallback_llm_client, get_llm_client
 from app.agents.state import FinancialPipelineState
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-
-def _get_llm_client():
-    """Return the primary LLM client (Claude Haiku)."""
-    if settings.ANTHROPIC_API_KEY is None:
-        raise ValueError("ANTHROPIC_API_KEY not configured")
-    from langchain_anthropic import ChatAnthropic
-    return ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        api_key=settings.ANTHROPIC_API_KEY,
-    )
-
-
-def _get_fallback_llm_client():
-    """Return the fallback LLM client (GPT-4o-mini)."""
-    if settings.OPENAI_API_KEY is None:
-        raise ValueError("OPENAI_API_KEY not configured")
-    from langchain_openai import ChatOpenAI
-    return ChatOpenAI(
-        model="gpt-4o-mini",
-        api_key=settings.OPENAI_API_KEY,
-    )
 
 
 def _build_prompt(transactions: list[dict]) -> str:
@@ -157,7 +136,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
         llm_results: list[dict] = []
 
         try:
-            primary_llm = _get_llm_client()
+            primary_llm = get_llm_client()
             for i in range(0, len(needs_llm), batch_size):
                 batch = needs_llm[i : i + batch_size]
                 try:
@@ -169,7 +148,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         "Primary LLM failed for batch, trying fallback: %s", primary_exc
                     )
                     try:
-                        fallback_llm = _get_fallback_llm_client()
+                        fallback_llm = get_fallback_llm_client()
                         results, tokens = _categorize_batch(batch, fallback_llm)
                         llm_results.extend(results)
                         total_tokens += tokens
@@ -188,7 +167,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
             # Primary LLM not configured — try fallback directly
             logger.warning("Primary LLM not available: %s. Trying fallback.", exc)
             try:
-                fallback_llm = _get_fallback_llm_client()
+                fallback_llm = get_fallback_llm_client()
                 for i in range(0, len(needs_llm), batch_size):
                     batch = needs_llm[i : i + batch_size]
                     try:

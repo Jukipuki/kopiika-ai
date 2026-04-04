@@ -63,6 +63,8 @@ def _make_state(**overrides) -> FinancialPipelineState:
         "errors": [],
         "step": "categorization",
         "total_tokens_used": 0,
+        "locale": "uk",
+        "insight_cards": [],
     }
     base.update(overrides)
     return base
@@ -162,7 +164,7 @@ def test_categorization_node_all_mcc_mapped_no_llm_called():
     ]
     state = _make_state(transactions=transactions)
 
-    with patch("app.agents.categorization.node._get_llm_client") as mock_get_llm:
+    with patch("app.agents.categorization.node.get_llm_client") as mock_get_llm:
         result = categorization_node(state)
 
     mock_get_llm.assert_not_called()
@@ -212,7 +214,7 @@ def test_categorization_node_unmapped_mcc_calls_llm():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     mock_llm.invoke.assert_called_once()
@@ -236,7 +238,7 @@ def test_categorization_node_low_confidence_flagged():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     entry = result["categorized_transactions"][0]
@@ -256,7 +258,7 @@ def test_categorization_node_exactly_threshold_not_flagged():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     entry = result["categorized_transactions"][0]
@@ -284,8 +286,8 @@ def test_categorization_node_primary_fails_fallback_called():
     primary_llm.model = "claude-haiku-4-5-20251001"
 
     with (
-        patch("app.agents.categorization.node._get_llm_client", return_value=primary_llm),
-        patch("app.agents.categorization.node._get_fallback_llm_client", return_value=fallback_llm),
+        patch("app.agents.categorization.node.get_llm_client", return_value=primary_llm),
+        patch("app.agents.categorization.node.get_fallback_llm_client", return_value=fallback_llm),
     ):
         result = categorization_node(state)
 
@@ -310,8 +312,8 @@ def test_categorization_node_both_llms_fail_returns_other():
     fallback_llm.model = "gpt-4o-mini"
 
     with (
-        patch("app.agents.categorization.node._get_llm_client", return_value=primary_llm),
-        patch("app.agents.categorization.node._get_fallback_llm_client", return_value=fallback_llm),
+        patch("app.agents.categorization.node.get_llm_client", return_value=primary_llm),
+        patch("app.agents.categorization.node.get_fallback_llm_client", return_value=fallback_llm),
     ):
         result = categorization_node(state)
 
@@ -336,10 +338,10 @@ def test_categorization_node_no_api_key_uses_fallback():
 
     with (
         patch(
-            "app.agents.categorization.node._get_llm_client",
+            "app.agents.categorization.node.get_llm_client",
             side_effect=ValueError("ANTHROPIC_API_KEY not configured"),
         ),
-        patch("app.agents.categorization.node._get_fallback_llm_client", return_value=fallback_llm),
+        patch("app.agents.categorization.node.get_fallback_llm_client", return_value=fallback_llm),
     ):
         result = categorization_node(state)
 
@@ -353,11 +355,11 @@ def test_categorization_node_no_api_keys_at_all():
 
     with (
         patch(
-            "app.agents.categorization.node._get_llm_client",
+            "app.agents.categorization.node.get_llm_client",
             side_effect=ValueError("ANTHROPIC_API_KEY not configured"),
         ),
         patch(
-            "app.agents.categorization.node._get_fallback_llm_client",
+            "app.agents.categorization.node.get_fallback_llm_client",
             side_effect=ValueError("OPENAI_API_KEY not configured"),
         ),
     ):
@@ -386,7 +388,7 @@ def test_categorization_node_mixed_mcc_and_llm():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     assert len(result["categorized_transactions"]) == 2
@@ -411,7 +413,7 @@ def test_categorization_node_token_accumulation():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     assert result["total_tokens_used"] == 200
@@ -585,7 +587,7 @@ def test_categorization_node_invalid_llm_category_falls_back_to_other():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     entry = result["categorized_transactions"][0]
@@ -610,7 +612,7 @@ def test_categorization_node_batch_splitting_two_calls():
     mock_llm.invoke.return_value = mock_response
     mock_llm.model = "claude-haiku-4-5-20251001"
 
-    with patch("app.agents.categorization.node._get_llm_client", return_value=mock_llm):
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
         result = categorization_node(state)
 
     assert mock_llm.invoke.call_count == 2, "Expected 2 LLM calls for 51 txns with batch_size=50"
