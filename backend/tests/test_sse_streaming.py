@@ -334,9 +334,9 @@ class TestCeleryTaskPublishesProgress:
         assert result["parsed_count"] == 1
 
         calls = mock_publish.call_args_list
-        # 5 events: 10% (ingestion), 30% (parsing), 40% (categorization start),
-        # 70% (categorization done), job-complete
-        assert len(calls) == 5
+        # 6 events: 10% (ingestion), 30% (parsing), 40% (categorization start),
+        # 60% (categorization done), 80% (education done), job-complete
+        assert len(calls) == 6
 
         assert calls[0][0][1]["event"] == "pipeline-progress"
         assert calls[0][0][1]["progress"] == 10
@@ -350,10 +350,14 @@ class TestCeleryTaskPublishesProgress:
 
         assert calls[3][0][1]["event"] == "pipeline-progress"
         assert calls[3][0][1]["step"] == "categorization"
-        assert calls[3][0][1]["progress"] == 70
+        assert calls[3][0][1]["progress"] == 60
 
-        assert calls[4][0][1]["event"] == "job-complete"
-        assert calls[4][0][1]["status"] == "completed"
+        assert calls[4][0][1]["event"] == "pipeline-progress"
+        assert calls[4][0][1]["step"] == "education"
+        assert calls[4][0][1]["progress"] == 80
+
+        assert calls[5][0][1]["event"] == "job-complete"
+        assert calls[5][0][1]["status"] == "completed"
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
     @patch("app.tasks.processing_tasks.boto3.client")
