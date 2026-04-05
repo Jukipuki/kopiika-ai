@@ -12,6 +12,13 @@ workflowType: 'architecture'
 lastStep: 8
 status: 'complete'
 completedAt: '2026-03-16'
+lastEdited: '2026-04-05'
+editHistory:
+  - date: '2026-04-05'
+    changes: 'Integrated User Feedback System architecture (4-layer design from design-thinking session). Added feedback data model (card_feedback, feedback_responses, card_interactions extensions), feedback API endpoints, frontend/backend components, updated structure and mapping for FR45-FR55. Addressed compliance audit trail warning.'
+    inputDocuments:
+      - design-thinking-2026-04-05.md
+      - validation-report-2026-04-05.md
 inputDocuments:
   - product-brief-kopiika-ai-2026-03-15.md
   - prd.md
@@ -23,11 +30,15 @@ inputDocuments:
   - integration-patterns-rag-multi-agent-pipeline-research-2026-03-15.md
   - api-design-data-format-integration-research-2026-03-15.md
   - technical-ai-financial-data-pipeline-research-2026-03-15.md
+  - design-thinking-2026-04-05.md
+  - validation-report-2026-04-05.md
 documentCounts:
   briefs: 1
   prd: 1
   uxDesign: 1
   research: 7
+  designThinking: 1
+  validationReports: 1
   projectDocs: 0
   projectContext: 0
 workflowType: 'architecture'
@@ -108,6 +119,8 @@ The PRD defines 11 core V1 features organized into four architectural domains:
 7. **Data Encryption & Privacy** — Encryption at rest and in transit, with cascading deletion capability across transactions, derived insights, embeddings, and user profiles.
 
 8. **Observability** — Pipeline processing metrics, LLM API latency/cost tracking, error rates, and user engagement metrics needed from day one for a data-driven product.
+
+9. **Compliance Audit Trail** — Financial data access events must be logged with user ID, timestamp, action type, and resource accessed. Distinct from operational logging — serves GDPR accountability and potential regulatory audit requirements. Implemented via middleware-level logging on all data access endpoints (transactions, insights, profile, feedback), stored in structured audit log format.
 
 ## Starter Template Evaluation
 
@@ -280,7 +293,69 @@ uv init --python 3.12
 | **File Storage** | Amazon S3 | — | Uploaded CSV/PDF files stored in S3 with per-user prefix. Processed then referenced by job ID |
 | **Vector Embeddings** | pgvector with BGE-M3 (1024 dimensions) | BGE-M3 latest | Bilingual Ukrainian/English embeddings in same vector space. HNSW index for fast ANN search. Co-located with relational data for single-query joins |
 
-**Affects:** All backend components, AI pipeline, RAG system
+**Feedback Data Model (FR45-FR55):**
+
+The feedback system uses a layered data approach matching the 4-layer feedback design. Layers 0-1 are MVP, Layer 2 is Phase 1.5, Layer 3 is Phase 2.
+
+**Layer 0 — Implicit Signal Extensions (extend existing `card_interactions` table):**
+
+| Column | Type | Purpose |
+|---|---|---|
+| `time_on_card_ms` | `integer` | Milliseconds card was visible/focused |
+| `education_expanded` | `boolean` | Whether user expanded education layer |
+| `education_depth_reached` | `smallint` | Deepest education level opened (0-3) |
+| `swipe_direction` | `varchar(10)` | Direction of swipe gesture (left/right/up) |
+| `card_position_in_feed` | `smallint` | Card's position in the feed at time of interaction |
+| `engagement_score` | `smallint` | Aggregated score 0-100, computed from weighted formula on write |
+
+**Layer 1 — Explicit Card Feedback (`card_feedback` table):**
+
+| Column | Type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `UUID` | PK, default `gen_random_uuid()` | Primary key |
+| `user_id` | `UUID` | FK → `users.id`, NOT NULL | User who gave feedback |
+| `card_id` | `UUID` | FK → `insights.id`, NOT NULL | Card that was rated |
+| `card_type` | `varchar(50)` | NOT NULL | Insight card type (spendingInsight, subscriptionAlert, etc.) |
+| `vote` | `varchar(10)` | CHECK IN ('up', 'down'), nullable | Thumbs up or down (null if only issue report) |
+| `reason_chip` | `varchar(50)` | nullable | Selected reason from follow-up panel (Layer 2) |
+| `free_text` | `text` | nullable, max 500 chars | Optional free-text feedback |
+| `feedback_source` | `varchar(20)` | NOT NULL, default 'card_vote' | 'card_vote' or 'issue_report' |
+| `issue_category` | `varchar(30)` | nullable | For issue reports: 'bug', 'incorrect_info', 'confusing', 'other' |
+| `created_at` | `timestamptz` | NOT NULL, default now() | When feedback was submitted |
+
+Indexes: `idx_card_feedback_user_id`, `idx_card_feedback_card_id`, `idx_card_feedback_card_type_vote` (for aggregation queries).
+Unique constraint: `uq_card_feedback_user_card_vote` on `(user_id, card_id, feedback_source)` — one vote and one issue report per user per card.
+
+**Layer 3 — Milestone Feedback Responses (`feedback_responses` table):**
+
+| Column | Type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `UUID` | PK, default `gen_random_uuid()` | Primary key |
+| `user_id` | `UUID` | FK → `users.id`, NOT NULL | User who responded |
+| `feedback_card_type` | `varchar(50)` | NOT NULL | 'milestone_3rd_upload', 'health_score_change', 'quarterly_nps' |
+| `response_value` | `varchar(50)` | NOT NULL | Emoji face, yes/no, or NPS 1-10 score |
+| `free_text` | `text` | nullable, max 500 chars | Optional elaboration |
+| `created_at` | `timestamptz` | NOT NULL, default now() | When response was submitted |
+
+Index: `idx_feedback_responses_user_id`.
+Unique constraint: `uq_feedback_responses_user_type` on `(user_id, feedback_card_type)` — milestone cards never repeat.
+
+**Feedback Frequency Caps (enforced in application layer, tracked in `user_preferences` or Redis):**
+- Max 1 feedback card per session
+- Max 1 feedback card per month
+- Milestone cards: dismissed = never shown again (tracked via `feedback_responses` existence)
+
+**RAG Corpus Auto-Flagging (operational, Layer 1 data):**
+- Aggregate thumbs-down rate per topic cluster (derived from `card_type` + categorization tags)
+- Auto-flag when: >30% thumbs-down AND minimum 10 votes on cluster
+- Stored as a materialized view or periodic batch query — no real-time requirement
+
+**Privacy & Deletion (FR49):**
+- `card_feedback` and `feedback_responses` rows are included in cascading delete on user account deletion (FK cascade)
+- Feedback data included in user data export (FR35)
+- Free-text feedback visible to user in "view my stored data" flow
+
+**Affects:** All backend components, AI pipeline, RAG system, feedback service
 
 ### Authentication & Security
 
@@ -457,9 +532,9 @@ frontend/src/
 │   └── layout/                 # Shared layout components (Header, Sidebar, Footer)
 ├── features/                   # Domain feature modules
 │   ├── teaching-feed/          # Teaching Feed feature
-│   │   ├── components/         # Feature-specific components
-│   │   ├── hooks/              # Feature-specific hooks
-│   │   └── types.ts            # Feature-specific types
+│   │   ├── components/         # Feature-specific components (includes feedback UI)
+│   │   ├── hooks/              # Feature-specific hooks (includes feedback hooks)
+│   │   └── types.ts            # Feature-specific types (includes feedback types)
 │   ├── upload/                 # File upload feature
 │   ├── auth/                   # Auth feature (Cognito flows)
 │   ├── profile/                # User profile feature
@@ -486,6 +561,7 @@ backend/app/
 │   │   ├── uploads.py          # File upload endpoints
 │   │   ├── transactions.py     # Transaction query endpoints
 │   │   ├── insights.py         # Teaching Feed / insights endpoints
+│   │   ├── feedback.py         # Card feedback, issue reports, milestone responses (FR45-FR55)
 │   │   ├── profile.py          # User profile endpoints
 │   │   └── jobs.py             # Job status + SSE streaming
 │   └── deps.py                 # Shared dependencies (auth, db session)
@@ -516,11 +592,13 @@ backend/app/
 │   ├── transaction.py
 │   ├── insight.py
 │   ├── job.py
-│   └── financial_profile.py
+│   ├── financial_profile.py
+│   └── feedback.py             # CardFeedback, FeedbackResponse models (FR45-FR55)
 ├── services/                   # Business logic layer
 │   ├── upload_service.py
 │   ├── transaction_service.py
 │   ├── insight_service.py
+│   ├── feedback_service.py     # Card feedback, implicit signals, milestone responses, RAG flagging (FR45-FR55)
 │   └── subscription_service.py
 ├── tasks/                      # Celery task definitions
 │   ├── celery_app.py           # Celery app configuration
@@ -573,6 +651,36 @@ GET /api/v1/jobs/{id}
 // File upload (async)
 POST /api/v1/uploads → 202 Accepted
 → { "jobId": "uuid", "statusUrl": "/api/v1/jobs/{jobId}" }
+
+// Card feedback — thumbs vote (Layer 1)
+POST /api/v1/feedback/cards/{cardId}/vote
+← { "vote": "up" }
+→ 201 { "id": "uuid", "cardId": "uuid", "vote": "up", "createdAt": "..." }
+
+// Card feedback — update with reason chip (Layer 2, after thumbs-down)
+PATCH /api/v1/feedback/{feedbackId}
+← { "reasonChip": "not_relevant" }
+→ 200 { "id": "uuid", "reasonChip": "not_relevant" }
+
+// Card feedback — issue report (Layer 1)
+POST /api/v1/feedback/cards/{cardId}/report
+← { "issueCategory": "incorrect_info", "freeText": "Amount seems wrong" }
+→ 201 { "id": "uuid", "cardId": "uuid", "issueCategory": "incorrect_info" }
+
+// Card interaction implicit signals (Layer 0, batched)
+POST /api/v1/cards/interactions
+← { "interactions": [{ "cardId": "uuid", "timeOnCardMs": 4500, "educationExpanded": true, "educationDepthReached": 2, "swipeDirection": "left", "cardPositionInFeed": 3 }] }
+→ 204 No Content
+
+// Milestone feedback response (Layer 3)
+POST /api/v1/feedback/milestone
+← { "feedbackCardType": "milestone_3rd_upload", "responseValue": "happy", "freeText": "Love it!" }
+→ 201 { "id": "uuid", "feedbackCardType": "milestone_3rd_upload" }
+
+// Get user's feedback for a card (to show persisted vote state)
+GET /api/v1/feedback/cards/{cardId}
+→ 200 { "vote": "up", "reasonChip": null, "createdAt": "..." }
+→ 404 (no feedback yet)
 ```
 
 **HTTP Status Code Usage:**
@@ -781,10 +889,16 @@ kopiika-ai/
 │   │   │   │   │   ├── SavingTipCard.tsx         # Saving recommendation card
 │   │   │   │   │   ├── ForecastCard.tsx          # Predictive forecast card
 │   │   │   │   │   ├── EducationLayer.tsx        # Progressive disclosure education
-│   │   │   │   │   └── TriageBadge.tsx           # Severity badge (red/yellow/green)
+│   │   │   │   │   ├── TriageBadge.tsx           # Severity badge (red/yellow/green)
+│   │   │   │   │   ├── CardFeedbackBar.tsx       # Thumbs up/down + flag icon (Layer 1, FR47-FR48)
+│   │   │   │   │   ├── FollowUpPanel.tsx         # Slide-up reason chips on thumbs-down (Layer 2, FR50-FR51)
+│   │   │   │   │   ├── ReportIssueForm.tsx       # In-context issue report form (Layer 1, FR48)
+│   │   │   │   │   └── MilestoneFeedbackCard.tsx # Feedback cards in the feed (Layer 3, FR52-FR54)
 │   │   │   │   ├── hooks/
 │   │   │   │   │   ├── use-teaching-feed.ts      # TanStack Query hook for feed
-│   │   │   │   │   └── use-education-stream.ts   # SSE hook for streaming education
+│   │   │   │   │   ├── use-education-stream.ts   # SSE hook for streaming education
+│   │   │   │   │   ├── use-card-feedback.ts      # TanStack mutation for votes + queries for persisted state (FR47)
+│   │   │   │   │   └── use-card-interactions.ts  # Implicit signal tracking: time, expansion, velocity (FR45-FR46)
 │   │   │   │   └── types.ts
 │   │   │   │
 │   │   │   ├── upload/
@@ -887,6 +1001,7 @@ kopiika-ai/
 │   │   │       ├── uploads.py               # POST /uploads, GET /uploads
 │   │   │       ├── transactions.py          # GET /transactions, /transactions/{id}
 │   │   │       ├── insights.py              # GET /teaching-feed, /insights/{id}
+│   │   │       ├── feedback.py             # POST /feedback/cards/{id}/vote, /report, /milestone; POST /cards/interactions (FR45-FR55)
 │   │   │       ├── profile.py               # GET/PUT /profile, /health-score
 │   │   │       ├── jobs.py                  # GET /jobs/{id}, /jobs/{id}/stream (SSE)
 │   │   │       ├── queries.py               # POST /queries (pre-built data queries)
@@ -931,6 +1046,7 @@ kopiika-ai/
 │   │   │   ├── database.py                  # Async SQLModel engine + session
 │   │   │   ├── exceptions.py                # Custom exceptions + handlers
 │   │   │   ├── logging.py                   # Structured JSON logging setup
+│   │   │   ├── audit.py                     # Compliance audit trail middleware — logs financial data access events (user_id, timestamp, action, resource)
 │   │   │   └── redis.py                     # Redis connection factory
 │   │   │
 │   │   ├── models/
@@ -940,6 +1056,7 @@ kopiika-ai/
 │   │   │   ├── insight.py                   # Insight (union: spending, subscription, etc.)
 │   │   │   ├── job.py                       # ProcessingJob
 │   │   │   ├── financial_profile.py         # FinancialProfile, HealthScore
+│   │   │   ├── feedback.py                  # CardFeedback, FeedbackResponse, CardInteraction extensions (FR45-FR55)
 │   │   │   └── subscription.py              # UserSubscription (freemium tier)
 │   │   │
 │   │   ├── services/
@@ -947,6 +1064,7 @@ kopiika-ai/
 │   │   │   ├── upload_service.py            # File validation, S3 storage, job creation
 │   │   │   ├── transaction_service.py       # Transaction CRUD, user-scoped queries
 │   │   │   ├── insight_service.py           # Insight retrieval, feed pagination
+│   │   │   ├── feedback_service.py          # Card votes, issue reports, implicit signals, milestone responses, RAG flagging (FR45-FR55)
 │   │   │   ├── profile_service.py           # Health score calculation, profile updates
 │   │   │   ├── subscription_service.py      # Tier checking, payment webhook handling
 │   │   │   └── notification_service.py      # Email sending via SES
@@ -982,6 +1100,7 @@ kopiika-ai/
 │   │   │       ├── test_uploads.py
 │   │   │       ├── test_transactions.py
 │   │   │       ├── test_insights.py
+│   │   │       ├── test_feedback.py         # Card feedback, issue reports, milestone responses
 │   │   │       └── test_auth.py
 │   │   ├── agents/
 │   │   │   ├── test_ingestion.py
@@ -991,6 +1110,7 @@ kopiika-ai/
 │   │   │   └── test_education.py
 │   │   ├── services/
 │   │   │   ├── test_upload_service.py
+│   │   │   ├── test_feedback_service.py     # Feedback aggregation, engagement scoring, RAG flagging
 │   │   │   └── test_transaction_service.py
 │   │   └── integration/
 │   │       ├── test_pipeline_e2e.py         # Full pipeline integration test
@@ -1042,7 +1162,7 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 
 | Layer | Responsibility | Depends On | Never Depends On |
 |---|---|---|---|
-| `api/` | HTTP handling, request validation, response serialization | `services/`, `core/`, `models/` | `agents/`, `tasks/`, `rag/` |
+| `api/` | HTTP handling, request validation, response serialization (includes feedback endpoints) | `services/`, `core/`, `models/` | `agents/`, `tasks/`, `rag/` |
 | `services/` | Business logic, orchestration | `models/`, `core/` | `api/`, `agents/` |
 | `agents/` | LangGraph pipeline nodes, AI logic | `models/`, `core/`, `rag/`, `services/` | `api/` |
 | `tasks/` | Celery task definitions, async job execution | `agents/`, `services/`, `core/` | `api/` |
@@ -1078,6 +1198,10 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 | **Email Notifications** | `features/settings/` (prefs UI) | `tasks/notification_tasks.py`, `services/notification_service.py` |
 | **Freemium Model** | `features/settings/` (subscription UI) | `api/deps.py` (tier guard), `services/subscription_service.py` |
 | **User Auth** | `features/auth/`, `lib/auth/` | `api/v1/auth.py`, `core/security.py` |
+| **User Feedback — Layer 0 (FR45-FR46)** | `features/teaching-feed/hooks/use-card-interactions.ts` | `api/v1/feedback.py`, `services/feedback_service.py`, `models/feedback.py` (card_interactions extensions) |
+| **User Feedback — Layer 1 (FR47-FR49)** | `features/teaching-feed/components/CardFeedbackBar.tsx`, `ReportIssueForm.tsx`, `hooks/use-card-feedback.ts` | `api/v1/feedback.py`, `services/feedback_service.py`, `models/feedback.py` (card_feedback table) |
+| **User Feedback — Layer 2 (FR50-FR51)** | `features/teaching-feed/components/FollowUpPanel.tsx` | `api/v1/feedback.py` (PATCH reason chip) |
+| **User Feedback — Layer 3 (FR52-FR55)** | `features/teaching-feed/components/MilestoneFeedbackCard.tsx` | `api/v1/feedback.py`, `services/feedback_service.py`, `models/feedback.py` (feedback_responses table) |
 
 **Cross-Cutting Concerns → Location:**
 
@@ -1088,6 +1212,7 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 | **Error handling** | `app/error.tsx`, feature error boundaries | `core/exceptions.py`, `main.py` (exception handlers) |
 | **Logging** | Browser console (dev) | `core/logging.py` (structured JSON) |
 | **Tier gating** | Feature-level conditional rendering | `api/deps.py` (FastAPI dependency) |
+| **User feedback** | `features/teaching-feed/` (feedback components + hooks) | `api/v1/feedback.py`, `services/feedback_service.py`, `models/feedback.py` |
 
 ### Integration Points
 
@@ -1100,6 +1225,10 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 | `agents/education/node.py` | `rag/retriever.py` | Direct function call | Education agent activated |
 | `api/jobs.py` | Redis | `hget/hset` | Job status poll / SSE stream |
 | `tasks/pipeline_tasks.py` | Redis | `hset` | Pipeline progress update |
+| `api/v1/feedback.py` | `services/feedback_service.py` | Direct function call | Card vote, issue report, milestone response, implicit signal batch |
+| `services/feedback_service.py` | PostgreSQL | SQLModel async | Store feedback, compute engagement scores, check frequency caps |
+| Frontend `use-card-interactions.ts` | `api/v1/feedback.py` | HTTPS REST (batched POST) | Implicit signals sent on card leave/swipe |
+| Frontend `use-card-feedback.ts` | `api/v1/feedback.py` | HTTPS REST | Thumbs vote, issue report, get persisted vote state |
 
 **External Integrations:**
 
@@ -1129,6 +1258,22 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 6. Each node updates Redis with progress → SSE pushes to frontend
 7. Pipeline complete: insights stored in PostgreSQL
 8. Frontend receives job-complete event, fetches Teaching Feed
+```
+
+**Data Flow (Feedback Loop — Layers 0-2):**
+
+```
+1. User views a Teaching Feed card
+2. Frontend use-card-interactions hook starts tracking: time_on_card_ms, education_expanded, depth_reached
+3. On card leave/swipe: frontend batches implicit signals → POST /api/v1/cards/interactions
+4. Backend feedback_service computes engagement_score, stores in card_interactions
+5. (Optional) User taps thumbs-up/down → POST /api/v1/feedback/cards/{id}/vote
+6. Backend stores vote in card_feedback table, returns feedback ID
+7. (On thumbs-down) Frontend shows FollowUpPanel with reason chips
+8. User selects chip → PATCH /api/v1/feedback/{id} with reason_chip
+9. (On issue report) User taps flag → ReportIssueForm → POST /api/v1/feedback/cards/{id}/report
+10. Periodic batch: feedback_service aggregates thumbs-down rates per topic cluster
+11. Clusters exceeding >30% thumbs-down (min 10 votes) → auto-flagged for RAG corpus review
 ```
 
 ### Development Workflow
@@ -1190,7 +1335,7 @@ All technology choices work together without conflicts:
 **Structure Alignment:**
 
 - Project structure directly supports the 5-agent pipeline architecture with dedicated `agents/` subdirectories per agent
-- Feature-folder organization in frontend maps 1:1 to PRD features (teaching-feed, upload, auth, profile, queries, settings)
+- Feature-folder organization in frontend maps 1:1 to PRD features (teaching-feed including feedback UI, upload, auth, profile, queries, settings)
 - Backend layer separation (api → services → agents → models → core) enforces clean dependency directions
 - The `shared/openapi/` directory supports the OpenAPI-generated client workflow
 
@@ -1203,6 +1348,10 @@ All technology choices work together without conflicts:
 | Statement Upload & Parsing | S3 storage + Celery async + Ingestion Agent + Monobank parser | ✅ Fully covered |
 | Multi-Agent AI Pipeline | LangGraph StateGraph, 5 agent nodes, Celery workers on ECS Fargate | ✅ Fully covered |
 | Teaching Feed | REST API with union-type cards, cursor pagination, severity triage, SSE streaming | ✅ Fully covered |
+| User Feedback — Layer 0 (FR45-FR46) | card_interactions extensions (time, expansion, depth, velocity), engagement_score computation | ✅ Fully covered |
+| User Feedback — Layer 1 (FR47-FR49) | card_feedback table, thumbs up/down UI, issue reports, privacy/deletion integration | ✅ Fully covered |
+| User Feedback — Layer 2 (FR50-FR51) | FollowUpPanel with reason chips on thumbs-down, occasional thumbs-up follow-up | ✅ Fully covered |
+| User Feedback — Layer 3 (FR52-FR55) | feedback_responses table, MilestoneFeedbackCard, frequency caps, RAG auto-flagging | ✅ Fully covered |
 | Cumulative Financial Profile | Dedicated model + service + API endpoint + profile feature folder | ✅ Fully covered |
 | Subscription Detection | Pattern Detection Agent + recurring charge detector | ✅ Fully covered |
 | Basic Predictive Forecasts | Pattern Detection Agent + trends detector | ✅ Fully covered |
@@ -1222,7 +1371,7 @@ All technology choices work together without conflicts:
 | Bilingual | next-intl, BGE-M3, bilingual RAG content, locale formatting | ✅ Covered |
 | Reliability (graceful agent failures) | LangGraph checkpointing, Celery retries, partial results | ✅ Covered |
 | Scalability | ECS Fargate auto-scaling, App Runner scale-to-zero, connection pooling | ✅ Covered |
-| Compliance (Ukrainian DPL, audit) | Structured JSON logging, raw data preservation, audit trails | ✅ Covered |
+| Compliance (Ukrainian DPL, audit) | Structured JSON logging, raw data preservation, audit trails, compliance audit trail for financial data access events (middleware-level) | ✅ Covered |
 | Data Integrity | ACID transactions, dual storage (raw JSONB + normalized), DB constraints | ✅ Covered |
 
 ### Implementation Readiness Validation ✅

@@ -35,6 +35,12 @@ documentCounts:
   brainstorming: 2
   projectDocs: 0
 workflowType: 'prd'
+lastEdited: '2026-04-05'
+editHistory:
+  - date: '2026-04-05'
+    changes: 'Integrated User Feedback System (4-layer design) — Layers 0-1 in MVP, Layer 2 in Phase 1.5, Layer 3 in Phase 2. Added FR45-FR55, updated Executive Summary, Success Criteria, User Journeys (Anya/Viktor/Dmytro), Product Scope, Domain Requirements, and Phased Development sections.'
+    inputDocuments:
+      - design-thinking-2026-04-05.md
 ---
 
 # Product Requirements Document - kōpiika
@@ -56,7 +62,7 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 
 **Education IS the product, not a feature.** Every insight teaches. Every interaction builds financial literacy. The product occupies an empty competitive quadrant — high personalization combined with high education — that neither analytics tools (Cleo, Monarch) nor education platforms (Zogo, Greenlight) have claimed.
 
-**Triage-first prioritization** (Phase 1.5) borrowed from healthcare ER methodology will rank insights by financial impact severity, making the product immediately actionable for users who would be overwhelmed by traditional dashboards. **Cumulative intelligence** creates natural retention: the system visibly gets smarter with each upload, increasing switching costs through growing profile depth and progressively personalized education.
+**Triage-first prioritization** (Phase 1.5) borrowed from healthcare ER methodology will rank insights by financial impact severity, making the product immediately actionable for users who would be overwhelmed by traditional dashboards. **Cumulative intelligence** creates natural retention: the system visibly gets smarter with each upload, increasing switching costs through growing profile depth and progressively personalized education. A lightweight feedback loop — implicit behavioral signals (card engagement, expansion depth) combined with optional thumbs up/down on insight cards — continuously improves RAG education quality without interrupting the user experience.
 
 **Trust-first architecture** (CSV/PDF upload, no bank credentials) removes the #1 adoption barrier in Ukraine's high-distrust environment. **Ukrainian-native positioning** (UAH, Monobank/PrivatBank formats, local merchant recognition, culturally appropriate framing) provides first-mover advantage with zero direct competitors in-market.
 
@@ -80,17 +86,20 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 - Saves more from product insights than subscription cost (net value positive)
 - Expands 40%+ of education layers on insight cards
 - Measurable Financial Health Score improvement after 3+ uploads
+- Uses thumbs up/down on insight cards that resonate — highest feedback participation rate among personas
 
 **Viktor (The Optimizer) — Success = Actionable Insights + Exploration**
 - Receives at least 1 new actionable insight per monthly upload
 - Acts on 30%+ of triage-ranked recommendations
 - Measurable savings rate improvement over 3-month period
+- Provides categorized thumbs-down feedback (reason chips) when insights miss the mark — sparse but high-signal
 
 **Dmytro (The Discoverer) — Success = Blind Spot Discovery + Action**
 - Product surfaces at least 1 previously unknown pattern per upload
 - Acts on 20%+ of discovered blind spots
 - Completes monthly deep-dive in under 15 minutes
 - Returns monthly for 6+ consecutive months
+- Reports factual errors or miscategorizations via the report-issue mechanism — corrective feedback only
 
 ### Business Success
 
@@ -127,6 +136,8 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 | Teaching Feed interaction | 60%+ interact with at least 1 card per session | Per session |
 | Education layer expansion | 30%+ of cards have education expanded | Per session |
 | Trust score | >3.5/5 average | Post-upload survey |
+| Thumbs interaction rate | >5% of viewed cards receive a vote | Monthly (after Layer 1 launch) |
+| Implicit-explicit signal correlation | >0.5 correlation between engagement_score and thumb ratio per topic cluster | After 3 months of data |
 | Premium conversion (Phase 2) | 5-8% of free users | Monthly |
 
 ## Product Scope
@@ -140,9 +151,12 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 5. **Cumulative Financial Profile** — Database-backed growing profile, Financial Health Score (0-100)
 6. **Bilingual Support** — English and Ukrainian interface and AI-generated content
 7. **Graceful Error Handling** — Format detection, validation, actionable error messages
+8. **User Feedback (Layers 0-1)** — Implicit card engagement tracking (time, expansion, velocity) + thumbs up/down on Teaching Feed cards + in-context issue reporting
 
 ### Growth Features (Post-MVP Fast Follow, 1-2 months post-launch)
 
+- Enhanced financial literacy level assessment: replace heuristic-based detection with an onboarding quiz or manual level selection by the user (beginner / intermediate / advanced), improving education content calibration accuracy (relates to FR17)
+- Feedback Layer 2: contextual follow-up on thumbs-down (preset reason chips), occasional thumbs-up follow-up (1 in 10)
 - Basic predictive forecasts (next-month spending predictions)
 - Pre-built data queries (curated question set for querying financial data)
 - Supplementary dashboard with traditional spending charts
@@ -152,10 +166,14 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 
 ### Vision (Future — V2/V3)
 
+- Feedback Layer 3: milestone feedback cards in the feed (3rd upload, Health Score change, quarterly NPS)
+- Developer feedback dashboard (aggregate signals, topic cluster quality scores)
+- RAG corpus auto-flagging based on aggregated feedback signals
 - Savings strategies and passive income education (deposits, government bonds)
 - Receipt scanning for itemized transaction detail
 - Family mode with age-appropriate financial education
 - Gamification (streaks, badges, Financial Health Score milestones)
+- Periodic knowledge quizzes based on learned material (daily check-ups on mobile) to reinforce learning and boost engagement
 - Bank API integration through partnerships (Monobank, PrivatBank)
 - Eastern European expansion (Bulgaria, Croatia, Romania, Georgia)
 - Mobile native app
@@ -172,9 +190,9 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 
 **Climax:** The Teaching Feed appears. Three cards, sorted by severity. The red card says: "You have 4 active subscriptions totaling 1,200 UAH/month. 2 of them had zero activity this month." She taps "Why this matters" and reads a plain-language explanation of subscription creep — no jargon, no judgment. For the first time, she understands where a chunk of her money goes without anyone making her feel bad about it.
 
-**Resolution:** Anya creates an account to save her profile. She cancels one forgotten subscription that evening. Two weeks later, she gets a gentle email reminder after her next freelance payment lands. She uploads again. The Financial Health Score ticks up from 48 to 53. The Teaching Feed says "Based on your 2 months of data, I can now see your income pattern — your best months are when..." She feels something unfamiliar: a sense of control.
+**Resolution:** Anya creates an account to save her profile. She cancels one forgotten subscription that evening. Before leaving, she taps the thumbs-up icon on the subscription card — a quiet acknowledgment that it helped. Two weeks later, she gets a gentle email reminder after her next freelance payment lands. She uploads again. The Financial Health Score ticks up from 48 to 53. The Teaching Feed says "Based on your 2 months of data, I can now see your income pattern — your best months are when..." She feels something unfamiliar: a sense of control.
 
-**Requirements revealed:** Upload flow with zero friction, CSV parsing (Monobank), progressive disclosure education cards, triage severity ranking, Financial Health Score, email reminders timed to income patterns, account creation with data persistence, one-click subscription cancellation insights.
+**Requirements revealed:** Upload flow with zero friction, CSV parsing (Monobank), progressive disclosure education cards, triage severity ranking, Financial Health Score, email reminders timed to income patterns, account creation with data persistence, one-click subscription cancellation insights, thumbs up/down on insight cards.
 
 ---
 
@@ -188,9 +206,9 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 
 **Climax:** A yellow card catches his eye: "Your transport spending increased 34% month-over-month. You took 47 taxi rides this month vs. 28 last month — that's an extra 2,100 UAH." He hadn't noticed. The education layer shows his transport-to-income ratio compared to his historical pattern. Below it, a green card confirms his grocery spending is stable and efficient. He feels validated and informed simultaneously.
 
-**Resolution:** Viktor makes this a monthly ritual. After each payday, he uploads the new statement. Each month the insights sharpen — the system knows his patterns better than he does. He starts checking the Financial Health Score like a game. He shares a particularly surprising insight with a colleague — "You should try this."
+**Resolution:** Viktor makes this a monthly ritual. After each payday, he uploads the new statement. Each month the insights sharpen — the system knows his patterns better than he does. One month, a card tells him his grocery spending is "above average" — he thumbs it down and taps "Not relevant to me" because he bulk-buys intentionally. The system registers the signal. He starts checking the Financial Health Score like a game. He shares a particularly surprising insight with a colleague — "You should try this."
 
-**Requirements revealed:** Multi-month upload and cumulative processing, adaptive education depth based on literacy detection, month-over-month trend comparison, transport/category breakdown analysis, Financial Health Score gamification, share/export insight capability.
+**Requirements revealed:** Multi-month upload and cumulative processing, adaptive education depth based on literacy detection, month-over-month trend comparison, transport/category breakdown analysis, Financial Health Score gamification, share/export insight capability, thumbs down with categorized reason feedback.
 
 ---
 
@@ -204,9 +222,9 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 
 **Climax:** Then he sees the red card: "You have 6 recurring charges totaling 3,400 UAH/month. One subscription (890 UAH/month) has had no related activity in 4 months." He's stunned — he'd completely forgotten about it. That's 3,560 UAH wasted. The education layer doesn't lecture him; it simply shows the annual impact and a one-line action step. His overconfidence cracks.
 
-**Resolution:** He cancels the subscription immediately. Next month he uploads again — this time proactively. The system catches a gradually increasing dining category he hadn't noticed. Dmytro becomes the product's most vocal advocate at work — not because he needed help, but because the product showed him what he couldn't see. His monthly check-in takes 8 minutes.
+**Resolution:** He cancels the subscription immediately. Next month he uploads again — this time proactively. The system catches a gradually increasing dining category he hadn't noticed. One card miscategorizes a bank transfer as "entertainment" — Dmytro taps the flag icon and selects "Incorrect info" from the report menu. Takes 3 seconds. Dmytro becomes the product's most vocal advocate at work — not because he needed help, but because the product showed him what he couldn't see. His monthly check-in takes 8 minutes.
 
-**Requirements revealed:** Fast single-upload processing, subscription detection with inactivity flagging, concise high-literacy insight presentation, annual cost impact calculations, fast session experience (<15 min target).
+**Requirements revealed:** Fast single-upload processing, subscription detection with inactivity flagging, concise high-literacy insight presentation, annual cost impact calculations, fast session experience (<15 min target), in-context issue reporting mechanism.
 
 ---
 
@@ -258,6 +276,11 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 | **Format Detection & Validation** | Error Recovery journey | Must have |
 | **Structured Pipeline Logging** | Admin journey | Must have |
 | **User Account & Data Persistence** | Anya (saves profile) | Must have |
+| **Thumbs Up/Down on Cards** | Anya (acknowledges helpful insight), Viktor (flags irrelevant) | Must have |
+| **Implicit Card Engagement Tracking** | All journeys (behavioral signals: time, expansion, velocity) | Must have |
+| **Issue Reporting on Cards** | Dmytro (flags miscategorization) | Must have |
+| **Thumbs-Down Reason Chips** | Viktor (categorizes why insight missed) | Phase 1.5 |
+| **Milestone Feedback Cards** | All journeys (end-of-feed, non-intrusive) | Phase 2 |
 | **Insight Sharing** | Viktor (shares with colleague) | Nice to have |
 | **Admin Dashboard** | Admin journey | Post-MVP |
 
@@ -273,9 +296,9 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 ### Data Handling & Retention
 
 - **Retention policy:** Indefinite retention of user financial data to support cumulative intelligence. User has full control — one-click data deletion (including derived embeddings and profile data).
-- **Right to erasure:** Complete deletion endpoint covering raw transactions, categorized data, vector embeddings, cumulative profile, and Financial Health Score history.
+- **Right to erasure:** Complete deletion endpoint covering raw transactions, categorized data, vector embeddings, cumulative profile, Financial Health Score history, and user feedback data (votes, reason selections, free-text responses, issue reports).
 - **Data minimization:** Only collect and process data necessary for financial analysis and education delivery.
-- **Consent management:** Explicit user consent at signup for AI processing of uploaded financial data. Clear explanation of what the pipeline does with their data.
+- **Consent management:** Explicit user consent at signup for AI processing of uploaded financial data. Clear explanation of what the pipeline does with their data. Feedback data (votes, text responses) is user-generated content subject to the same data view and deletion rights.
 
 ### Security Requirements
 
@@ -459,6 +482,7 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 | 5 | **Cumulative Financial Profile** | Database-backed growing profile, Financial Health Score |
 | 6 | **Bilingual Support** | Ukrainian + English — core to market positioning |
 | 7 | **Graceful Error Handling** | Format detection, validation, actionable error messages |
+| 8 | **User Feedback (Layers 0-1)** | Implicit engagement tracking + thumbs up/down + issue reporting — closes the education quality loop |
 
 **Explicitly Deferred from MVP:**
 
@@ -467,6 +491,7 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 | Pattern Detection Agent | Not required to validate core education hypothesis | Phase 1.5 |
 | Triage Agent (severity ranking) | Enhances but not essential for first upload value | Phase 1.5 |
 | Subscription Detection | Depends on Pattern Detection Agent | Phase 1.5 |
+| Feedback Layer 2 (reason chips on thumbs-down) | Enhances quality signal but not essential for initial data collection | Phase 1.5 |
 | Email Notifications | Not critical for initial validation; users can return manually | Phase 1.5 |
 | Freemium Payment Integration | Validate value before monetizing; manual upgrade initially if needed | Phase 2 |
 
@@ -478,8 +503,12 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 - Subscription Detection (dependent on Pattern Detection)
 - Email Notifications (upload reminders, new insights available)
 - Triage severity colors on Teaching Feed cards (red/yellow/green)
+- Feedback Layer 2: contextual follow-up on thumbs-down (4 preset reason chips), occasional thumbs-up follow-up (1 in 10)
 
 **Phase 2: Growth (3-6 months post-launch)**
+- Feedback Layer 3: milestone feedback cards (3rd upload, Health Score change, quarterly NPS)
+- Developer feedback dashboard (aggregate quality signals per topic cluster)
+- RAG corpus auto-flagging based on aggregated thumbs-down rates (>30% threshold, minimum 10 votes)
 - Freemium payment integration (Fondy for UA, LemonSqueezy for international)
 - Basic predictive forecasts
 - Pre-built data queries
@@ -585,6 +614,26 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 - **FR38:** System can flag uncategorized transactions and display them separately for user awareness
 - **FR39:** System can recover gracefully from pipeline processing failures without data loss
 - **FR40:** System can display user-friendly error messages (not technical errors) for all failure scenarios
+
+### User Feedback — Layers 0-1 (MVP)
+
+- **FR45:** System can track implicit card interaction signals per Teaching Feed card: time_on_card_ms, education_expanded, education_depth_reached, swipe_direction, card_position_in_feed
+- **FR46:** System can aggregate implicit signals into a per-card engagement score (0-100) using a weighted formula
+- **FR47:** Users can rate any Teaching Feed card with thumbs up or thumbs down; vote state persists and is visible when returning to the card
+- **FR48:** Users can report an issue on any Teaching Feed card via an in-context mechanism (flag icon in card overflow menu) with category selection (Bug, Incorrect info, Confusing, Other) and optional free-text field
+- **FR49:** Feedback data (votes, reports, free-text) is included in the user's data export (FR35) and one-click deletion (FR31)
+
+### User Feedback — Layer 2 (Phase 1.5)
+
+- **FR50:** On thumbs-down, system presents a compact slide-up panel with 4 preset reason chips: "Not relevant to me", "Already knew this", "Seems incorrect", "Hard to understand" — dismissible, one-tap selection
+- **FR51:** On thumbs-up, system presents an optional follow-up (triggered 1 in 10 occurrences) with preset chips: "Learned something", "Actionable", "Well explained"
+
+### User Feedback — Layer 3 (Phase 2)
+
+- **FR52:** System can display milestone feedback cards at the end of the Teaching Feed: after 3rd upload (one-time), after significant Financial Health Score change (+/- 5 points)
+- **FR53:** Milestone feedback cards use the same card component and gestures as education cards — swipeable, skippable, no new UI pattern
+- **FR54:** System can enforce feedback card frequency caps: max 1 feedback card per session, max 1 per month, milestone cards never repeat once dismissed
+- **FR55:** System can auto-flag RAG topic clusters with >30% thumbs-down rate when a minimum of 10 votes has been reached on the cluster
 
 ### Operational Monitoring (MVP)
 

@@ -18,7 +18,7 @@ interface FeedContainerProps {
 
 export function FeedContainer({ jobId }: FeedContainerProps) {
   const { data: session } = useSession();
-  const { data, isLoading, isError } = useTeachingFeed();
+  const { cards, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, isLoading, isError } = useTeachingFeed();
   const queryClient = useQueryClient();
   const { pendingInsightIds, isStreaming, phase } = useFeedSSE(jobId ?? null, session?.accessToken);
 
@@ -29,7 +29,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
     }
   }, [pendingInsightIds.length, queryClient]);
 
-  if (isStreaming && (!data || data.length === 0)) {
+  if (isStreaming && (!cards || cards.length === 0)) {
     return <ProgressiveLoadingState phase={phase} />;
   }
 
@@ -45,7 +45,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
     );
   }
 
-  if (isError) {
+  if (isError && (!cards || cards.length === 0)) {
     return (
       <Card>
         <CardContent className="p-6 text-center">
@@ -64,7 +64,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
     );
   }
 
-  if (!data || data.length === 0) {
+  if (!cards || cards.length === 0) {
     return (
       <Card>
         <CardContent className="p-6 text-center">
@@ -81,7 +81,28 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <CardStackNavigator cards={data} />
+      <CardStackNavigator
+        cards={cards}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        onLoadMore={fetchNextPage}
+      />
+      {isFetchNextPageError && (
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="mb-2 text-sm text-muted-foreground">
+              Failed to load more insights.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fetchNextPage()}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {isStreaming && <ProgressiveLoadingState phase={phase} />}
     </div>
   );

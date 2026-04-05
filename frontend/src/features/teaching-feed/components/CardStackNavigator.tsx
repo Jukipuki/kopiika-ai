@@ -5,13 +5,22 @@ import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InsightCard } from "./InsightCard";
+import { SkeletonCard } from "./SkeletonCard";
 import type { InsightCard as InsightCardType } from "../types";
 
 interface CardStackNavigatorProps {
   cards: InsightCardType[];
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  onLoadMore?: () => void;
 }
 
-export function CardStackNavigator({ cards }: CardStackNavigatorProps) {
+export function CardStackNavigator({
+  cards,
+  hasNextPage,
+  isFetchingNextPage,
+  onLoadMore,
+}: CardStackNavigatorProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +44,10 @@ export function CardStackNavigator({ cards }: CardStackNavigatorProps) {
     if (currentIndex < cards.length - 1) {
       setDirection(1);
       setCurrentIndex((i) => i + 1);
+    }
+    // Prefetch trigger: within 3 of end
+    if (currentIndex >= cards.length - 3 && hasNextPage && !isFetchingNextPage) {
+      onLoadMore?.();
     }
   }
 
@@ -63,6 +76,13 @@ export function CardStackNavigator({ cards }: CardStackNavigatorProps) {
         }),
       };
 
+  const counterLabel = hasNextPage
+    ? `${currentIndex + 1} of ${cards.length}+`
+    : `${currentIndex + 1} of ${cards.length}`;
+
+  const isAtLastLoaded = currentIndex === cards.length - 1;
+  const isNextDisabled = isAtLastLoaded && !hasNextPage;
+
   return (
     <div
       ref={containerRef}
@@ -82,7 +102,7 @@ export function CardStackNavigator({ cards }: CardStackNavigatorProps) {
       role="region"
     >
       <span className="sr-only" aria-live="polite">
-        Card {currentIndex + 1} of {cards.length}
+        Card {counterLabel}
       </span>
 
       <AnimatePresence mode="wait" custom={direction}>
@@ -110,6 +130,12 @@ export function CardStackNavigator({ cards }: CardStackNavigatorProps) {
         </motion.div>
       </AnimatePresence>
 
+      {isFetchingNextPage && isAtLastLoaded && (
+        <div className="mt-2" data-testid="loading-more-skeleton">
+          <SkeletonCard />
+        </div>
+      )}
+
       <div className="mt-4 flex items-center justify-between">
         <Button
           variant="outline"
@@ -123,14 +149,14 @@ export function CardStackNavigator({ cards }: CardStackNavigatorProps) {
         </Button>
 
         <span className="text-sm text-muted-foreground">
-          {currentIndex + 1} of {cards.length}
+          {counterLabel}
         </span>
 
         <Button
           variant="outline"
           size="icon"
           onClick={goNext}
-          disabled={currentIndex === cards.length - 1}
+          disabled={isNextDisabled}
           aria-label="Next insight"
           className="h-11 w-11"
         >

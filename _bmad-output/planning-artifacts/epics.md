@@ -5,11 +5,12 @@ stepsCompleted:
   - step-03-create-stories
   - step-04-final-validation
 status: complete
-completedAt: '2026-03-17'
+completedAt: '2026-04-05'
 inputDocuments:
   - prd.md
   - architecture.md
   - ux-design-specification.md
+  - design-thinking-2026-04-05.md
 ---
 
 # kopiika-ai - Epic Breakdown
@@ -66,6 +67,17 @@ FR41: System can produce structured logs with correlation IDs (job_id, user_id) 
 FR42: System can track and log pipeline processing times per agent
 FR43: System can track and log upload success/failure rates and error types
 FR44: Operator can query job status and pipeline health via database queries
+FR45: System can track implicit card interaction signals per Teaching Feed card: time_on_card_ms, education_expanded, education_depth_reached, swipe_direction, card_position_in_feed
+FR46: System can aggregate implicit signals into a per-card engagement score (0-100) using a weighted formula
+FR47: Users can rate any Teaching Feed card with thumbs up or thumbs down; vote state persists and is visible when returning to the card
+FR48: Users can report an issue on any Teaching Feed card via an in-context mechanism (flag icon in card overflow menu) with category selection (Bug, Incorrect info, Confusing, Other) and optional free-text field
+FR49: Feedback data (votes, reports, free-text) is included in the user's data export (FR35) and one-click deletion (FR31)
+FR50: On thumbs-down, system presents a compact slide-up panel with 4 preset reason chips: "Not relevant to me", "Already knew this", "Seems incorrect", "Hard to understand" — dismissible, one-tap selection
+FR51: On thumbs-up, system presents an optional follow-up (triggered 1 in 10 occurrences) with preset chips: "Learned something", "Actionable", "Well explained"
+FR52: System can display milestone feedback cards at the end of the Teaching Feed: after 3rd upload (one-time), after significant Financial Health Score change (+/- 5 points)
+FR53: Milestone feedback cards use the same card component and gestures as education cards — swipeable, skippable, no new UI pattern
+FR54: System can enforce feedback card frequency caps: max 1 feedback card per session, max 1 per month, milestone cards never repeat once dismissed
+FR55: System can auto-flag RAG topic clusters with >30% thumbs-down rate when a minimum of 10 votes has been reached on the cluster
 
 ### NonFunctional Requirements
 
@@ -185,6 +197,18 @@ NFR31: Monobank CSV parsing graceful degradation on format changes; partial pars
 - Financial advice disclaimer integrated into onboarding flow
 - Curiosity-provoking insight headlines with progressive disclosure
 
+**From Architecture — Compliance Audit Trail:**
+- Financial data access events must be logged with user ID, timestamp, action type, and resource accessed
+- Distinct from operational logging (Story 6.4) — serves GDPR accountability and potential regulatory audit requirements
+- Implemented via middleware-level logging (`core/audit.py`) on all data access endpoints (transactions, insights, profile, feedback)
+- Stored in structured audit log format
+
+**From Architecture — Feedback System Integration:**
+- Feedback data model: `card_feedback` table (votes + issue reports), `feedback_responses` table (milestone responses), `card_interactions` extensions (implicit signals)
+- Feedback API endpoints: POST/PATCH/GET on `/api/v1/feedback/cards/{cardId}/*`, POST `/api/v1/feedback/milestone`
+- Frontend components: `CardFeedbackBar.tsx`, `FollowUpPanel.tsx`, `ReportIssueForm.tsx`, `MilestoneFeedbackCard.tsx`
+- Feedback data included in cascading delete and data export flows (FR49)
+
 ### FR Coverage Map
 
 | FR | Epic | Description |
@@ -233,6 +257,17 @@ NFR31: Monobank CSV parsing graceful degradation on format changes; partial pars
 | FR42 | Epic 6 | Pipeline processing time tracking |
 | FR43 | Epic 6 | Upload success/failure rate tracking |
 | FR44 | Epic 6 | Operator job/health queries |
+| FR45 | Epic 7 | Track implicit card interaction signals (time, expansion, depth, velocity) |
+| FR46 | Epic 7 | Aggregate implicit signals into per-card engagement score |
+| FR47 | Epic 7 | Thumbs up/down on Teaching Feed cards |
+| FR48 | Epic 7 | Report-an-issue via flag icon in card overflow menu |
+| FR49 | Epic 7 | Feedback data in data export and one-click deletion |
+| FR50 | Epic 7 | Thumbs-down follow-up panel with reason chips |
+| FR51 | Epic 7 | Occasional thumbs-up follow-up (1 in 10) |
+| FR52 | Epic 7 | Milestone feedback cards at end of feed |
+| FR53 | Epic 7 | Milestone cards use same card component/gestures |
+| FR54 | Epic 7 | Feedback card frequency caps |
+| FR55 | Epic 7 | Auto-flag RAG topic clusters with high thumbs-down rate |
 
 ## Epic List
 
@@ -253,12 +288,17 @@ Users can build a persistent financial profile across multiple uploads, see a Fi
 **FRs covered:** FR20, FR21, FR22, FR23, FR24
 
 ### Epic 5: Data Privacy, Trust & Consent
-Users can understand how their data is used, consent to AI processing, view stored data, delete all their data, and see appropriate disclaimers — building the trust foundation for a financial product.
+Users can understand how their data is used, consent to AI processing, view stored data, delete all their data, and see appropriate disclaimers — building the trust foundation for a financial product. Includes compliance audit trail middleware for GDPR accountability.
 **FRs covered:** FR31, FR32, FR33, FR34, FR35, FR36
 
 ### Epic 6: Error Handling, Recovery & Operational Monitoring
 The system handles errors gracefully with user-friendly messages, recovers from pipeline failures, flags uncategorized transactions, and provides operational observability for the team.
 **FRs covered:** FR37, FR38, FR39, FR40, FR41, FR42, FR43, FR44
+
+### Epic 7: User Feedback System
+Users can provide feedback on Teaching Feed content through implicit behavioral signals, explicit thumbs up/down, issue reporting, and milestone-triggered feedback cards — enabling continuous improvement of RAG education quality without interrupting the user experience. Phased: Layers 0-1 (MVP), Layer 2 (Phase 1.5), Layer 3 (Phase 2).
+**FRs covered:** FR45, FR46, FR47, FR48, FR49, FR50, FR51, FR52, FR53, FR54, FR55
+**Dependencies:** Epic 3 (Teaching Feed cards), Epic 4 (Health Score for FR52), Epic 5 (data export/deletion for FR49)
 
 ## Epic 1: Project Foundation & User Authentication
 
@@ -1048,6 +1088,34 @@ So that I can exercise my right to be forgotten.
 **When** it is processed
 **Then** the operation is logged for audit purposes (user_id + timestamp only, no personal data retained)
 
+### Story 5.6: Compliance Audit Trail
+
+As an **operator**,
+I want all financial data access events logged with user ID, timestamp, action type, and resource for GDPR accountability,
+So that the system maintains a compliance audit trail distinct from operational logging.
+
+**Acceptance Criteria:**
+
+**Given** any API request that accesses financial data (transactions, insights, profile, feedback, health scores)
+**When** the request is processed
+**Then** a compliance audit log entry is recorded with: user_id, timestamp, action_type (read/write/delete), resource_type, resource_id, and request metadata (IP, user agent)
+
+**Given** the audit trail middleware (`core/audit.py`)
+**When** it intercepts data access endpoints
+**Then** it logs transparently without affecting request performance or response payload
+
+**Given** a user exercises their right to data deletion (Story 5.5)
+**When** their data is deleted
+**Then** the audit trail retains only anonymized records (user_id replaced with a hash, no personal data) for regulatory compliance
+
+**Given** the audit log entries
+**When** an operator queries them
+**Then** they can filter by user_id, date range, action_type, and resource_type to reconstruct a complete data access history for any user
+
+**Given** audit log storage
+**When** entries are persisted
+**Then** they are stored in a structured format (JSON) separate from operational logs, with a retention policy of 2 years minimum
+
 ## Epic 6: Error Handling, Recovery & Operational Monitoring
 
 The system handles errors gracefully with user-friendly messages, recovers from pipeline failures, flags uncategorized transactions, and provides operational observability for the team.
@@ -1183,3 +1251,269 @@ So that I can monitor the system without a dedicated dashboard in MVP.
 **Given** the operational data
 **When** it is queried
 **Then** all job and metric tables have appropriate indexes for efficient querying (status, created_at, user_id)
+
+## Epic 7: User Feedback System
+
+Users can provide feedback on Teaching Feed content through implicit behavioral signals, explicit thumbs up/down, issue reporting, and milestone-triggered feedback cards — enabling continuous improvement of RAG education quality without interrupting the user experience. Phased: Layers 0-1 (MVP), Layer 2 (Phase 1.5), Layer 3 (Phase 2).
+
+### Story 7.1: Implicit Card Interaction Tracking & Engagement Score
+
+As a **developer**,
+I want to track implicit card interaction signals and compute a per-card engagement score,
+So that the system can measure education content quality without requiring any user action.
+
+**Acceptance Criteria:**
+
+**Given** a user views a Teaching Feed card
+**When** they interact with it (view, expand, swipe)
+**Then** the following signals are captured: time_on_card_ms, education_expanded (boolean), education_depth_reached (0-2), swipe_direction (left/right/none), card_position_in_feed
+
+**Given** the existing `card_interactions` table from Story 3.8
+**When** the schema is extended via Alembic migration
+**Then** the new columns are added: time_on_card_ms (integer), education_expanded (boolean), education_depth_reached (smallint), swipe_direction (varchar), card_position_in_feed (smallint)
+
+**Given** implicit signals are collected for a card
+**When** the engagement score is computed
+**Then** a weighted formula produces a score from 0-100: time_on_card_ms (30%), education_expanded (25%), education_depth_reached (25%), swipe_direction (10%), card_position_in_feed (10%)
+
+**Given** the frontend collects interaction signals
+**When** a user navigates away from a card (swipe or leave)
+**Then** the signals are batched and sent to `POST /api/v1/cards/interactions` to minimize network requests
+
+**Given** the interaction tracking
+**When** it runs on mobile and desktop
+**Then** it captures signals without perceptible UI lag or impact on card navigation performance
+
+### Story 7.2: Thumbs Up/Down on Teaching Feed Cards
+
+As a **user**,
+I want to rate any Teaching Feed card with thumbs up or thumbs down,
+So that I can signal whether an insight was helpful.
+
+**Acceptance Criteria:**
+
+**Given** I am viewing a Teaching Feed card
+**When** the card has been visible for 2+ seconds
+**Then** two small, muted thumb icons (up/down) appear in the bottom-right of the card
+
+**Given** I tap the thumbs-up or thumbs-down icon
+**When** the vote is registered
+**Then** the icon fills/highlights, I receive brief haptic feedback (mobile), and the vote is sent to `POST /api/v1/feedback/cards/{cardId}/vote` with `{"vote": "up"}` or `{"vote": "down"}`
+
+**Given** a `card_feedback` table is created via Alembic migration
+**When** a vote is stored
+**Then** it contains: id (UUID), user_id (FK), card_id (FK), card_type (varchar), vote (up/down), reason_chip (nullable), free_text (nullable), feedback_source ('card_vote'), created_at
+**And** a unique constraint on (user_id, card_id, feedback_source) prevents duplicate votes
+
+**Given** I have previously voted on a card
+**When** I return to that card
+**Then** my vote state is visible (filled icon) via `GET /api/v1/feedback/cards/{cardId}`
+
+**Given** I tap the opposite thumb icon on a card I already voted on
+**When** the update is processed
+**Then** my vote is changed (not duplicated) and the UI reflects the new state
+
+**Given** the thumbs icons
+**When** they render
+**Then** they meet WCAG 2.1 AA standards: keyboard accessible, screen reader labeled ("Rate this insight helpful" / "Rate this insight not helpful"), visible focus indicators
+
+### Story 7.3: Issue Reporting on Teaching Feed Cards
+
+As a **user**,
+I want to report an issue on any Teaching Feed card via a flag icon,
+So that I can flag bugs, incorrect information, or confusing content without leaving the feed.
+
+**Acceptance Criteria:**
+
+**Given** I am viewing a Teaching Feed card
+**When** I tap the card's overflow menu (three-dot icon)
+**Then** I see a "Report an issue" option with a flag icon
+
+**Given** I tap "Report an issue"
+**When** the report form appears
+**Then** it displays in-context (not a modal or redirect): a category dropdown (Bug, Incorrect info, Confusing, Other) and an optional free-text field (max 500 characters, collapsed by default)
+
+**Given** I select a category and optionally enter text
+**When** I submit the report
+**Then** it is sent to `POST /api/v1/feedback/cards/{cardId}/report` with feedback_source='issue_report' and a confirmation is shown briefly ("Thanks for reporting — we'll look into it")
+
+**Given** the unique constraint on (user_id, card_id, feedback_source)
+**When** I try to report the same card twice
+**Then** I see a message that I've already reported this card
+
+**Given** the report form
+**When** it renders on mobile
+**Then** it is compact, touch-optimized, and dismissible by tapping outside or swiping down
+
+**Given** the report form fields
+**When** they are displayed
+**Then** they are available in both Ukrainian and English via next-intl
+
+### Story 7.4: Feedback Data Privacy Integration
+
+As a **user**,
+I want my feedback data (votes, reports, free-text) included in my data export and one-click deletion,
+So that I have full control over all data the system stores about me.
+
+**Acceptance Criteria:**
+
+**Given** the `card_feedback` table has FK to `users.id`
+**When** a user triggers one-click data deletion (Story 5.5)
+**Then** all card_feedback rows for that user are deleted via FK cascade
+
+**Given** a user requests their stored data (Story 5.4)
+**When** the data summary API responds
+**Then** it includes: number of card votes (up/down counts), number of issue reports, and any free-text feedback the user has submitted
+
+**Given** the data export includes free-text feedback
+**When** the user views it
+**Then** they can see exactly what they wrote, which card it was on, and when
+
+**Given** feedback_responses records exist (from Layer 3 milestone cards, future)
+**When** deletion or export is triggered
+**Then** feedback_responses rows are also included in cascade delete and data export
+
+### Story 7.5: Thumbs-Down Follow-Up Panel with Reason Chips
+
+As a **user**,
+I want to quickly tell the system why I thumbs-downed a card,
+So that my feedback is categorized for better education quality improvement.
+
+**Acceptance Criteria:**
+
+**Given** I tap thumbs-down on a Teaching Feed card
+**When** 300ms has elapsed after my tap
+**Then** a compact slide-up panel appears below the card (not a modal) with 4 preset reason chips: "Not relevant to me", "Already knew this", "Seems incorrect", "Hard to understand"
+
+**Given** the follow-up panel is visible
+**When** I tap a reason chip
+**Then** the chip selection is sent via `PATCH /api/v1/feedback/{feedbackId}` with `{"reasonChip": "not_relevant"}`, the panel auto-dismisses after 1 second, and no further interaction is required
+
+**Given** the follow-up panel is visible
+**When** I tap outside the panel or swipe it down
+**Then** it dismisses without recording a reason (the thumbs-down vote still stands)
+
+**Given** I thumbs-down multiple cards in the same session
+**When** the follow-up panel trigger logic runs
+**Then** the panel appears only on the first thumbs-down of the session to prevent repetition
+
+**Given** the reason chips
+**When** they are displayed
+**Then** they are available in both Ukrainian and English, compact enough for mobile, and keyboard accessible
+
+### Story 7.6: Occasional Thumbs-Up Follow-Up
+
+As a **user**,
+I want to occasionally tell the system what made a card useful,
+So that the system learns what works without asking me every time.
+
+**Acceptance Criteria:**
+
+**Given** I tap thumbs-up on a Teaching Feed card
+**When** the system determines this is the 1-in-10 trigger occurrence
+**Then** a compact slide-up panel appears with 3 preset chips: "Learned something", "Actionable", "Well explained"
+
+**Given** the follow-up panel appears on thumbs-up
+**When** I tap a chip or dismiss
+**Then** it behaves identically to the thumbs-down panel: chip selection sent via PATCH, auto-dismiss after 1s, dismissible without action
+
+**Given** the 1-in-10 trigger logic
+**When** it determines whether to show the follow-up
+**Then** the probability is computed client-side (random, not deterministic) so no server round-trip is needed
+
+**Given** the follow-up panel
+**When** it renders
+**Then** it uses the same component as the thumbs-down follow-up panel (FollowUpPanel.tsx) with different chip labels
+
+### Story 7.7: Milestone Feedback Cards in the Teaching Feed
+
+As a **user**,
+I want to see occasional feedback cards at the end of my Teaching Feed at key milestones,
+So that I can share how the product is working for me without it feeling like an interruption.
+
+**Acceptance Criteria:**
+
+**Given** I have completed my 3rd upload (one-time milestone)
+**When** I view the Teaching Feed
+**Then** a milestone feedback card appears at the end of the feed: "How's Kopiika working for you?" with 3 emoji faces (happy/neutral/sad) and an optional text field
+
+**Given** my Financial Health Score has changed significantly (+/- 5 points since last check)
+**When** I view the Teaching Feed
+**Then** a milestone feedback card appears at the end: "Your score changed! Does this feel accurate?" with Yes/No options and optional text
+
+**Given** a milestone feedback card
+**When** I interact with it
+**Then** it uses the same card component, swipe gestures, and visual design as education cards — no new UI pattern
+
+**Given** I swipe away or dismiss a milestone feedback card
+**When** the dismissal is recorded
+**Then** that specific milestone card never appears again (tracked via `feedback_responses` table unique constraint on user_id + feedback_card_type)
+
+**Given** a `feedback_responses` table created via Alembic migration
+**When** a response is stored
+**Then** it contains: id (UUID), user_id (FK), feedback_card_type ('milestone_3rd_upload' or 'health_score_change'), response_value (varchar), free_text (nullable), created_at
+
+**Given** the feedback card frequency cap logic
+**When** determining whether to show a feedback card
+**Then** max 1 feedback card per session and max 1 per month are enforced (tracked in application layer via Redis or user_preferences)
+
+**Given** the Health Score change milestone card
+**When** it checks for significant change
+**Then** it depends on Epic 4's Financial Health Score data — if no Health Score exists yet, this trigger is skipped
+
+### Story 7.8: RAG Topic Cluster Auto-Flagging
+
+As a **developer**,
+I want the system to automatically flag RAG topic clusters with high thumbs-down rates,
+So that I can prioritize corpus quality improvements without manually reviewing all feedback.
+
+**Acceptance Criteria:**
+
+**Given** card_feedback votes have accumulated on cards within a topic cluster
+**When** a cluster reaches a minimum of 10 votes
+**Then** the system evaluates the thumbs-down rate for that cluster
+
+**Given** a topic cluster has >30% thumbs-down rate with at least 10 votes
+**When** the auto-flagging check runs
+**Then** the cluster is flagged for review in a `flagged_topic_clusters` record (or equivalent) with: cluster_id, thumbs_down_rate, total_votes, flagged_at
+
+**Given** the auto-flagging logic
+**When** it runs
+**Then** it executes as a periodic batch job (via Celery scheduled task or triggered after vote accumulation thresholds), not on every individual vote
+
+**Given** a flagged topic cluster
+**When** the developer queries flagged clusters
+**Then** they can see: cluster identifier, current thumbs-down rate, total votes, most common reason_chip values, and sample card IDs for review
+
+**Given** the minimum sample size of 10 votes
+**When** a cluster has fewer than 10 votes
+**Then** it is never flagged regardless of thumbs-down rate, preventing false positives from small samples
+
+---
+
+## Backlog — Post-MVP Enhancement Ideas
+
+### Enhanced Financial Literacy Level Assessment
+
+**Context:** Currently FR17 uses heuristic-based detection of financial literacy level. This is simplistic and may not accurately reflect the user's actual knowledge.
+
+**Proposed improvement:** Replace or supplement the heuristic with either:
+1. A short onboarding quiz that assesses the user's financial literacy level
+2. Manual level selection by the user (beginner / intermediate / advanced)
+
+**Impact:** More accurate literacy level → better-calibrated education depth in Teaching Feed cards.
+
+**Related:** FR17, Epic 3 (Teaching Feed)
+
+### Periodic Knowledge Quizzes (Learning Reinforcement)
+
+**Context:** The Teaching Feed delivers financial education, but there's no mechanism to reinforce what the user has learned over time.
+
+**Proposed feature:** Periodic quizzes based on previously consumed Teaching Feed content:
+- Short daily check-ups (2-3 questions) to reinforce recently learned concepts
+- Questions generated from the user's actual Teaching Feed history
+- Especially valuable on mobile where push notifications can drive daily engagement
+
+**Impact:** Improved knowledge retention, higher daily engagement/return rate, and a measurable signal of learning progress.
+
+**Related:** Teaching Feed (Epic 3), Mobile native app (Phase 3), Gamification

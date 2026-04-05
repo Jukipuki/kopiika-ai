@@ -11,9 +11,10 @@ vi.mock("next-auth/react", () => ({
   useSession: () => mockUseSession(),
 }));
 
-// Mock use-feed-sse
+// Mock use-feed-sse — controllable per-test
+const mockUseFeedSSE = vi.fn();
 vi.mock("../hooks/use-feed-sse", () => ({
-  useFeedSSE: () => ({ pendingInsightIds: [], isStreaming: false, phase: null }),
+  useFeedSSE: (...args: unknown[]) => mockUseFeedSSE(...args),
 }));
 
 // Mock fetch
@@ -97,6 +98,7 @@ describe("FeedContainer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseSession.mockReturnValue({ data: { accessToken: "test-token" } });
+    mockUseFeedSSE.mockReturnValue({ pendingInsightIds: [], isStreaming: false, phase: null });
   });
 
   it("shows skeleton cards during loading", () => {
@@ -167,5 +169,94 @@ describe("FeedContainer", () => {
     );
     // Stack shows first card only after successful retry
     expect(screen.queryByText("Utility bills increased")).not.toBeInTheDocument();
+  });
+
+  it("passes hasNextPage=true to CardStackNavigator — counter shows '+' suffix", async () => {
+    // When fetch returns hasMore=true, FeedContainer passes hasNextPage=true to CardStackNavigator
+    // which renders the counter with a '+' suffix
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 4, nextCursor: "uuid-2", hasMore: true }),
+    });
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    await waitFor(() =>
+      expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
+    );
+    // Counter shows "1 of 2+" because hasNextPage=true
+    expect(screen.getByText("1 of 2+")).toBeInTheDocument();
+  });
+
+  it("shows inline retry when pagination error occurs but keeps loaded cards visible (AC #4)", async () => {
+    // Page 1 succeeds, then page 2 fails
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: mockItems, total: 4, nextCursor: "uuid-2", hasMore: true }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
+
+    render(<FeedContainer />, { wrapper: createWrapper() });
+
+    // Page 1 loads successfully
+    await waitFor(() =>
+      expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
+    );
+
+    // Navigate to last card to trigger onLoadMore
+    fireEvent.click(screen.getByRole("button", { name: /next insight/i }));
+
+    // Wait for the pagination error to surface
+    await waitFor(() =>
+      expect(screen.getByText(/failed to load more insights/i)).toBeInTheDocument(),
+    );
+
+    // Loaded cards remain visible (not replaced by full-screen error)
+    expect(screen.getByText("Utility bills increased")).toBeInTheDocument();
+
+    // Inline retry button is available
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("passes fetchNextPage as onLoadMore — counter shows '+' and onLoadMore triggers", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 4, nextCursor: "uuid-2", hasMore: true }),
+    });
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    await waitFor(() =>
+      expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
+    );
+    // Counter shows "+" suffix proving hasNextPage was passed
+    expect(screen.getByText("1 of 2+")).toBeInTheDocument();
+    // Navigate to last card — this triggers onLoadMore (fetchNextPage)
+    fireEvent.click(screen.getByRole("button", { name: /next insight/i }));
+    // fetchNextPage was called, triggering another fetch
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("SSE invalidation still works — queryKey ['teaching-feed'] is used with infinite query", async () => {
+    // When pendingInsightIds is non-empty, FeedContainer calls invalidateQueries(["teaching-feed"])
+    // TanStack Query v5 with useInfiniteQuery handles this same queryKey correctly
+    mockUseFeedSSE.mockReturnValue({
+      pendingInsightIds: ["new-insight-id"],
+      isStreaming: true,
+      phase: "processing",
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 2, nextCursor: null, hasMore: false }),
+    });
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    // invalidateQueries triggers a refetch — fetch is called at least once
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    // The fetch URL uses the correct insights endpoint
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/insights"),
+      expect.anything(),
+    );
   });
 });

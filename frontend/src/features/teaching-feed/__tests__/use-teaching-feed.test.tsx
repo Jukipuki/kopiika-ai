@@ -29,6 +29,20 @@ const mockItems: InsightCard[] = [
   },
 ];
 
+const mockItems2: InsightCard[] = [
+  {
+    id: "uuid-2",
+    uploadId: null,
+    headline: "Utility bills increased",
+    keyMetric: "₴800",
+    whyItMatters: "Seasonal change.",
+    deepDive: "Electricity usage up 20%.",
+    severity: "medium",
+    category: "utilities",
+    createdAt: "2026-04-04T12:00:00.000000Z",
+  },
+];
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -48,10 +62,10 @@ describe("useTeachingFeed", () => {
     mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
     const { result } = renderHook(() => useTeachingFeed(), { wrapper: createWrapper() });
     expect(result.current.isLoading).toBe(true);
-    expect(result.current.data).toBeUndefined();
+    expect(result.current.cards).toEqual([]);
   });
 
-  it("returns insight data on success", async () => {
+  it("returns flattened cards on success (hasMore=false)", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -61,8 +75,68 @@ describe("useTeachingFeed", () => {
     const { result } = renderHook(() => useTeachingFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.data).toEqual(mockItems);
+    expect(result.current.cards).toEqual(mockItems);
     expect(result.current.isError).toBe(false);
+  });
+
+  it("returns hasNextPage=false when hasMore=false", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 1, nextCursor: null, hasMore: false }),
+    });
+
+    const { result } = renderHook(() => useTeachingFeed(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasNextPage).toBe(false);
+  });
+
+  it("returns hasNextPage=true when hasMore=true", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 2, nextCursor: "uuid-1", hasMore: true }),
+    });
+
+    const { result } = renderHook(() => useTeachingFeed(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasNextPage).toBe(true);
+  });
+
+  it("deduplicates cards with the same id across pages", async () => {
+    // First call returns page 1 with uuid-1 (hasMore=true)
+    // Second call (fetchNextPage) returns page 2 with uuid-1 again + uuid-2
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: mockItems, total: 2, nextCursor: "uuid-1", hasMore: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [...mockItems, ...mockItems2],
+            total: 2,
+            nextCursor: null,
+            hasMore: false,
+          }),
+      });
+
+    const { result } = renderHook(() => useTeachingFeed(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // Fetch next page
+    await result.current.fetchNextPage();
+    await waitFor(() => expect(result.current.isFetchingNextPage).toBe(false));
+
+    // uuid-1 should appear only once despite being in both pages
+    const ids = result.current.cards.map((c) => c.id);
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(ids.length);
+    expect(result.current.cards).toHaveLength(2);
   });
 
   it("returns error state on fetch failure", async () => {
@@ -74,7 +148,7 @@ describe("useTeachingFeed", () => {
     const { result } = renderHook(() => useTeachingFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.data).toBeUndefined();
+    expect(result.current.cards).toEqual([]);
   });
 
   it("does not fetch when no access token", () => {
@@ -83,7 +157,7 @@ describe("useTeachingFeed", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("sends Authorization header with Bearer token", async () => {
+  it("sends Authorization header with Bearer token and pageSize param", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () =>
@@ -98,6 +172,10 @@ describe("useTeachingFeed", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
       }),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("pageSize=20"),
+      expect.anything(),
     );
   });
 });
