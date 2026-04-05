@@ -364,6 +364,174 @@ class TestInsightReadySSEEvents:
         assert len(insight_ready_calls) == 0
 
 
+class TestLiteracyLevelDetection:
+    """Tests for literacy level detection in process_upload (Story 3.8)."""
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_first_upload_sets_beginner(
+        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+    ):
+        """First upload for a user sets literacy_level to 'beginner'."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_pipeline.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        # Verify pipeline was invoked with literacy_level="beginner"
+        call_args = mock_pipeline.invoke.call_args[0][0]
+        assert call_args["literacy_level"] == "beginner"
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_three_uploads_within_7_days_stays_beginner(
+        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+    ):
+        """3+ uploads but first upload < 7 days ago → beginner."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+
+        # Add 2 more uploads (total 3), all recent
+        with Session(sync_engine) as s:
+            for i in range(2):
+                extra_upload = Upload(
+                    user_id=user_id, file_name=f"extra{i}.csv",
+                    s3_key=f"{user_id}/extra{i}.csv", file_size=100,
+                    mime_type="text/csv", detected_format="monobank",
+                    detected_encoding="utf-8", detected_delimiter=";",
+                )
+                s.add(extra_upload)
+            s.commit()
+
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_pipeline.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        call_args = mock_pipeline.invoke.call_args[0][0]
+        assert call_args["literacy_level"] == "beginner"
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_three_uploads_after_7_days_sets_intermediate(
+        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+    ):
+        """3+ uploads AND first upload >= 7 days ago → intermediate."""
+        from datetime import timedelta
+
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+
+        # Backdate the first upload to 10 days ago and add more uploads
+        with Session(sync_engine) as s:
+            upload = s.get(Upload, upload_id)
+            upload.created_at = _utcnow() - timedelta(days=10)
+            s.add(upload)
+
+            for i in range(2):
+                extra_upload = Upload(
+                    user_id=user_id, file_name=f"extra{i}.csv",
+                    s3_key=f"{user_id}/extra{i}.csv", file_size=100,
+                    mime_type="text/csv", detected_format="monobank",
+                    detected_encoding="utf-8", detected_delimiter=";",
+                )
+                s.add(extra_upload)
+            s.commit()
+
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_pipeline.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        call_args = mock_pipeline.invoke.call_args[0][0]
+        assert call_args["literacy_level"] == "intermediate"
+
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_three_uploads_exactly_7_days_sets_intermediate(
+        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+    ):
+        """3+ uploads AND first upload exactly 7 days ago → intermediate (boundary test)."""
+        from datetime import timedelta
+
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+
+        with Session(sync_engine) as s:
+            upload = s.get(Upload, upload_id)
+            upload.created_at = _utcnow() - timedelta(days=7)
+            s.add(upload)
+
+            for i in range(2):
+                extra_upload = Upload(
+                    user_id=user_id, file_name=f"boundary{i}.csv",
+                    s3_key=f"{user_id}/boundary{i}.csv", file_size=100,
+                    mime_type="text/csv", detected_format="monobank",
+                    detected_encoding="utf-8", detected_delimiter=";",
+                )
+                s.add(extra_upload)
+            s.commit()
+
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_pipeline.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        call_args = mock_pipeline.invoke.call_args[0][0]
+        assert call_args["literacy_level"] == "intermediate"
+
+
 class TestProcessUploadPerformance:
     @pytest.mark.slow
     @patch("app.tasks.processing_tasks.boto3.client")

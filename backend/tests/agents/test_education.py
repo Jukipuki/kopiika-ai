@@ -31,6 +31,7 @@ def _make_state(**overrides) -> FinancialPipelineState:
         "total_tokens_used": 0,
         "locale": "uk",
         "insight_cards": [],
+        "literacy_level": "beginner",
     }
     base.update(overrides)
     return base
@@ -104,6 +105,53 @@ def test_get_prompt_ukrainian():
 def test_get_prompt_defaults_to_ukrainian():
     prompt = get_prompt("fr")
     assert "фінансовий освітній асистент" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Prompt tests — literacy level (Story 3.8)
+# ---------------------------------------------------------------------------
+
+def test_get_prompt_en_beginner():
+    prompt = get_prompt("en", "beginner")
+    assert "financial education assistant" in prompt
+    assert "Explain concepts simply" in prompt
+
+
+def test_get_prompt_en_intermediate():
+    prompt = get_prompt("en", "intermediate")
+    assert "financial education assistant" in prompt
+    assert "optimization strategies" in prompt
+    assert "50/30/20" in prompt
+
+
+def test_get_prompt_uk_beginner():
+    prompt = get_prompt("uk", "beginner")
+    assert "фінансовий освітній асистент" in prompt
+    assert "Пояснюй поняття просто" in prompt
+
+
+def test_get_prompt_uk_intermediate():
+    prompt = get_prompt("uk", "intermediate")
+    assert "фінансовий освітній асистент" in prompt
+    assert "стратегіях оптимізації" in prompt
+    assert "50/30/20" in prompt
+
+
+def test_get_prompt_all_four_combinations_return_different_prompts():
+    """All four locale+literacy combinations return distinct prompts."""
+    prompts = {
+        get_prompt("en", "beginner"),
+        get_prompt("en", "intermediate"),
+        get_prompt("uk", "beginner"),
+        get_prompt("uk", "intermediate"),
+    }
+    assert len(prompts) == 4
+
+
+def test_get_prompt_defaults_to_beginner():
+    """Without literacy_level argument, defaults to beginner."""
+    assert get_prompt("en") == get_prompt("en", "beginner")
+    assert get_prompt("uk") == get_prompt("uk", "beginner")
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +313,111 @@ def test_education_node_no_categorized_transactions():
     result = education_node(state)
     assert result["insight_cards"] == []
     assert result["step"] == "education"
+
+
+# ---------------------------------------------------------------------------
+# Education node — literacy level handling (Story 3.8)
+# ---------------------------------------------------------------------------
+
+def test_education_node_reads_literacy_level_from_state():
+    """Education node reads literacy_level from state and passes it to get_prompt."""
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(MOCK_INSIGHT_CARDS)
+
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="en",
+        literacy_level="intermediate",
+    )
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+        patch("app.agents.education.node.get_prompt") as mock_get_prompt,
+    ):
+        mock_get_prompt.return_value = "mock prompt {user_context} {rag_context}"
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        education_node(state)
+
+    mock_get_prompt.assert_called_once_with("en", "intermediate")
+
+
+def test_education_node_defaults_literacy_level_to_beginner():
+    """Education node defaults literacy_level to 'beginner' when not in state."""
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(MOCK_INSIGHT_CARDS)
+
+    # Create state without literacy_level key to test fallback default
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="uk",
+    )
+    del state["literacy_level"]
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+        patch("app.agents.education.node.get_prompt") as mock_get_prompt,
+    ):
+        mock_get_prompt.return_value = "mock prompt {user_context} {rag_context}"
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        education_node(state)
+
+    mock_get_prompt.assert_called_once_with("uk", "beginner")
+
+
+def test_education_node_intermediate_prompt_end_to_end():
+    """Education node uses intermediate prompt text when literacy_level is 'intermediate' (no mock on get_prompt)."""
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(MOCK_INSIGHT_CARDS)
+
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="en",
+        literacy_level="intermediate",
+    )
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        result = education_node(state)
+
+        # Verify the intermediate prompt was actually sent to the LLM
+        actual_prompt = mock_llm_fn.return_value.invoke.call_args[0][0]
+        assert "optimization strategies" in actual_prompt
+        assert "50/30/20" in actual_prompt
+
+    assert len(result["insight_cards"]) == 2
+
+
+def test_education_node_logs_literacy_level():
+    """Education node logs literacy_level in structured output."""
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(MOCK_INSIGHT_CARDS)
+
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="en",
+        literacy_level="intermediate",
+    )
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+        patch("app.agents.education.node.logger") as mock_logger,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        education_node(state)
+
+    # Verify logger.info was called with literacy_level in the format string
+    info_calls = mock_logger.info.call_args_list
+    assert any("literacy_level" in str(c) and "intermediate" in str(c) for c in info_calls)
 
 
 # ---------------------------------------------------------------------------

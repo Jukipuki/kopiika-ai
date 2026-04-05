@@ -71,7 +71,8 @@ development_status:
   3-5-teaching-feed-card-ui-progressive-disclosure: done
   3-6-card-stack-navigation-gestures: done
   3-7-progressive-card-appearance-sse-integration: done
-  3-8-adaptive-education-depth: backlog
+  3-8-adaptive-education-depth: done
+  3-9-teaching-feed-infinite-pagination: backlog
   epic-3-retrospective: optional
 
   # ── POST-EPIC 3 ACTION: Migrate LLM clients to AWS Bedrock ──────────────

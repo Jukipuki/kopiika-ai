@@ -6,7 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy.exc import OperationalError
-from sqlmodel import select
+from sqlmodel import func, select
 
 from app.agents.pipeline import financial_pipeline
 from app.agents.state import FinancialPipelineState
@@ -136,6 +136,15 @@ def process_upload(self, job_id: str) -> dict:
                 user = session.get(User, job.user_id)
                 locale = user.locale if user else "uk"
 
+                # Detect literacy level based on upload history
+                upload_stats = session.exec(
+                    select(func.count(), func.min(Upload.created_at))
+                    .where(Upload.user_id == job.user_id)
+                ).one()
+                upload_count, first_upload_at = upload_stats
+                days_since_first = (_utcnow() - first_upload_at).days if first_upload_at else 0
+                literacy_level = "intermediate" if upload_count >= 3 and days_since_first >= 7 else "beginner"
+
                 initial_state: FinancialPipelineState = {
                     "job_id": job_id,
                     "user_id": str(job.user_id),
@@ -156,6 +165,7 @@ def process_upload(self, job_id: str) -> dict:
                     "total_tokens_used": 0,
                     "locale": locale,
                     "insight_cards": [],
+                    "literacy_level": literacy_level,
                 }
 
                 result_state = financial_pipeline.invoke(initial_state)

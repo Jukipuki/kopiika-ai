@@ -87,6 +87,7 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             return {**state, "insight_cards": [], "step": "education"}
 
         locale = state.get("locale", "uk")
+        literacy_level = state.get("literacy_level", "beginner")
         spending_summary = _build_spending_summary(
             state.get("transactions", []),
             categorized,
@@ -104,7 +105,7 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
         )
 
         # Build prompt
-        prompt_template = get_prompt(locale)
+        prompt_template = get_prompt(locale, literacy_level)
         prompt = prompt_template.format(
             user_context=spending_summary,
             rag_context=rag_context if rag_context else "No educational content available.",
@@ -122,9 +123,10 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
         cards = _parse_insight_cards(response.content)
 
         logger.info(
-            '{"level": "INFO", "step": "education", "cards_generated": %d, "locale": "%s"}',
+            '{"level": "INFO", "step": "education", "cards_generated": %d, "locale": "%s", "literacy_level": "%s"}',
             len(cards),
             locale,
+            literacy_level,
         )
         return {**state, "insight_cards": cards, "step": "education"}
 
