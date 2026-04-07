@@ -65,12 +65,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return token;
       }
 
-      // Token not expired yet
-      if (token.expiresAt && Date.now() / 1000 < (token.expiresAt as number)) {
+      // Token not expired yet (refresh 60 seconds before actual expiry)
+      if (token.expiresAt && Date.now() / 1000 < (token.expiresAt as number) - 60) {
         return token;
       }
 
-      // Token expired — attempt refresh
+      // Token expired or about to expire — attempt refresh
       if (token.refreshToken) {
         try {
           const response = await fetch(
@@ -89,6 +89,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             const data = await response.json();
             token.accessToken = data.accessToken;
             token.expiresAt = Math.floor(Date.now() / 1000) + data.expiresIn;
+            delete token.error;
             return token;
           }
         } catch {

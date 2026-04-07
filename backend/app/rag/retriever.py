@@ -30,10 +30,10 @@ def retrieve_relevant_docs(
         rows = session.execute(
             text("""
                 SELECT doc_id, language, chunk_type, content,
-                       1 - (embedding <=> :embedding::vector) AS similarity
+                       1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
                 FROM document_embeddings
                 WHERE language = :language
-                ORDER BY embedding <=> :embedding::vector
+                ORDER BY embedding <=> CAST(:embedding AS vector)
                 LIMIT :top_k
             """),
             {"embedding": embedding_literal, "language": language, "top_k": top_k},
@@ -58,10 +58,10 @@ def retrieve_relevant_docs(
             cross_rows = session.execute(
                 text("""
                     SELECT doc_id, language, chunk_type, content,
-                           1 - (embedding <=> :embedding::vector) AS similarity
+                           1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
                     FROM document_embeddings
                     WHERE language != :language
-                    ORDER BY embedding <=> :embedding::vector
+                    ORDER BY embedding <=> CAST(:embedding AS vector)
                     LIMIT :limit
                 """),
                 {"embedding": embedding_literal, "language": language, "limit": remaining + 5},

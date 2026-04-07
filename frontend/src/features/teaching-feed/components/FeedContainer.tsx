@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Link } from "@/i18n/navigation";
 import { useSession } from "next-auth/react";
+import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +19,7 @@ interface FeedContainerProps {
 
 export function FeedContainer({ jobId }: FeedContainerProps) {
   const { data: session } = useSession();
+  const t = useTranslations("feed");
   const { cards, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, isLoading, isError } = useTeachingFeed();
   const queryClient = useQueryClient();
   const { pendingInsightIds, isStreaming, phase } = useFeedSSE(jobId ?? null, session?.accessToken);
@@ -50,14 +52,14 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
       <Card>
         <CardContent className="p-6 text-center">
           <p className="mb-4 text-sm text-muted-foreground">
-            Failed to load insights. Please try again.
+            {t("loadFailed")}
           </p>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => queryClient.invalidateQueries({ queryKey: ["teaching-feed"] })}
           >
-            Retry
+            {t("retry")}
           </Button>
         </CardContent>
       </Card>
@@ -69,9 +71,9 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
       <Card>
         <CardContent className="p-6 text-center">
           <p className="text-sm text-muted-foreground">
-            No insights yet. Upload a bank statement to get started.{" "}
+            {t("noInsights")}{" "}
             <Link href="/upload" className="underline">
-              Go to Upload
+              {t("goToUpload")}
             </Link>
           </p>
         </CardContent>
@@ -91,14 +93,14 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="mb-2 text-sm text-muted-foreground">
-              Failed to load more insights.
+              {t("loadMoreFailed")}
             </p>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => fetchNextPage()}
             >
-              Retry
+              {t("retry")}
             </Button>
           </CardContent>
         </Card>

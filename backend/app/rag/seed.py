@@ -91,12 +91,12 @@ def seed() -> None:
                 for (chunk_type, chunk_content), embedding in zip(chunks, embeddings):
                     embedding_literal = "[" + ",".join(str(v) for v in embedding) + "]"
                     session.execute(
-                        text("""
+                        text(f"""
                             INSERT INTO document_embeddings
                                 (id, doc_id, language, chunk_type, content, embedding, created_at)
                             VALUES
                                 (:id, :doc_id, :language, :chunk_type, :content,
-                                 :embedding::vector, NOW())
+                                 '{embedding_literal}'::vector, NOW())
                             ON CONFLICT (doc_id, chunk_type) DO UPDATE SET
                                 content = EXCLUDED.content,
                                 embedding = EXCLUDED.embedding,
@@ -108,7 +108,6 @@ def seed() -> None:
                             "language": lang,
                             "chunk_type": chunk_type,
                             "content": chunk_content,
-                            "embedding": embedding_literal,
                         },
                     )
                 session.commit()

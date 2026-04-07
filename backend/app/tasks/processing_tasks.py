@@ -142,7 +142,7 @@ def process_upload(self, job_id: str) -> dict:
                     .where(Upload.user_id == job.user_id)
                 ).one()
                 upload_count, first_upload_at = upload_stats
-                days_since_first = (_utcnow() - first_upload_at).days if first_upload_at else 0
+                days_since_first = (_utcnow() - first_upload_at.replace(tzinfo=None)).days if first_upload_at else 0
                 literacy_level = "intermediate" if upload_count >= 3 and days_since_first >= 7 else "beginner"
 
                 initial_state: FinancialPipelineState = {

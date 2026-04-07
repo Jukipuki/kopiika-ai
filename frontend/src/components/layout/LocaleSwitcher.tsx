@@ -32,6 +32,7 @@ export default function LocaleSwitcher({ accessToken }: LocaleSwitcherProps) {
       try {
         const res = await fetch(`${API_URL}/api/v1/auth/me`, {
           method: "PATCH",
+          keepalive: true,
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",

@@ -73,11 +73,15 @@ development_status:
   3-7-progressive-card-appearance-sse-integration: done
   3-8-adaptive-education-depth: done
   3-9-teaching-feed-infinite-pagination: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # ── POST-EPIC 3 ACTION: Migrate LLM clients to AWS Bedrock ──────────────
-  # (See also: AgentCore note below — do Bedrock migration first)
-  # When all Epic 3 stories are done, migrate before going to production:
+  # DECISION (2026-04-07 retrospective): DEFERRED until chat-with-finances epic.
+  # Rationale: direct Anthropic/OpenAI works; capstone GDPR argument is weak;
+  # AgentCore (which requires Bedrock) is the real driver — migrate when that
+  # feature is being built. The llm.py abstraction makes it a contained swap.
+  # (See also: AgentCore note below)
+  # Original plan — when ready to migrate:
   #   - Replace langchain-anthropic (ChatAnthropic) + langchain-openai (ChatOpenAI)
   #     with langchain-aws (ChatBedrock) in backend/app/agents/llm.py (shared module)
   #   - Change points: get_llm_client() and get_fallback_llm_client() only (single file)

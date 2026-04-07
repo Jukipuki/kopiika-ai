@@ -228,7 +228,10 @@
       "Bash(.venv/bin/python -m ruff check app/rag/ app/agents/education/ app/models/embedding.py app/models/insight.py app/tasks/processing_tasks.py app/agents/pipeline.py app/agents/state.py tests/agents/test_education.py tests/test_rag_retrieval.py tests/test_embeddings.py)",
       "Bash(find frontend/src/features/teaching-feed frontend/src/app/*/\\\\\\(dashboard\\\\\\)/feed -type f)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Next.js:', d.get\\('dependencies',{}\\).get\\('next','N/A'\\)\\); print\\('React:', d.get\\('dependencies',{}\\).get\\('react','N/A'\\)\\); print\\('TanStack Query:', d.get\\('dependencies',{}\\).get\\('@tanstack/react-query','N/A'\\)\\)\")",
-      "Bash(grep -c \"^it\\\\|^ it\\\\|^test\\\\|^ test\\\\|^ it\\\\|^ test\" frontend/src/**/__tests__/*.test.tsx)"
+      "Bash(grep -c \"^it\\\\|^ it\\\\|^test\\\\|^ test\\\\|^ it\\\\|^ test\" frontend/src/**/__tests__/*.test.tsx)",
+      "Bash(PGPASSWORD=kopiika psql -h localhost -U kopiika -d kopiika -c \"SELECT COUNT\\(*\\) FROM insight;\")",
+      "Bash(PGPASSWORD=kopiika psql -h localhost -U kopiika -d kopiika -c \"SELECT COUNT\\(*\\) FROM document_embeddings;\")",
+      "Bash(PGPASSWORD=password psql -h localhost -U user -d kopiika_db -c \"SELECT COUNT\\(*\\) FROM insight; SELECT COUNT\\(*\\) FROM document_embeddings; SELECT COUNT\\(*\\) FROM \\\\\"transaction\\\\\";\")"
     ]
   }
 }

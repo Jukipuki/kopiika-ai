@@ -30,6 +30,7 @@ export default function LanguageSection() {
       try {
         const res = await fetch(`${API_URL}/api/v1/auth/me`, {
           method: "PATCH",
+          keepalive: true,
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
             "Content-Type": "application/json",

@@ -13,12 +13,13 @@ export default async function FeedPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  const t = await getTranslations("feed");
   const { jobId } = await searchParams;
   const jobIdStr = typeof jobId === "string" ? jobId : undefined;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">Teaching Feed</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t("title")}</h1>
       <FeedContainer jobId={jobIdStr} />
     </div>
   );
