@@ -59,7 +59,7 @@ describe("useFeedSSE", () => {
 
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.pendingInsightIds).toEqual([]);
-    expect(result.current.phase).toBeNull();
+    expect(result.current.message).toBeNull();
   });
 
   it("returns isStreaming: false when accessToken is undefined", async () => {
@@ -166,7 +166,28 @@ describe("useFeedSSE", () => {
     expect(result.current.pendingInsightIds).toEqual([]);
   });
 
-  it("updates phase from pipeline-progress step", async () => {
+  it("sets message from pipeline-progress data.message", async () => {
+    const { useFeedSSE } = await import("../hooks/use-feed-sse");
+    const { result } = renderHook(() => useFeedSSE("job-123", "token"), {
+      wrapper: createWrapper(),
+    });
+
+    const es = MockEventSource.instances[0];
+
+    act(() => {
+      es.emit("pipeline-progress", {
+        event: "pipeline-progress",
+        jobId: "job-123",
+        step: "categorization",
+        progress: 60,
+        message: "Categorizing your transactions...",
+      });
+    });
+
+    expect(result.current.message).toBe("Categorizing your transactions...");
+  });
+
+  it("sets message to null when data.message is missing", async () => {
     const { useFeedSSE } = await import("../hooks/use-feed-sse");
     const { result } = renderHook(() => useFeedSSE("job-123", "token"), {
       wrapper: createWrapper(),
@@ -178,7 +199,61 @@ describe("useFeedSSE", () => {
       es.emit("pipeline-progress", { event: "pipeline-progress", jobId: "job-123", step: "categorization", progress: 60 });
     });
 
-    expect(result.current.phase).toBe("categorization");
+    expect(result.current.message).toBeNull();
+  });
+
+  it("clears message to null on job-complete", async () => {
+    const { useFeedSSE } = await import("../hooks/use-feed-sse");
+    const { result } = renderHook(() => useFeedSSE("job-123", "token"), {
+      wrapper: createWrapper(),
+    });
+
+    const es = MockEventSource.instances[0];
+
+    act(() => {
+      es.emit("pipeline-progress", {
+        event: "pipeline-progress",
+        jobId: "job-123",
+        step: "categorization",
+        progress: 60,
+        message: "Categorizing...",
+      });
+    });
+
+    expect(result.current.message).toBe("Categorizing...");
+
+    act(() => {
+      es.emit("job-complete", { event: "job-complete", jobId: "job-123", status: "completed" });
+    });
+
+    expect(result.current.message).toBeNull();
+  });
+
+  it("clears message to null on job-failed", async () => {
+    const { useFeedSSE } = await import("../hooks/use-feed-sse");
+    const { result } = renderHook(() => useFeedSSE("job-123", "token"), {
+      wrapper: createWrapper(),
+    });
+
+    const es = MockEventSource.instances[0];
+
+    act(() => {
+      es.emit("pipeline-progress", {
+        event: "pipeline-progress",
+        jobId: "job-123",
+        step: "categorization",
+        progress: 60,
+        message: "Categorizing...",
+      });
+    });
+
+    expect(result.current.message).toBe("Categorizing...");
+
+    act(() => {
+      es.emit("job-failed", { event: "job-failed", jobId: "job-123" });
+    });
+
+    expect(result.current.message).toBeNull();
   });
 
   it("reconnects on error with exponential backoff", async () => {
@@ -274,7 +349,7 @@ describe("useFeedSSE", () => {
     });
 
     // Should not crash, state unchanged
-    expect(result.current.phase).toBeNull();
+    expect(result.current.message).toBeNull();
     expect(result.current.isStreaming).toBe(true);
   });
 });

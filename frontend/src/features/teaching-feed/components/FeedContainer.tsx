@@ -22,7 +22,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
   const t = useTranslations("feed");
   const { cards, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, isLoading, isError } = useTeachingFeed();
   const queryClient = useQueryClient();
-  const { pendingInsightIds, isStreaming, phase } = useFeedSSE(jobId ?? null, session?.accessToken);
+  const { pendingInsightIds, isStreaming, message } = useFeedSSE(jobId ?? null, session?.accessToken);
 
   // Refetch feed data as new insights arrive from SSE
   useEffect(() => {
@@ -32,7 +32,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
   }, [pendingInsightIds.length, queryClient]);
 
   if (isStreaming && (!cards || cards.length === 0)) {
-    return <ProgressiveLoadingState phase={phase} />;
+    return <ProgressiveLoadingState message={message} />;
   }
 
   if (isLoading && !isStreaming) {
@@ -105,7 +105,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
           </CardContent>
         </Card>
       )}
-      {isStreaming && <ProgressiveLoadingState phase={phase} />}
+      {isStreaming && <ProgressiveLoadingState message={message} />}
     </div>
   );
 }

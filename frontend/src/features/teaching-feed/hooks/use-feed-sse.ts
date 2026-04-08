@@ -13,7 +13,7 @@ export function useFeedSSE(jobId: string | null, accessToken: string | undefined
   const queryClient = useQueryClient();
   const [pendingInsightIds, setPendingInsightIds] = useState<string[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [phase, setPhase] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const terminalRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
@@ -45,7 +45,7 @@ export function useFeedSSE(jobId: string | null, accessToken: string | undefined
     es.addEventListener("pipeline-progress", (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
-        setPhase(data.step ?? null);
+        setMessage(data.message ?? null);
       } catch {
         // Ignore malformed SSE payloads
       }
@@ -65,7 +65,7 @@ export function useFeedSSE(jobId: string | null, accessToken: string | undefined
     es.addEventListener("job-complete", () => {
       terminalRef.current = true;
       setIsStreaming(false);
-      setPhase(null);
+      setMessage(null);
       queryClient.invalidateQueries({ queryKey: ["teaching-feed"] });
       cleanup();
     });
@@ -73,6 +73,7 @@ export function useFeedSSE(jobId: string | null, accessToken: string | undefined
     es.addEventListener("job-failed", () => {
       terminalRef.current = true;
       setIsStreaming(false);
+      setMessage(null);
       setPendingInsightIds([]);
       cleanup();
     });
@@ -105,18 +106,18 @@ export function useFeedSSE(jobId: string | null, accessToken: string | undefined
       cleanup();
       setIsStreaming(false);
       setPendingInsightIds([]);
-      setPhase(null);
+      setMessage(null);
       return;
     }
 
     terminalRef.current = false;
     reconnectAttemptRef.current = 0;
     setPendingInsightIds([]);
-    setPhase(null);
+    setMessage(null);
     connect();
 
     return cleanup;
   }, [jobId, accessToken, connect, cleanup]);
 
-  return { pendingInsightIds, isStreaming, phase };
+  return { pendingInsightIds, isStreaming, message };
 }

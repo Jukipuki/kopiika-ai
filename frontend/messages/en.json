@@ -179,6 +179,7 @@
     "goToUpload": "Go to Upload",
     "loadFailed": "Failed to load insights. Please try again.",
     "loadMoreFailed": "Failed to load more insights.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "processing": "Processing..."
   }
 }

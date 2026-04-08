@@ -118,12 +118,15 @@ development_status:
   # ────────────────────────────────────────────────────────────────────────
 
   # Epic 4: Cumulative Financial Profile & Health Score
-  epic-4: backlog
-  4-1-persistent-financial-profile: backlog
-  4-2-financial-health-score-calculation-display: backlog
-  4-3-health-score-history-trends: backlog
-  4-4-month-over-month-spending-comparison: backlog
-  4-5-category-spending-breakdown: backlog
+  epic-4: in-progress
+  4-1-sse-progress-message-decoupling: done
+  4-2-card-visual-hierarchy-fix: ready-for-dev
+  4-3-redirect-timing-progressive-loading-verification: ready-for-dev
+  4-4-persistent-financial-profile: backlog
+  4-5-financial-health-score-calculation-display: backlog
+  4-6-health-score-history-trends: backlog
+  4-7-month-over-month-spending-comparison: backlog
+  4-8-category-spending-breakdown: backlog
   epic-4-retrospective: optional
 
   # Epic 5: Data Privacy, Trust & Consent

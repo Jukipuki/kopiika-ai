@@ -98,7 +98,7 @@ The PRD defines 11 core V1 features organized into four architectural domains:
 | **Monobank CSV format** | Windows-1251 encoding, semicolon delimiter, comma decimals, possible embedded newlines | Robust parser with encoding detection, format normalization |
 | **Monobank API rate limit** | 1 request per 60 seconds, max 31 days per request, 500 tx per response | Background queue with enforced delays for historical sync |
 | **No Stripe in Ukraine** | Must use Fondy (domestic) or LemonSqueezy (international) for payments | Dual payment gateway integration, more complex subscription management |
-| **Ukrainian as low-resource language** | Limited fine-tuning data for Ukrainian financial domain | RAG-first approach using multilingual embeddings (BGE-M3), defer fine-tuning |
+| **Ukrainian as low-resource language** | Limited fine-tuning data for Ukrainian financial domain | RAG-first approach using multilingual embeddings (OpenAI text-embedding-3-small), defer fine-tuning |
 | **LLM API dependency** | Core pipeline depends on external LLM APIs (Claude/GPT) | Error handling, fallback strategies, cost management, rate limiting |
 | **Greenfield project** | No existing codebase or infrastructure | Freedom in technology choices, but all infrastructure must be provisioned |
 
@@ -291,7 +291,7 @@ uv init --python 3.12
 | **Caching** | Redis (multi-purpose) | Redis 7.x | Already required for Celery broker; also used for API response caching, job status tracking, and SSE progress. Write-once AI insights cached aggressively |
 | **Raw Data Preservation** | Dual storage: raw JSONB + normalized model | — | Raw Monobank data stored untouched in JSONB for audit/compliance. Normalized into structured transaction model for AI pipeline processing |
 | **File Storage** | Amazon S3 | — | Uploaded CSV/PDF files stored in S3 with per-user prefix. Processed then referenced by job ID |
-| **Vector Embeddings** | pgvector with BGE-M3 (1024 dimensions) | BGE-M3 latest | Bilingual Ukrainian/English embeddings in same vector space. HNSW index for fast ANN search. Co-located with relational data for single-query joins |
+| **Vector Embeddings** | pgvector with OpenAI text-embedding-3-small (1536 dimensions) | text-embedding-3-small | Bilingual Ukrainian/English embeddings in same vector space. HNSW index for fast ANN search. Co-located with relational data for single-query joins |
 
 **Feedback Data Model (FR45-FR55):**
 
@@ -454,7 +454,7 @@ User -> Next.js (Custom Login UI) -> Cognito User Pool -> JWT issued
 4. Database models + migrations (SQLModel + Alembic)
 5. File upload + async processing (S3 + Celery + Redis)
 6. AI pipeline (LangGraph agents, sequential)
-7. RAG system (pgvector + BGE-M3 embeddings)
+7. RAG system (pgvector + OpenAI text-embedding-3-small embeddings)
 8. Teaching Feed UI (shadcn/ui cards + TanStack Query + SSE)
 9. Freemium tier gating
 10. Payment integration (Fondy + LemonSqueezy)
@@ -464,7 +464,7 @@ User -> Next.js (Custom Login UI) -> Cognito User Pool -> JWT issued
 - Database schema must be stable before AI pipeline can persist results
 - Redis must be running before Celery workers or caching works
 - OpenAPI spec must be generated before frontend API client can be built
-- BGE-M3 embeddings service must be running before Education Agent can do RAG retrieval
+- OpenAI text-embedding-3-small embeddings service must be running before Education Agent can do RAG retrieval
 
 ## Implementation Patterns & Consistency Rules
 
@@ -490,7 +490,7 @@ User -> Next.js (Custom Login UI) -> Cognito User Pool -> JWT issued
 
 | Element | Convention | Example |
 |---|---|---|
-| Endpoints | `kebab-case`, plural nouns | `/api/v1/transactions`, `/api/v1/teaching-feed` |
+| Endpoints | `kebab-case`, plural nouns | `/api/v1/transactions`, `/api/v1/insights` |
 | JSON fields | `camelCase` (Pydantic `alias_generator=to_camel`) | `userId`, `createdAt`, `healthScore` |
 | Query params | `camelCase` | `?startDate=2026-01-01&pageSize=20` |
 | Path params | `camelCase` | `/api/v1/transactions/{transactionId}` |
@@ -605,7 +605,7 @@ backend/app/
 │   ├── pipeline_tasks.py       # AI pipeline processing tasks
 │   └── notification_tasks.py   # Email notification tasks
 ├── rag/                        # RAG pipeline components
-│   ├── embeddings.py           # BGE-M3 embedding generation
+│   ├── embeddings.py           # OpenAI text-embedding-3-small generation
 │   ├── retriever.py            # pgvector retrieval logic
 │   └── knowledge_base.py       # Knowledge base management
 └── main.py                     # FastAPI app entry point
@@ -633,8 +633,8 @@ GET /api/v1/transactions/{id}
 GET /api/v1/transactions?cursor=abc&pageSize=20
 → { "items": [...], "total": 245, "nextCursor": "def", "hasMore": true }
 
-// Teaching Feed (union type cards)
-GET /api/v1/teaching-feed?cursor=abc
+// Teaching Feed / Insights (union type cards)
+GET /api/v1/insights?cursor=abc
 → { "items": [
     { "type": "spendingInsight", "severity": "warning", ... },
     { "type": "subscriptionAlert", "severity": "critical", ... },
@@ -1000,7 +1000,7 @@ kopiika-ai/
 │   │   │       ├── auth.py                  # POST /signup, /login callbacks
 │   │   │       ├── uploads.py               # POST /uploads, GET /uploads
 │   │   │       ├── transactions.py          # GET /transactions, /transactions/{id}
-│   │   │       ├── insights.py              # GET /teaching-feed, /insights/{id}
+│   │   │       ├── insights.py              # GET /insights, /insights/{id}
 │   │   │       ├── feedback.py             # POST /feedback/cards/{id}/vote, /report, /milestone; POST /cards/interactions (FR45-FR55)
 │   │   │       ├── profile.py               # GET/PUT /profile, /health-score
 │   │   │       ├── jobs.py                  # GET /jobs/{id}, /jobs/{id}/stream (SSE)
@@ -1077,14 +1077,19 @@ kopiika-ai/
 │   │   │
 │   │   └── rag/
 │   │       ├── __init__.py
-│   │       ├── embeddings.py                # BGE-M3 embedding generation
+│   │       ├── embeddings.py                # OpenAI text-embedding-3-small generation
 │   │       ├── retriever.py                 # pgvector similarity search
-│   │       ├── knowledge_base.py            # KB document management
-│   │       └── content/                     # Financial education content (seed data)
-│   │           ├── budgeting_uk.md
-│   │           ├── budgeting_en.md
-│   │           ├── saving_strategies_uk.md
-│   │           ├── saving_strategies_en.md
+│   │       └── knowledge_base.py            # KB document management
+│   │
+│   ├── data/
+│   │   └── rag-corpus/                      # Financial education content (seed data)
+│   │       ├── en/                          # English documents
+│   │       │   ├── budgeting.md
+│   │       │   ├── saving_strategies.md
+│   │       │   └── ...
+│   │       └── uk/                          # Ukrainian documents
+│   │           ├── budgeting.md
+│   │           ├── saving_strategies.md
 │   │           └── ...
 │   │
 │   ├── alembic/
@@ -1194,7 +1199,7 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 | **Subscription Detection** | `features/teaching-feed/` (card type) | `agents/pattern_detection/detectors/recurring.py` |
 | **Basic Predictive Forecasts** | `features/teaching-feed/` (card type) | `agents/pattern_detection/detectors/trends.py` |
 | **Pre-built Data Queries** | `features/queries/` | `api/v1/queries.py` |
-| **Bilingual Support** | `i18n/`, `lib/format/` | `agents/education/prompts.py`, `rag/content/` |
+| **Bilingual Support** | `i18n/`, `lib/format/` | `agents/education/prompts.py`, `data/rag-corpus/{en,uk}/` |
 | **Email Notifications** | `features/settings/` (prefs UI) | `tasks/notification_tasks.py`, `services/notification_service.py` |
 | **Freemium Model** | `features/settings/` (subscription UI) | `api/deps.py` (tier guard), `services/subscription_service.py` |
 | **User Auth** | `features/auth/`, `lib/auth/` | `api/v1/auth.py`, `core/security.py` |
@@ -1318,7 +1323,7 @@ cd frontend && npm run dev  # Next.js on port 3000
 All technology choices work together without conflicts:
 - Next.js 16.1 (TypeScript) ↔ FastAPI (Python) communicate via REST + generated OpenAPI client — no version conflicts
 - SQLModel (SQLAlchemy 2.x + Pydantic v2) is fully compatible with FastAPI's native Pydantic v2 integration
-- pgvector 0.8.x works within PostgreSQL 16.x via RDS — BGE-M3 1024-dimension vectors are within pgvector's capabilities
+- pgvector 0.8.x works within PostgreSQL 16.x via RDS — OpenAI text-embedding-3-small 1536-dimension vectors are within pgvector's capabilities
 - Celery + Redis 7.x is a proven combination; ElastiCache supports the required Redis version
 - TanStack Query v5 + Next.js 16.1 App Router are compatible — TanStack Query has full RSC support
 - shadcn/ui CLI v4 + Tailwind CSS 4.x + unified radix-ui package are designed to work together
@@ -1356,7 +1361,7 @@ All technology choices work together without conflicts:
 | Subscription Detection | Pattern Detection Agent + recurring charge detector | ✅ Fully covered |
 | Basic Predictive Forecasts | Pattern Detection Agent + trends detector | ✅ Fully covered |
 | Pre-built Data Queries | Dedicated queries API endpoint + frontend feature folder | ✅ Fully covered |
-| Bilingual Support | next-intl (UI) + BGE-M3 cross-lingual embeddings (RAG) + bilingual prompts + locale formatting | ✅ Fully covered |
+| Bilingual Support | next-intl (UI) + OpenAI text-embedding-3-small cross-lingual embeddings (RAG) + bilingual prompts + locale formatting | ✅ Fully covered |
 | Email Notifications | SES + Celery notification tasks + settings UI | ✅ Fully covered |
 | Freemium Model | Subscription model + tier-gating dependency + Fondy/LemonSqueezy integration | ✅ Fully covered |
 | User Auth & Data Persistence | Cognito + NextAuth.js + JWT middleware + RLS + cascading delete | ✅ Fully covered |
@@ -1368,7 +1373,7 @@ All technology choices work together without conflicts:
 | Security (AES-256, TLS 1.3, tenant isolation) | RDS encryption, HTTPS everywhere, RLS, Cognito JWT | ✅ Covered |
 | Privacy (one-click deletion, consent) | Cascading delete across all stores, DataDeletion component | ✅ Covered |
 | Performance (>80% first-upload completion) | Async pipeline with SSE progress, fast parsing feedback | ✅ Covered |
-| Bilingual | next-intl, BGE-M3, bilingual RAG content, locale formatting | ✅ Covered |
+| Bilingual | next-intl, OpenAI text-embedding-3-small, bilingual RAG content, locale formatting | ✅ Covered |
 | Reliability (graceful agent failures) | LangGraph checkpointing, Celery retries, partial results | ✅ Covered |
 | Scalability | ECS Fargate auto-scaling, App Runner scale-to-zero, connection pooling | ✅ Covered |
 | Compliance (Ukrainian DPL, audit) | Structured JSON logging, raw data preservation, audit trails, compliance audit trail for financial data access events (middleware-level) | ✅ Covered |
@@ -1403,7 +1408,7 @@ All technology choices work together without conflicts:
 
 | # | Gap | Priority | Resolution |
 |---|---|---|---|
-| 1 | **BGE-M3 embedding model hosting** not specified — where does the model run? | Critical | **Recommended:** HuggingFace Inference Endpoints for MVP (managed, auto-scaling, supports BGE-M3). Migrate to self-hosted on ECS Fargate if cost or latency requires it |
+| 1 | **Embedding model hosting** — resolved | Resolved | **Decision:** Using OpenAI text-embedding-3-small via OpenAI API (1536 dimensions). No self-hosting needed. Will migrate to Amazon Titan Text Embeddings V2 on Bedrock when chat-with-finances epic triggers Bedrock migration |
 | 2 | **LLM provider** not explicitly chosen — Claude vs GPT vs both | Critical | **Recommended:** Claude (Anthropic) as primary LLM for all 5 agents. GPT-4o as fallback provider. Provider abstraction via LangChain's LLM interface allows easy switching |
 | 3 | **Database migration workflow** not detailed — who runs migrations, when | Important | **Recommended:** Alembic migrations run as a pre-deployment step in CI/CD pipeline. `alembic upgrade head` executed before new API version starts. Never auto-migrate in app startup |
 | 4 | **APM/monitoring tooling** deferred but observability is a day-one NFR | Nice-to-have | **Recommended:** Start with structured JSON logging to CloudWatch (free with AWS). Add Sentry for error tracking in MVP. Evaluate Datadog/New Relic post-MVP |
@@ -1450,13 +1455,13 @@ All technology choices work together without conflicts:
 2. **Clear layer boundaries** — Explicit "Never Depends On" rules prevent circular dependencies
 3. **Financial data integrity** — Dual storage (raw JSONB + normalized) preserves audit trail while enabling AI processing
 4. **Async-first design** — Upload → Celery → SSE pattern prevents blocking on expensive AI operations
-5. **Bilingual by design** — BGE-M3 cross-lingual embeddings + next-intl + bilingual prompts baked into architecture from day one
+5. **Bilingual by design** — OpenAI text-embedding-3-small cross-lingual embeddings + next-intl + bilingual prompts baked into architecture from day one
 6. **Security depth** — Three-layer auth (Cognito JWT → FastAPI middleware → PostgreSQL RLS) with encryption at rest and in transit
 
 **Areas for Future Enhancement:**
 
 1. GraphQL evaluation post-MVP if Teaching Feed queries become complex
-2. Self-hosted embedding model (ECS Fargate) if HuggingFace Inference Endpoints become a bottleneck
+2. Migration to AWS Bedrock (embeddings + LLM) when chat-with-finances epic requires AgentCore
 3. CDN/edge caching for AI-generated insights that don't change frequently
 4. Multi-region deployment for latency optimization
 5. Advanced APM (Datadog/New Relic) for production observability

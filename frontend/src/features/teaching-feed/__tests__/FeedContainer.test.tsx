@@ -5,6 +5,12 @@ import React from "react";
 import { FeedContainer } from "../components/FeedContainer";
 import type { InsightCard } from "../types";
 
+// Mock next-intl
+vi.mock("next-intl", async () => {
+  const { mockNextIntl } = await import("@/test-utils/intl-mock");
+  return mockNextIntl;
+});
+
 // Mock next-auth/react
 const mockUseSession = vi.fn();
 vi.mock("next-auth/react", () => ({
@@ -98,7 +104,7 @@ describe("FeedContainer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseSession.mockReturnValue({ data: { accessToken: "test-token" } });
-    mockUseFeedSSE.mockReturnValue({ pendingInsightIds: [], isStreaming: false, phase: null });
+    mockUseFeedSSE.mockReturnValue({ pendingInsightIds: [], isStreaming: false, message: null });
   });
 
   it("shows skeleton cards during loading", () => {
@@ -237,13 +243,53 @@ describe("FeedContainer", () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
   });
 
+  it("passes message from useFeedSSE to ProgressiveLoadingState when streaming with no cards", () => {
+    mockUseFeedSSE.mockReturnValue({
+      pendingInsightIds: [],
+      isStreaming: true,
+      message: "Categorizing your transactions...",
+    });
+    mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
+    render(<FeedContainer jobId="job-123" />, { wrapper: createWrapper() });
+    expect(screen.getByText("Categorizing your transactions...")).toBeInTheDocument();
+  });
+
+  it("shows fallback 'Processing...' when message is null during streaming", () => {
+    mockUseFeedSSE.mockReturnValue({
+      pendingInsightIds: [],
+      isStreaming: true,
+      message: null,
+    });
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    render(<FeedContainer jobId="job-123" />, { wrapper: createWrapper() });
+    expect(screen.getByText("Processing...")).toBeInTheDocument();
+  });
+
+  it("shows inline ProgressiveLoadingState with message when streaming with existing cards", async () => {
+    mockUseFeedSSE.mockReturnValue({
+      pendingInsightIds: [],
+      isStreaming: true,
+      message: "Generating financial insights...",
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 2, nextCursor: null, hasMore: false }),
+    });
+    render(<FeedContainer jobId="job-123" />, { wrapper: createWrapper() });
+    await waitFor(() =>
+      expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Generating financial insights...")).toBeInTheDocument();
+  });
+
   it("SSE invalidation still works — queryKey ['teaching-feed'] is used with infinite query", async () => {
     // When pendingInsightIds is non-empty, FeedContainer calls invalidateQueries(["teaching-feed"])
     // TanStack Query v5 with useInfiniteQuery handles this same queryKey correctly
     mockUseFeedSSE.mockReturnValue({
       pendingInsightIds: ["new-insight-id"],
       isStreaming: true,
-      phase: "processing",
+      message: "Processing your data...",
     });
     mockFetch.mockResolvedValue({
       ok: true,

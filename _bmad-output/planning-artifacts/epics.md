@@ -860,7 +860,81 @@ So that I get content that's challenging but not overwhelming.
 
 Users can build a persistent financial profile across multiple uploads, see a Financial Health Score, track changes over time, and view spending breakdowns and trends.
 
-### Story 4.1: Persistent Financial Profile
+### Story 4.1: SSE Progress Message Decoupling
+
+As a **developer**,
+I want the backend to own human-readable progress messages sent via SSE pipeline-progress events,
+So that adding new pipeline steps requires zero frontend changes.
+
+**Source:** Epic 3 Retrospective — Critical Action Item #1
+
+**Acceptance Criteria:**
+
+**Given** the backend sends a `pipeline-progress` SSE event
+**When** any pipeline step emits progress
+**Then** the event payload includes a `message` field with a human-readable string (e.g., "Categorizing your transactions...", "Generating financial insights...")
+
+**Given** the frontend `ProgressiveLoadingState` component receives a `pipeline-progress` event
+**When** it renders the progress state
+**Then** it displays `data.message` directly instead of mapping `data.step` to hardcoded copy strings
+
+**Given** a new pipeline step is added in a future epic
+**When** it emits `pipeline-progress` events with a `message` field
+**Then** the frontend displays the message without any code changes to `ProgressiveLoadingState.tsx`
+
+**Given** the SSE progress events
+**When** they include both `message` and `step` fields
+**Then** the `step` field is retained for programmatic use (progress bar percentage, analytics) while `message` is used for display
+
+### Story 4.2: Card Visual Hierarchy Fix
+
+As a **user**,
+I want the Teaching Feed card headline to be visually dominant over the key metric,
+So that I understand the context before seeing the number.
+
+**Source:** Epic 3 Retrospective — High Action Item #2
+
+**Acceptance Criteria:**
+
+**Given** an insight card with both a headline and a key metric
+**When** the card renders in `InsightCard.tsx`
+**Then** the headline is styled as the primary element (larger font, bold) and the key metric is styled as supporting (smaller, secondary color)
+
+**Given** the Education Agent generates a key metric
+**When** the metric value is produced
+**Then** it is concise (under 30 characters) — no compound expressions like "₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"
+
+**Given** the updated card styling
+**When** viewed on mobile and desktop
+**Then** the visual hierarchy is consistent and meets WCAG 2.1 AA contrast requirements
+
+### Story 4.3: Redirect Timing & Progressive Loading State Verification
+
+As a **developer**,
+I want to verify that the redirect to Teaching Feed and `ProgressiveLoadingState` activation work correctly,
+So that users see accurate progress when the pipeline is running.
+
+**Source:** Epic 3 Retrospective — High Action Item #3
+
+**Acceptance Criteria:**
+
+**Given** a user triggers the pipeline (uploads a statement)
+**When** they are redirected to the Teaching Feed
+**Then** `ProgressiveLoadingState` activates and shows progress messages from the SSE stream
+
+**Given** the `isStreaming` flag in `useFeedSSE`
+**When** traced through `FeedContainer`
+**Then** the flag correctly reflects whether an SSE stream is active (true while pipeline runs, false when complete)
+
+**Given** the pipeline completes
+**When** `ProgressiveLoadingState` receives the completion event
+**Then** it transitions smoothly to the card display without a flash or jarring state change
+
+**Given** the investigation reveals a bug in the redirect timing or streaming state
+**When** the bug is identified
+**Then** a fix is implemented and verified with tests
+
+### Story 4.4: Persistent Financial Profile
 
 As a **user**,
 I want the system to build and maintain a financial profile from all my uploaded statements,
@@ -880,7 +954,7 @@ So that I have a comprehensive view of my financial situation.
 **When** an authenticated user requests their profile
 **Then** they receive aggregated financial data scoped to their user_id with camelCase JSON serialization
 
-### Story 4.2: Financial Health Score Calculation & Display
+### Story 4.5: Financial Health Score Calculation & Display
 
 As a **user**,
 I want to see a Financial Health Score (0-100) based on my cumulative data,
@@ -904,7 +978,7 @@ So that I have a quick indicator of my overall financial wellness.
 **When** it is persisted
 **Then** a `financial_health_scores` table is created via Alembic migration with id (UUID), user_id (FK), score (integer), calculated_at, and snapshot data
 
-### Story 4.3: Health Score History & Trends
+### Story 4.6: Health Score History & Trends
 
 As a **user**,
 I want to see how my Financial Health Score changes over time,
@@ -924,7 +998,7 @@ So that I can track my financial progress.
 **When** they view Health Score history
 **Then** they see their current score with a message encouraging more uploads to see trends ("Upload more months to track your progress")
 
-### Story 4.4: Month-over-Month Spending Comparison
+### Story 4.7: Month-over-Month Spending Comparison
 
 As a **user**,
 I want to see how my spending changes month over month,
@@ -944,7 +1018,7 @@ So that I can identify improving or worsening trends.
 **When** they view the comparison section
 **Then** they see a friendly message ("Upload another month to see spending trends") instead of empty charts
 
-### Story 4.5: Category Spending Breakdown
+### Story 4.8: Category Spending Breakdown
 
 As a **user**,
 I want to see my spending broken down by category from all my cumulative data,

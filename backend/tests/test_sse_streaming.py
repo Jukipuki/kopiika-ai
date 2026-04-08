@@ -334,30 +334,35 @@ class TestCeleryTaskPublishesProgress:
         assert result["parsed_count"] == 1
 
         calls = mock_publish.call_args_list
-        # 6 events: 10% (ingestion), 30% (parsing), 40% (categorization start),
-        # 60% (categorization done), 80% (education done), job-complete
-        assert len(calls) == 6
+        # Events: 10% ingestion, 30% parsing, 40% categorization start,
+        # 60% categorization done, 80% education done,
+        # N x insight-ready (one per generated insight card), job-complete
+        progress_calls = [c for c in calls if c[0][1]["event"] == "pipeline-progress"]
+        insight_calls = [c for c in calls if c[0][1]["event"] == "insight-ready"]
+        complete_calls = [c for c in calls if c[0][1]["event"] == "job-complete"]
 
-        assert calls[0][0][1]["event"] == "pipeline-progress"
-        assert calls[0][0][1]["progress"] == 10
+        assert len(progress_calls) == 5
+        assert len(complete_calls) == 1
 
-        assert calls[1][0][1]["event"] == "pipeline-progress"
-        assert calls[1][0][1]["progress"] == 30
+        assert progress_calls[0][0][1]["progress"] == 10
+        assert progress_calls[1][0][1]["progress"] == 30
 
-        assert calls[2][0][1]["event"] == "pipeline-progress"
-        assert calls[2][0][1]["step"] == "categorization"
-        assert calls[2][0][1]["progress"] == 40
+        assert progress_calls[2][0][1]["step"] == "categorization"
+        assert progress_calls[2][0][1]["progress"] == 40
 
-        assert calls[3][0][1]["event"] == "pipeline-progress"
-        assert calls[3][0][1]["step"] == "categorization"
-        assert calls[3][0][1]["progress"] == 60
+        assert progress_calls[3][0][1]["step"] == "categorization"
+        assert progress_calls[3][0][1]["progress"] == 60
 
-        assert calls[4][0][1]["event"] == "pipeline-progress"
-        assert calls[4][0][1]["step"] == "education"
-        assert calls[4][0][1]["progress"] == 80
+        assert progress_calls[4][0][1]["step"] == "education"
+        assert progress_calls[4][0][1]["progress"] == 80
 
-        assert calls[5][0][1]["event"] == "job-complete"
-        assert calls[5][0][1]["status"] == "completed"
+        # Each insight card produces an insight-ready event
+        for ic in insight_calls:
+            assert ic[0][1]["event"] == "insight-ready"
+            assert "insightId" in ic[0][1]
+
+        assert complete_calls[0][0][1]["status"] == "completed"
+        assert complete_calls[0][0][1]["totalInsights"] == len(insight_calls)
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
     @patch("app.tasks.processing_tasks.boto3.client")
