@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Link } from "@/i18n/navigation";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
@@ -13,6 +14,18 @@ import { CardStackNavigator } from "./CardStackNavigator";
 import { SkeletonCard } from "./SkeletonCard";
 import { ProgressiveLoadingState } from "./ProgressiveLoadingState";
 
+function SkeletonList() {
+  return (
+    <ul className="flex flex-col gap-4" aria-label="Loading insights">
+      {[1, 2, 3].map((i) => (
+        <li key={i}>
+          <SkeletonCard />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 interface FeedContainerProps {
   jobId?: string;
 }
@@ -20,7 +33,7 @@ interface FeedContainerProps {
 export function FeedContainer({ jobId }: FeedContainerProps) {
   const { data: session } = useSession();
   const t = useTranslations("feed");
-  const { cards, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, isLoading, isError } = useTeachingFeed();
+  const { cards, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, isLoading, isError, isFetching } = useTeachingFeed();
   const queryClient = useQueryClient();
   const { pendingInsightIds, isStreaming, message } = useFeedSSE(jobId ?? null, session?.accessToken);
 
@@ -31,20 +44,23 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
     }
   }, [pendingInsightIds.length, queryClient]);
 
+  // Track streaming→idle transition to scope the empty-state race condition guard.
+  // Without this, any background refetch on an empty feed would flash skeletons.
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isStreaming) {
+      wasStreamingRef.current = true;
+    } else if (!isFetching) {
+      wasStreamingRef.current = false;
+    }
+  }, [isStreaming, isFetching]);
+
   if (isStreaming && (!cards || cards.length === 0)) {
     return <ProgressiveLoadingState message={message} />;
   }
 
   if (isLoading && !isStreaming) {
-    return (
-      <ul className="flex flex-col gap-4" aria-label="Loading insights">
-        {[1, 2, 3].map((i) => (
-          <li key={i}>
-            <SkeletonCard />
-          </li>
-        ))}
-      </ul>
-    );
+    return <SkeletonList />;
   }
 
   if (isError && (!cards || cards.length === 0)) {
@@ -67,6 +83,13 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
   }
 
   if (!cards || cards.length === 0) {
+    // Prevent empty-state flash during the brief window after streaming ends
+    // while TanStack Query is refetching (race condition: isStreaming=false before refetch completes).
+    // Scoped to post-streaming transition only — background refetches on a genuinely empty feed
+    // should keep showing the empty state, not flash skeletons.
+    if (wasStreamingRef.current && (isFetching || isLoading)) {
+      return <SkeletonList />;
+    }
     return (
       <Card>
         <CardContent className="p-6 text-center">
@@ -105,7 +128,19 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
           </CardContent>
         </Card>
       )}
-      {isStreaming && <ProgressiveLoadingState message={message} />}
+      <AnimatePresence>
+        {isStreaming && (
+          <motion.div
+            key="inline-streaming"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ProgressiveLoadingState message={message} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

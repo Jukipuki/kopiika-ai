@@ -1,6 +1,6 @@
 # Story 4.3: Redirect Timing & Progressive Loading State Verification
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 <!-- Source: Epic 3 Retrospective — High Action Item #3 -->
@@ -25,29 +25,29 @@ so that users see accurate progress when the pipeline is running.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Trace and verify the redirect → SSE → progressive loading flow (AC: #1, #2)
-  - [ ] 1.1 Trace `UploadDropzone.tsx` redirect: confirm `router.push('/feed?jobId=X')` fires after `activeJobId` and `lastUploadResult` are set
-  - [ ] 1.2 Verify `FeedContainer` receives `jobId` from URL params and passes to `useFeedSSE`
-  - [ ] 1.3 Verify `useFeedSSE` connects EventSource with jobId and sets `isStreaming=true`
-  - [ ] 1.4 Verify `FeedContainer` line 34: `isStreaming && (!cards || cards.length === 0)` correctly shows `ProgressiveLoadingState`
-  - [ ] 1.5 Document findings — if flow works correctly, note it; if bug found, proceed to Task 3
+- [x] Task 1: Trace and verify the redirect → SSE → progressive loading flow (AC: #1, #2)
+  - [x] 1.1 Trace `UploadDropzone.tsx` redirect: confirm `router.push('/feed?jobId=X')` fires after `activeJobId` and `lastUploadResult` are set
+  - [x] 1.2 Verify `FeedContainer` receives `jobId` from URL params and passes to `useFeedSSE`
+  - [x] 1.3 Verify `useFeedSSE` connects EventSource with jobId and sets `isStreaming=true`
+  - [x] 1.4 Verify `FeedContainer` line 34: `isStreaming && (!cards || cards.length === 0)` correctly shows `ProgressiveLoadingState`
+  - [x] 1.5 Document findings — if flow works correctly, note it; if bug found, proceed to Task 3
 
-- [ ] Task 2: Verify transition from progressive loading to card display (AC: #3, #4)
-  - [ ] 2.1 Trace `job-complete` handler in `useFeedSSE`: sets `isStreaming=false`, invalidates `["teaching-feed"]` query
-  - [ ] 2.2 Verify race condition: after `isStreaming=false`, `cards` must be populated before the empty state renders — TanStack Query invalidation triggers refetch, but there's a brief window where `isStreaming=false` and `cards` may still be empty
-  - [ ] 2.3 If race condition exists: fix by either (a) invalidating query BEFORE setting `isStreaming=false`, or (b) adding a `wasStreaming` ref to prevent empty state flash during the refetch
-  - [ ] 2.4 Verify `ProgressiveLoadingState` at line 108 (below card stack) doesn't cause layout shift when it disappears
+- [x] Task 2: Verify transition from progressive loading to card display (AC: #3, #4)
+  - [x] 2.1 Trace `job-complete` handler in `useFeedSSE`: sets `isStreaming=false`, invalidates `["teaching-feed"]` query
+  - [x] 2.2 Verify race condition: after `isStreaming=false`, `cards` must be populated before the empty state renders — TanStack Query invalidation triggers refetch, but there's a brief window where `isStreaming=false` and `cards` may still be empty
+  - [x] 2.3 If race condition exists: fix by either (a) invalidating query BEFORE setting `isStreaming=false`, or (b) adding a `wasStreaming` ref to prevent empty state flash during the refetch
+  - [x] 2.4 Verify `ProgressiveLoadingState` at line 108 (below card stack) doesn't cause layout shift when it disappears
 
-- [ ] Task 3: Fix any identified issues (AC: #5)
-  - [ ] 3.1 If race condition found in Task 2.2: implement fix with appropriate state management
-  - [ ] 3.2 If layout shift found in Task 2.4: add smooth transition or min-height to prevent jump
-  - [ ] 3.3 If no bugs found: document "verified working" in completion notes
+- [x] Task 3: Fix any identified issues (AC: #5)
+  - [x] 3.1 If race condition found in Task 2.2: implement fix with appropriate state management
+  - [x] 3.2 If layout shift found in Task 2.4: add smooth transition or min-height to prevent jump
+  - [x] 3.3 If no bugs found: document "verified working" in completion notes
 
-- [ ] Task 4: Tests (AC: #1–#5)
-  - [ ] 4.1 Add/update `FeedContainer.test.tsx`: test that `ProgressiveLoadingState` shows when `isStreaming=true` and no cards
-  - [ ] 4.2 Add/update `FeedContainer.test.tsx`: test transition — when `isStreaming` goes `false` and cards arrive, `ProgressiveLoadingState` disappears and cards render
-  - [ ] 4.3 Add/update `FeedContainer.test.tsx`: test that `ProgressiveLoadingState` renders below card stack when `isStreaming=true` AND cards exist
-  - [ ] 4.4 Verify all existing 273 backend + 184 frontend tests continue to pass
+- [x] Task 4: Tests (AC: #1–#5)
+  - [x] 4.1 Add/update `FeedContainer.test.tsx`: test that `ProgressiveLoadingState` shows when `isStreaming=true` and no cards
+  - [x] 4.2 Add/update `FeedContainer.test.tsx`: test transition — when `isStreaming` goes `false` and cards arrive, `ProgressiveLoadingState` disappears and cards render
+  - [x] 4.3 Add/update `FeedContainer.test.tsx`: test that `ProgressiveLoadingState` renders below card stack when `isStreaming=true` AND cards exist
+  - [x] 4.4 Verify all existing 273 backend + 184 frontend tests continue to pass
 
 ## Dev Notes
 
@@ -118,8 +118,36 @@ From Story 3.9 (Infinite Pagination): `useInfiniteQuery` invalidation re-fetches
 
 ### Agent Model Used
 
+claude-sonnet-4-6
+
 ### Debug Log References
+
+None — no debugging required; issues were identified by static trace analysis.
 
 ### Completion Notes List
 
+- ✅ Traced full redirect→SSE→progressive loading flow: all 4 steps verified correct (UploadDropzone → FeedPage searchParams → FeedContainer prop → useFeedSSE connect).
+- 🐛 **Race condition found and fixed (AC #3, #5)**: `job-complete` handler in `useFeedSSE` sets `isStreaming=false` before `queryClient.invalidateQueries` refetch completes. In first-pipeline scenario (no cached cards), brief window shows empty state. Fixed by exposing `isFetching` from `useTeachingFeed` and adding a guard in `FeedContainer`: when `cards=[]` and `isFetching=true`, show skeleton instead of empty state.
+- ⚠️ **Layout shift found and fixed (AC #4)**: `ProgressiveLoadingState` at line 108 (below card stack) disappears abruptly when streaming ends. Fixed with `AnimatePresence` + `motion.div exit={{ opacity: 0 }}` for a smooth 300ms fade-out.
+- ✅ 3 new tests added to `FeedContainer.test.tsx`: transition test (4.2), race condition guard test, and inline streaming indicator with cards test (4.3 variant).
+- ✅ All 193 frontend tests pass, all 273 backend tests pass — no regressions.
+
+### Review Fixes Applied (Code Review 2026-04-08)
+
+- 🔧 **[H1] Race condition guard scoped with `wasStreamingRef`**: `isFetching` guard was over-broad — any background refetch on an empty feed would flash skeletons. Added `wasStreamingRef` to track streaming→idle transitions so the guard only activates immediately after streaming ends.
+- 🔧 **[M1] Transition test now tests actual state transition**: Rewrote test to start with `isStreaming: true` (ProgressiveLoadingState visible), then rerender with `isStreaming: false` + cards. Previously only tested final state.
+- 🔧 **[M2] AnimatePresence test limitation documented**: Added comment noting exit animation cannot be verified in jsdom; test covers structural co-existence only.
+- 🔧 **[M3] Skeleton JSX duplication extracted**: Created `SkeletonList` component to eliminate duplicate 7-line skeleton block.
+- ℹ️ **[L1] Dev Notes `phase` → `message` stale reference**: Not fixed (documentation only, renamed in Story 4.1).
+- ℹ️ **[L2] No `job-failed` FeedContainer test**: Not fixed (hook-level coverage exists; container test deferred).
+
 ### File List
+
+- `frontend/src/features/teaching-feed/hooks/use-teaching-feed.ts` — added `isFetching` to return value
+- `frontend/src/features/teaching-feed/components/FeedContainer.tsx` — added `wasStreamingRef` to scope race condition guard; extracted `SkeletonList` component; wrapped inline `ProgressiveLoadingState` in `AnimatePresence`/`motion.div` for smooth exit
+- `frontend/src/features/teaching-feed/__tests__/FeedContainer.test.tsx` — rewrote transition + race condition tests to verify actual state transitions; documented AnimatePresence mock limitation
+
+## Change Log
+
+- 2026-04-08: Story 4.3 implemented — fixed race condition (empty-state flash after stream end) and layout shift (inline ProgressiveLoadingState fade-out). 3 new tests added.
+- 2026-04-08: Code review fixes — scoped race condition guard with `wasStreamingRef` (H1), rewrote transition tests (M1), documented animation test limitation (M2), extracted `SkeletonList` (M3).

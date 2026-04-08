@@ -51,5 +51,6 @@ export function useTeachingFeed() {
     isFetchNextPageError: result.isError && cards.length > 0,
     isLoading: result.isLoading,
     isError: result.isError,
+    isFetching: result.isFetching,
   };
 }
