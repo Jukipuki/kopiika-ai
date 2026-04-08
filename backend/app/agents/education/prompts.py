@@ -19,7 +19,7 @@ Use an encouraging, supportive tone.
 Return ONLY a JSON array (no markdown, no explanation):
 [{{
   "headline": "Short factual observation about their spending",
-  "key_metric": "The key number (e.g., '₴4,200 on food this month')",
+  "key_metric": "A short metric, max 30 chars (e.g., '₴4,200 on food'). No compound expressions or percentages with comparisons.",
   "why_it_matters": "1-2 sentences explaining financial significance",
   "deep_dive": "2-3 sentences of educational depth using the retrieved content",
   "severity": "high|medium|low",
@@ -46,7 +46,7 @@ Be direct and analytical; skip basic definitions.
 Return ONLY a JSON array (no markdown, no explanation):
 [{{
   "headline": "Short factual observation about their spending",
-  "key_metric": "The key number (e.g., '₴4,200 on food this month')",
+  "key_metric": "A short metric, max 30 chars (e.g., '₴4,200 on food'). No compound expressions or percentages with comparisons.",
   "why_it_matters": "1-2 sentences explaining financial significance",
   "deep_dive": "2-3 sentences of educational depth using the retrieved content",
   "severity": "high|medium|low",
@@ -73,7 +73,7 @@ UKRAINIAN_BEGINNER_PROMPT = """\
 Поверни ТІЛЬКИ JSON масив (без markdown, без пояснень):
 [{{
   "headline": "Коротке фактичне спостереження про витрати",
-  "key_metric": "Ключове число (наприклад, '₴4 200 на їжу цього місяця')",
+  "key_metric": "Коротке число, макс 30 символів (наприклад, '₴4 200 на їжу'). Без складних виразів чи порівнянь.",
   "why_it_matters": "1-2 речення з поясненням фінансового значення",
   "deep_dive": "2-3 речення з освітньою глибиною, використовуючи отриманий контекст",
   "severity": "high|medium|low",
@@ -100,7 +100,7 @@ UKRAINIAN_INTERMEDIATE_PROMPT = """\
 Поверни ТІЛЬКИ JSON масив (без markdown, без пояснень):
 [{{
   "headline": "Коротке фактичне спостереження про витрати",
-  "key_metric": "Ключове число (наприклад, '₴4 200 на їжу цього місяця')",
+  "key_metric": "Коротке число, макс 30 символів (наприклад, '₴4 200 на їжу'). Без складних виразів чи порівнянь.",
   "why_it_matters": "1-2 речення з поясненням фінансового значення",
   "deep_dive": "2-3 речення з освітньою глибиною, використовуючи отриманий контекст",
   "severity": "high|medium|low",

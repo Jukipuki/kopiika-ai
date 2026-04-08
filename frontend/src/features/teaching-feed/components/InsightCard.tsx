@@ -35,8 +35,8 @@ export function InsightCard({ insight }: InsightCardProps) {
         <div className="flex items-start justify-between gap-2">
           <TriageBadge severity={insight.severity} />
         </div>
-        <h3 className="mt-2 text-base font-semibold leading-snug">{insight.headline}</h3>
-        <p className="text-2xl font-bold text-primary">{insight.keyMetric}</p>
+        <h3 className="mt-2 text-lg font-bold leading-snug">{insight.headline}</h3>
+        <p className="truncate text-base font-medium text-muted-foreground">{insight.keyMetric}</p>
       </CardHeader>
       <CardContent>
         <EducationLayer

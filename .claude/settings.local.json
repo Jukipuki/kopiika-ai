@@ -234,7 +234,8 @@
       "Bash(PGPASSWORD=password psql -h localhost -U user -d kopiika_db -c \"SELECT COUNT\\(*\\) FROM insight; SELECT COUNT\\(*\\) FROM document_embeddings; SELECT COUNT\\(*\\) FROM \\\\\"transaction\\\\\";\")",
       "Bash(python3 -c \"import sys,json; print\\(json.loads\\('{' + sys.stdin.read\\(\\).rstrip\\(','\\) + '}'\\)['text']\\)\")",
       "Bash(git stash:*)",
-      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py::TestCeleryTaskPublishesProgress::test_happy_path_publishes_progress_events -q --tb=short)"
+      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py::TestCeleryTaskPublishesProgress::test_happy_path_publishes_progress_events -q --tb=short)",
+      "Bash(node -e ':*)"
     ]
   }
 }

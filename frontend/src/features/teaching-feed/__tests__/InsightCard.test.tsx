@@ -22,6 +22,20 @@ describe("InsightCard", () => {
     expect(screen.getByText("₴3,200")).toBeInTheDocument();
   });
 
+  // Regression guards for Story 4.2 visual hierarchy fix:
+  // headline must be visually dominant, key metric must be supporting.
+  it("headline renders with text-lg font-bold classes", () => {
+    render(<InsightCard insight={mockInsight} />);
+    const headline = screen.getByText("You spent 30% more on food this month");
+    expect(headline).toHaveClass("text-lg", "font-bold");
+  });
+
+  it("key metric renders with supporting style classes", () => {
+    render(<InsightCard insight={mockInsight} />);
+    const metric = screen.getByText("₴3,200");
+    expect(metric).toHaveClass("text-base", "font-medium", "text-muted-foreground", "truncate");
+  });
+
   it("renders TriageBadge with correct severity", () => {
     render(<InsightCard insight={mockInsight} />);
     expect(screen.getByLabelText("High priority insight")).toBeInTheDocument();
