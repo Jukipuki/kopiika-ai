@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@/i18n/navigation";
 import { useHealthScore } from "../hooks/use-health-score";
+import { useHealthScoreHistory } from "../hooks/use-health-score-history";
 import { useProfile } from "../hooks/use-profile";
 import { HealthScoreRing } from "./HealthScoreRing";
+import { HealthScoreTrend } from "./HealthScoreTrend";
 
 function formatCurrency(kopiykas: number, locale: string): string {
   return new Intl.NumberFormat(locale === "uk" ? "uk-UA" : "en-US", {
@@ -24,6 +26,10 @@ export function ProfilePage() {
     isLoading: isHealthScoreLoading,
     isNotFound: isHealthScoreNotFound,
   } = useHealthScore();
+  const {
+    history,
+    isLoading: isHistoryLoading,
+  } = useHealthScoreHistory();
 
   if (isLoading) {
     return <ProfileSkeleton />;
@@ -78,6 +84,13 @@ export function ProfilePage() {
               score={healthScore.score}
               breakdown={healthScore.breakdown}
             />
+          )}
+          {healthScore && (
+            isHistoryLoading ? (
+              <Skeleton className="h-[120px] w-full mt-4 rounded" />
+            ) : (
+              <HealthScoreTrend data={history} locale={locale} />
+            )
           )}
         </CardContent>
       </Card>

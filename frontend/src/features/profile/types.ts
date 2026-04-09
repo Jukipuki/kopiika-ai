@@ -21,3 +21,6 @@ export interface HealthScore {
   breakdown: HealthScoreBreakdown;
   calculatedAt: string;
 }
+
+export type HealthScoreHistoryItem = HealthScore;
+export type HealthScoreHistory = HealthScoreHistoryItem[];

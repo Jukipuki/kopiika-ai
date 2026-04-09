@@ -169,3 +169,59 @@ class TestHealthScoreEndpoint:
         """Unauthenticated access returns 401/403."""
         response = await hs_client.get("/api/v1/health-score")
         assert response.status_code in (401, 403)
+
+
+class TestHealthScoreHistoryEndpoint:
+    """Test GET /api/v1/health-score/history."""
+
+    @pytest.mark.asyncio
+    async def test_returns_history_list(self, hs_client, hs_api_session):
+        """Returns 200 with array of score history items."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "hist-get-sub"
+        user_id = await _create_user(hs_api_session, cognito_sub, "hist@test.com")
+
+        breakdown = {"savings_ratio": 50, "category_diversity": 50, "expense_regularity": 50, "income_coverage": 50}
+        hs_api_session.add(FinancialHealthScore(user_id=user_id, score=40, calculated_at=datetime(2026, 1, 1), breakdown=breakdown))
+        hs_api_session.add(FinancialHealthScore(user_id=user_id, score=70, calculated_at=datetime(2026, 2, 1), breakdown=breakdown))
+        await hs_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await hs_client.get("/api/v1/health-score/history")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 2
+            assert data[0]["score"] == 40  # Ordered ASC
+            assert data[1]["score"] == 70
+            # camelCase keys
+            assert "calculatedAt" in data[0]
+            assert "calculated_at" not in data[0]
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_array_when_no_scores(self, hs_client, hs_api_session):
+        """Returns empty array (not 404) when no scores exist."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "hist-empty-sub"
+        await _create_user(hs_api_session, cognito_sub, "hist-empty@test.com")
+        await hs_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await hs_client.get("/api/v1/health-score/history")
+            assert response.status_code == 200
+            assert response.json() == []
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated(self, hs_client):
+        """Unauthenticated access returns 401/403."""
+        response = await hs_client.get("/api/v1/health-score/history")
+        assert response.status_code in (401, 403)

@@ -2,28 +2,13 @@
 
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { getZone, ZONE_GRADIENT_COLORS } from "../score-zones";
 import type { HealthScoreBreakdown } from "../types";
 
 interface HealthScoreRingProps {
   score: number;
   breakdown: HealthScoreBreakdown;
 }
-
-type ScoreZone = "needsAttention" | "developing" | "healthy" | "excellent";
-
-function getZone(score: number): ScoreZone {
-  if (score <= 30) return "needsAttention";
-  if (score <= 60) return "developing";
-  if (score <= 80) return "healthy";
-  return "excellent";
-}
-
-const ZONE_COLORS: Record<ScoreZone, { start: string; end: string }> = {
-  needsAttention: { start: "#F87171", end: "#EF4444" },
-  developing: { start: "#FBBF24", end: "#F59E0B" },
-  healthy: { start: "#8B5CF6", end: "#7C3AED" },
-  excellent: { start: "#2DD4BF", end: "#14B8A6" },
-};
 
 const BREAKDOWN_KEYS = [
   "savings_ratio",
@@ -49,7 +34,7 @@ export function HealthScoreRing({ score, breakdown }: HealthScoreRingProps) {
   }, []);
 
   const zone = getZone(score);
-  const colors = ZONE_COLORS[zone];
+  const colors = ZONE_GRADIENT_COLORS[zone];
 
   const size = 160;
   const strokeWidth = 12;

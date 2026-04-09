@@ -47,6 +47,18 @@ def calculate_health_score(
     return health_score
 
 
+async def get_score_history(
+    session: SQLModelAsyncSession, user_id: uuid.UUID
+) -> list[FinancialHealthScore]:
+    """Fetch all health scores for a user ordered by calculated_at ascending (async, for API layer)."""
+    result = await session.exec(
+        select(FinancialHealthScore)
+        .where(FinancialHealthScore.user_id == user_id)
+        .order_by(FinancialHealthScore.calculated_at.asc())
+    )
+    return list(result.all())
+
+
 async def get_latest_score(
     session: SQLModelAsyncSession, user_id: uuid.UUID
 ) -> FinancialHealthScore | None:

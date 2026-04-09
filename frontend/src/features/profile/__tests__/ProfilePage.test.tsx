@@ -34,6 +34,12 @@ vi.mock("../hooks/use-health-score", () => ({
   useHealthScore: () => mockUseHealthScore(),
 }));
 
+// Mock useHealthScoreHistory hook
+const mockUseHealthScoreHistory = vi.fn();
+vi.mock("../hooks/use-health-score-history", () => ({
+  useHealthScoreHistory: () => mockUseHealthScoreHistory(),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -54,6 +60,11 @@ describe("ProfilePage", () => {
       isLoading: false,
       isError: false,
       isNotFound: true,
+    });
+    mockUseHealthScoreHistory.mockReturnValue({
+      history: [],
+      isLoading: false,
+      isError: false,
     });
   });
 
@@ -187,6 +198,48 @@ describe("ProfilePage", () => {
     renderWithProviders(<ProfilePage />);
 
     expect(screen.getByText("Upload a statement to see your Financial Health Score")).toBeTruthy();
+  });
+
+  it("renders trend chart when history has multiple data points", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000 },
+        periodStart: "2026-01-01T00:00:00Z",
+        periodEnd: "2026-03-31T00:00:00Z",
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseHealthScore.mockReturnValue({
+      healthScore: {
+        score: 72,
+        breakdown: { savings_ratio: 80, category_diversity: 65, expense_regularity: 70, income_coverage: 60 },
+        calculatedAt: "2026-03-15T10:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseHealthScoreHistory.mockReturnValue({
+      history: [
+        { score: 50, breakdown: { savings_ratio: 50, category_diversity: 50, expense_regularity: 50, income_coverage: 50 }, calculatedAt: "2026-01-15T10:00:00Z" },
+        { score: 72, breakdown: { savings_ratio: 80, category_diversity: 65, expense_regularity: 70, income_coverage: 60 }, calculatedAt: "2026-03-15T10:00:00Z" },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Score History")).toBeTruthy();
+    // The trend chart SVG should be rendered with role="img"
+    const svg = document.querySelector('svg[role="img"][aria-label*="Health score trend"]');
+    expect(svg).toBeTruthy();
   });
 
   it("renders category breakdown with correct items", () => {

@@ -201,7 +201,10 @@
         "category_diversity": "Category Diversity",
         "expense_regularity": "Expense Regularity",
         "income_coverage": "Income Coverage"
-      }
+      },
+      "trendTitle": "Score History",
+      "trendEmpty": "Upload more months to track your progress",
+      "trendLabel": "Health score trend"
     }
   },
   "feed": {

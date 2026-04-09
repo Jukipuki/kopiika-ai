@@ -310,3 +310,57 @@ class TestGetLatestScore:
 
         result = await get_latest_score(async_session, uuid.uuid4())
         assert result is None
+
+
+class TestGetScoreHistory:
+    """Tests for get_score_history (async, used by API layer)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_scores_ordered_by_date(self, async_session):
+        """Returns all scores ordered by calculated_at ascending."""
+        from app.services.health_score_service import get_score_history
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="hist@test.com", cognito_sub="hist-sub", locale="en")
+        async_session.add(user)
+
+        breakdown = {"savings_ratio": 50, "category_diversity": 50, "expense_regularity": 50, "income_coverage": 50}
+        s1 = FinancialHealthScore(user_id=user_id, score=40, calculated_at=datetime(2026, 3, 1), breakdown=breakdown)
+        s2 = FinancialHealthScore(user_id=user_id, score=60, calculated_at=datetime(2026, 1, 1), breakdown=breakdown)
+        s3 = FinancialHealthScore(user_id=user_id, score=75, calculated_at=datetime(2026, 2, 1), breakdown=breakdown)
+        async_session.add_all([s1, s2, s3])
+        await async_session.commit()
+
+        result = await get_score_history(async_session, user_id)
+        assert len(result) == 3
+        assert result[0].score == 60  # Jan (earliest)
+        assert result[1].score == 75  # Feb
+        assert result[2].score == 40  # Mar (latest)
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_for_new_user(self, async_session):
+        """Returns empty list when no scores exist."""
+        from app.services.health_score_service import get_score_history
+
+        result = await get_score_history(async_session, uuid.uuid4())
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_only_scores_for_requesting_user(self, async_session):
+        """Tenant isolation — only returns scores for the given user."""
+        from app.services.health_score_service import get_score_history
+
+        user_a = uuid.uuid4()
+        user_b = uuid.uuid4()
+        ua = User(id=user_a, email="a@test.com", cognito_sub="a-sub", locale="en")
+        ub = User(id=user_b, email="b@test.com", cognito_sub="b-sub", locale="en")
+        async_session.add_all([ua, ub])
+
+        breakdown = {"savings_ratio": 50, "category_diversity": 50, "expense_regularity": 50, "income_coverage": 50}
+        async_session.add(FinancialHealthScore(user_id=user_a, score=70, calculated_at=datetime(2026, 1, 1), breakdown=breakdown))
+        async_session.add(FinancialHealthScore(user_id=user_b, score=80, calculated_at=datetime(2026, 1, 1), breakdown=breakdown))
+        await async_session.commit()
+
+        result = await get_score_history(async_session, user_a)
+        assert len(result) == 1
+        assert result[0].score == 70
