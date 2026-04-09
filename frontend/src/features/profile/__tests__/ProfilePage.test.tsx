@@ -40,6 +40,12 @@ vi.mock("../hooks/use-health-score-history", () => ({
   useHealthScoreHistory: () => mockUseHealthScoreHistory(),
 }));
 
+// Mock useMonthlyComparison hook
+const mockUseMonthlyComparison = vi.fn();
+vi.mock("../hooks/use-monthly-comparison", () => ({
+  useMonthlyComparison: () => mockUseMonthlyComparison(),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -63,6 +69,11 @@ describe("ProfilePage", () => {
     });
     mockUseHealthScoreHistory.mockReturnValue({
       history: [],
+      isLoading: false,
+      isError: false,
+    });
+    mockUseMonthlyComparison.mockReturnValue({
+      comparison: null,
       isLoading: false,
       isError: false,
     });
@@ -269,5 +280,127 @@ describe("ProfilePage", () => {
     expect(screen.getByText("food")).toBeTruthy();
     expect(screen.getByText("transport")).toBeTruthy();
     expect(screen.getByText("entertainment")).toBeTruthy();
+  });
+
+  it("renders monthly comparison section when data is available", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000 },
+        periodStart: "2026-01-01T00:00:00Z",
+        periodEnd: "2026-03-31T00:00:00Z",
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseMonthlyComparison.mockReturnValue({
+      comparison: {
+        currentMonth: "2026-03",
+        previousMonth: "2026-02",
+        categories: [
+          { category: "food", currentAmount: 12000, previousAmount: 10000, changePercent: 20.0, changeAmount: 2000 },
+          { category: "transport", currentAmount: 3000, previousAmount: 5000, changePercent: -40.0, changeAmount: -2000 },
+        ],
+        totalCurrent: 15000,
+        totalPrevious: 15000,
+        totalChangePercent: 0.0,
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Month-over-Month Spending")).toBeTruthy();
+    // Verify comparison-specific elements: direction arrows
+    expect(screen.getByText("+20%")).toBeTruthy();
+    expect(screen.getByText("-40%")).toBeTruthy();
+    expect(screen.getByText("Total Spending")).toBeTruthy();
+  });
+
+  it("renders encouraging message when comparison data is null", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000 },
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseMonthlyComparison.mockReturnValue({
+      comparison: null,
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Upload another month to see spending trends")).toBeTruthy();
+  });
+
+  it("renders comparison error state when fetch fails", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000 },
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseMonthlyComparison.mockReturnValue({
+      comparison: null,
+      isLoading: false,
+      isError: true,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Failed to load spending comparison. Please try again.")).toBeTruthy();
+    // Should NOT show the encouraging "upload" message
+    expect(screen.queryByText("Upload another month to see spending trends")).toBeNull();
+  });
+
+  it("renders comparison loading skeleton", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000 },
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseMonthlyComparison.mockReturnValue({
+      comparison: null,
+      isLoading: true,
+      isError: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    // Should render skeleton placeholders for the comparison section
+    const skeletons = document.querySelectorAll('[data-slot="skeleton"]');
+    expect(skeletons.length).toBeGreaterThan(0);
   });
 });

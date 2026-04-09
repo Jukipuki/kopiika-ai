@@ -205,6 +205,17 @@
       "trendTitle": "Score History",
       "trendEmpty": "Upload more months to track your progress",
       "trendLabel": "Health score trend"
+    },
+    "monthlyComparison": {
+      "title": "Month-over-Month Spending",
+      "subtitle": "{current} vs {previous}",
+      "noData": "Upload another month to see spending trends",
+      "loadFailed": "Failed to load spending comparison. Please try again.",
+      "totalLabel": "Total Spending",
+      "increase": "increase",
+      "decrease": "decrease",
+      "noChange": "no change",
+      "uncategorized": "Uncategorized"
     }
   },
   "feed": {

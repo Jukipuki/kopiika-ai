@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
@@ -25,6 +26,131 @@ async def get_profile_for_user(
         select(FinancialProfile).where(FinancialProfile.user_id == user_id)
     )
     return result.first()
+
+
+async def get_monthly_comparison(
+    session: SQLModelAsyncSession, user_id: uuid.UUID
+) -> dict | None:
+    """Compare spending by category for the two most recent months.
+
+    Returns per-category totals for the two most recent calendar months,
+    or None if fewer than 2 distinct months exist.
+    Amounts are returned as positive kopiykas (absolute values).
+    """
+    # Step 1: Find the two most recent distinct months with expenses
+    month_query = (
+        select(
+            func.extract("year", Transaction.date).label("year"),
+            func.extract("month", Transaction.date).label("month"),
+        )
+        .where(Transaction.user_id == user_id, Transaction.amount < 0)
+        .group_by(
+            func.extract("year", Transaction.date),
+            func.extract("month", Transaction.date),
+        )
+        .order_by(
+            func.extract("year", Transaction.date).desc(),
+            func.extract("month", Transaction.date).desc(),
+        )
+        .limit(2)
+    )
+    result = await session.exec(month_query)
+    months = list(result.all())
+    if len(months) < 2:
+        return None
+
+    current_year, current_month = int(months[0].year), int(months[0].month)
+    previous_year, previous_month = int(months[1].year), int(months[1].month)
+
+    # Step 2: Get per-category totals for both months
+    category_query = (
+        select(
+            func.extract("year", Transaction.date).label("year"),
+            func.extract("month", Transaction.date).label("month"),
+            func.coalesce(Transaction.category, "uncategorized").label("cat"),
+            func.sum(func.abs(Transaction.amount)).label("total"),
+        )
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.amount < 0,
+            or_(
+                and_(
+                    func.extract("year", Transaction.date) == current_year,
+                    func.extract("month", Transaction.date) == current_month,
+                ),
+                and_(
+                    func.extract("year", Transaction.date) == previous_year,
+                    func.extract("month", Transaction.date) == previous_month,
+                ),
+            ),
+        )
+        .group_by(
+            func.extract("year", Transaction.date),
+            func.extract("month", Transaction.date),
+            func.coalesce(Transaction.category, "uncategorized"),
+        )
+    )
+    result = await session.exec(category_query)
+    rows = list(result.all())
+
+    # Step 3: Build lookup: {category: {(year, month): total}}
+    cat_data: dict[str, dict[tuple[int, int], int]] = {}
+    for row in rows:
+        y, m, cat, total = int(row.year), int(row.month), row.cat, int(row.total)
+        if cat not in cat_data:
+            cat_data[cat] = {}
+        cat_data[cat][(y, m)] = total
+
+    # Step 4: Build per-category comparison
+    categories = []
+    total_current = 0
+    total_previous = 0
+    for cat, month_totals in cat_data.items():
+        current_amount = month_totals.get((current_year, current_month), 0)
+        previous_amount = month_totals.get((previous_year, previous_month), 0)
+        total_current += current_amount
+        total_previous += previous_amount
+
+        if previous_amount > 0:
+            change_percent = round(
+                (current_amount - previous_amount) / previous_amount * 100, 1
+            )
+        elif current_amount > 0:
+            change_percent = 100.0
+        else:
+            change_percent = 0.0
+
+        categories.append(
+            {
+                "category": cat,
+                "current_amount": current_amount,
+                "previous_amount": previous_amount,
+                "change_percent": change_percent,
+                "change_amount": current_amount - previous_amount,
+            }
+        )
+
+    # Sort by absolute change_amount descending (biggest movers first)
+    categories.sort(key=lambda c: abs(c["change_amount"]), reverse=True)
+
+    # Total change percent
+    if total_previous > 0:
+        total_change_percent = round(
+            (total_current - total_previous) / total_previous * 100, 1
+        )
+    elif total_current > 0:
+        total_change_percent = 100.0
+    else:
+        total_change_percent = 0.0
+
+    return {
+        "current_month": f"{current_year}-{current_month:02d}",
+        "previous_month": f"{previous_year}-{previous_month:02d}",
+        "categories": categories,
+        "total_current": total_current,
+        "total_previous": total_previous,
+        "total_change_percent": total_change_percent,
+    }
 
 
 def _upsert_profile(

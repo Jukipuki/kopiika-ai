@@ -6,16 +6,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@/i18n/navigation";
 import { useHealthScore } from "../hooks/use-health-score";
 import { useHealthScoreHistory } from "../hooks/use-health-score-history";
+import { useMonthlyComparison } from "../hooks/use-monthly-comparison";
 import { useProfile } from "../hooks/use-profile";
+import { formatCurrency } from "../format";
 import { HealthScoreRing } from "./HealthScoreRing";
 import { HealthScoreTrend } from "./HealthScoreTrend";
-
-function formatCurrency(kopiykas: number, locale: string): string {
-  return new Intl.NumberFormat(locale === "uk" ? "uk-UA" : "en-US", {
-    style: "currency",
-    currency: "UAH",
-  }).format(kopiykas / 100);
-}
+import { MonthlyComparison } from "./MonthlyComparison";
 
 export function ProfilePage() {
   const t = useTranslations("profile");
@@ -30,6 +26,11 @@ export function ProfilePage() {
     history,
     isLoading: isHistoryLoading,
   } = useHealthScoreHistory();
+  const {
+    comparison,
+    isLoading: isComparisonLoading,
+    isError: isComparisonError,
+  } = useMonthlyComparison();
 
   if (isLoading) {
     return <ProfileSkeleton />;
@@ -145,6 +146,49 @@ export function ProfilePage() {
             ),
           })}
         </p>
+      )}
+
+      {/* Month-over-Month Comparison */}
+      {isComparisonLoading ? (
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-4 w-48" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex justify-between">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : isComparisonError ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("monthlyComparison.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-destructive">
+              {t("monthlyComparison.loadFailed")}
+            </p>
+          </CardContent>
+        </Card>
+      ) : comparison ? (
+        <MonthlyComparison data={comparison} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("monthlyComparison.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {t("monthlyComparison.noData")}
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Category breakdown */}

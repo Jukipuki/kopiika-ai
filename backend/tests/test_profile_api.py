@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/profile endpoint (Story 4.4)."""
+"""Tests for GET /api/v1/profile endpoints (Stories 4.4, 4.7)."""
 import os
 import tempfile
 import uuid
@@ -13,6 +13,8 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.models.financial_profile import FinancialProfile
+from app.models.transaction import Transaction
+from app.models.upload import Upload
 from app.models.user import User
 
 
@@ -214,3 +216,109 @@ class TestProfileEndpoint:
             assert data["totalIncome"] == 200000
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+# ==================== Monthly Comparison API Tests (Story 4.7) ====================
+
+
+async def _create_upload(session: SQLModelAsyncSession, user_id: uuid.UUID):
+    upload_id = uuid.uuid4()
+    upload = Upload(
+        id=upload_id, user_id=user_id, file_name="test.csv",
+        s3_key=f"{user_id}/test.csv", file_size=100,
+        mime_type="text/csv", detected_format="monobank",
+    )
+    session.add(upload)
+    await session.flush()
+    return upload_id
+
+
+async def _create_txn(
+    session: SQLModelAsyncSession,
+    user_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    amount: int,
+    category: str | None = None,
+    date: datetime | None = None,
+):
+    txn = Transaction(
+        user_id=user_id,
+        upload_id=upload_id,
+        date=date or datetime(2026, 3, 15),
+        description="Test transaction",
+        amount=amount,
+        dedup_hash=uuid.uuid4().hex,
+        category=category,
+    )
+    session.add(txn)
+    await session.flush()
+    return txn
+
+
+class TestMonthlyComparisonEndpoint:
+    """Test GET /api/v1/profile/monthly-comparison (Story 4.7)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_200_with_camelcase_data(self, profile_client, profile_api_session):
+        """Returns 200 with camelCase comparison data when 2+ months available."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "comp-api-sub"
+        user_id = await _create_user(profile_api_session, cognito_sub, "comp@test.com")
+        upload_id = await _create_upload(profile_api_session, user_id)
+
+        await _create_txn(profile_api_session, user_id, upload_id, -10000, "food", datetime(2026, 2, 10))
+        await _create_txn(profile_api_session, user_id, upload_id, -12000, "food", datetime(2026, 3, 10))
+        await profile_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await profile_client.get("/api/v1/profile/monthly-comparison")
+            assert response.status_code == 200
+            data = response.json()
+            assert data is not None
+            assert "currentMonth" in data
+            assert "previousMonth" in data
+            assert "categories" in data
+            assert "totalCurrent" in data
+            assert "totalPrevious" in data
+            assert "totalChangePercent" in data
+            # Verify camelCase in category items
+            cat = data["categories"][0]
+            assert "currentAmount" in cat
+            assert "previousAmount" in cat
+            assert "changePercent" in cat
+            assert "changeAmount" in cat
+            # No snake_case keys
+            assert "current_month" not in data
+            assert "total_current" not in data
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_returns_200_null_for_single_month(self, profile_client, profile_api_session):
+        """Returns 200 with null body when < 2 months of data."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "comp-null-sub"
+        user_id = await _create_user(profile_api_session, cognito_sub, "comp-null@test.com")
+        upload_id = await _create_upload(profile_api_session, user_id)
+
+        await _create_txn(profile_api_session, user_id, upload_id, -10000, "food", datetime(2026, 3, 10))
+        await profile_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await profile_client.get("/api/v1/profile/monthly-comparison")
+            assert response.status_code == 200
+            assert response.json() is None
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated(self, profile_client):
+        """Unauthenticated access returns 401/403."""
+        response = await profile_client.get("/api/v1/profile/monthly-comparison")
+        assert response.status_code in (401, 403)

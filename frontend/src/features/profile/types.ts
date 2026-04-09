@@ -24,3 +24,20 @@ export interface HealthScore {
 
 export type HealthScoreHistoryItem = HealthScore;
 export type HealthScoreHistory = HealthScoreHistoryItem[];
+
+export interface CategoryComparison {
+  category: string;
+  currentAmount: number;
+  previousAmount: number;
+  changePercent: number;
+  changeAmount: number;
+}
+
+export interface MonthlyComparison {
+  currentMonth: string;
+  previousMonth: string;
+  categories: CategoryComparison[];
+  totalCurrent: number;
+  totalPrevious: number;
+  totalChangePercent: number;
+}
