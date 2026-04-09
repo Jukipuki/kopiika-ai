@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Optional
 
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
 from sqlmodel import Column, Field, SQLModel, UniqueConstraint
 
 
@@ -19,7 +19,7 @@ class FinancialProfile(SQLModel, table=True):
     total_income: int = Field(default=0)  # Integer kopiykas
     total_expenses: int = Field(default=0)  # Integer kopiykas
     category_totals: dict[str, Any] = Field(
-        default_factory=dict, sa_column=Column(JSONB)
+        default_factory=dict, sa_column=Column(JSON)
     )
     period_start: Optional[datetime] = Field(default=None)
     period_end: Optional[datetime] = Field(default=None)

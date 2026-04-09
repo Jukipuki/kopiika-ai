@@ -183,7 +183,26 @@
     "period": "Period: {start} — {end}",
     "noProfile": "No financial profile yet. Upload a bank statement to get started.",
     "goToUpload": "Upload Statement",
-    "loadFailed": "Failed to load your financial profile. Please try again."
+    "loadFailed": "Failed to load your financial profile. Please try again.",
+    "healthScore": {
+      "title": "Financial Health Score",
+      "ariaLabel": "Financial Health Score: {score} out of 100",
+      "noScore": "Upload a statement to see your Financial Health Score",
+      "showBreakdown": "Show breakdown",
+      "hideBreakdown": "Hide breakdown",
+      "zone": {
+        "needsAttention": "Needs Attention",
+        "developing": "Developing",
+        "healthy": "Healthy",
+        "excellent": "Excellent"
+      },
+      "breakdown": {
+        "savings_ratio": "Savings Ratio",
+        "category_diversity": "Category Diversity",
+        "expense_regularity": "Expense Regularity",
+        "income_coverage": "Income Coverage"
+      }
+    }
   },
   "feed": {
     "title": "Teaching Feed",

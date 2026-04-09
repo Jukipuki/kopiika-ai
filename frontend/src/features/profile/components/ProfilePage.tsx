@@ -4,7 +4,9 @@ import { useTranslations, useLocale } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@/i18n/navigation";
+import { useHealthScore } from "../hooks/use-health-score";
 import { useProfile } from "../hooks/use-profile";
+import { HealthScoreRing } from "./HealthScoreRing";
 
 function formatCurrency(kopiykas: number, locale: string): string {
   return new Intl.NumberFormat(locale === "uk" ? "uk-UA" : "en-US", {
@@ -17,6 +19,11 @@ export function ProfilePage() {
   const t = useTranslations("profile");
   const locale = useLocale();
   const { profile, isLoading, isError, isNotFound } = useProfile();
+  const {
+    healthScore,
+    isLoading: isHealthScoreLoading,
+    isNotFound: isHealthScoreNotFound,
+  } = useHealthScore();
 
   if (isLoading) {
     return <ProfileSkeleton />;
@@ -51,6 +58,30 @@ export function ProfilePage() {
 
   return (
     <div className="space-y-6">
+      {/* Health Score Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("healthScore.title")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isHealthScoreLoading ? (
+            <div className="flex flex-col items-center gap-4">
+              <Skeleton className="h-40 w-40 rounded-full" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          ) : isHealthScoreNotFound || !healthScore ? (
+            <p className="text-center text-sm text-muted-foreground">
+              {t("healthScore.noScore")}
+            </p>
+          ) : (
+            <HealthScoreRing
+              score={healthScore.score}
+              breakdown={healthScore.breakdown}
+            />
+          )}
+        </CardContent>
+      </Card>
+
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>

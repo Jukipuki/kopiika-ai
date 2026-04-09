@@ -256,8 +256,10 @@ def process_upload(self, job_id: str) -> dict:
                 "message": "Building your financial profile...",
             })
 
+            profile_build_ok = False
             try:
                 build_or_update_profile(session, job.user_id)
+                profile_build_ok = True
             except Exception as profile_exc:
                 logger.warning(
                     "Profile build failed (job stays completed): %s",
@@ -265,7 +267,32 @@ def process_upload(self, job_id: str) -> dict:
                     extra={"job_id": job_id},
                 )
 
-            # 9. Update ProcessingJob to "completed"
+            # 9. Calculate financial health score (only if profile build succeeded)
+            if profile_build_ok:
+                publish_job_progress(job_id, {
+                    "event": "pipeline-progress",
+                    "jobId": job_id,
+                    "step": "health-score",
+                    "progress": 92,
+                    "message": "Calculating your Financial Health Score...",
+                })
+
+                try:
+                    from app.services.health_score_service import calculate_health_score
+                    calculate_health_score(session, job.user_id)
+                except Exception as score_exc:
+                    logger.warning(
+                        "Health score calculation failed (job stays completed): %s",
+                        score_exc,
+                        extra={"job_id": job_id},
+                    )
+            else:
+                logger.info(
+                    "Skipping health score calculation — profile build failed",
+                    extra={"job_id": job_id},
+                )
+
+            # 10. Update ProcessingJob to "completed"
             job.status = "completed"
             if job.step != "categorization_failed":
                 job.step = "done"

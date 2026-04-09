@@ -336,12 +336,12 @@ class TestCeleryTaskPublishesProgress:
         calls = mock_publish.call_args_list
         # Events: 10% ingestion, 30% parsing, 40% categorization start,
         # 60% categorization done, 80% education done, 90% profile build,
-        # N x insight-ready (one per generated insight card), job-complete
+        # 92% health-score, N x insight-ready, job-complete
         progress_calls = [c for c in calls if c[0][1]["event"] == "pipeline-progress"]
         insight_calls = [c for c in calls if c[0][1]["event"] == "insight-ready"]
         complete_calls = [c for c in calls if c[0][1]["event"] == "job-complete"]
 
-        assert len(progress_calls) == 6
+        assert len(progress_calls) == 7
         assert len(complete_calls) == 1
 
         assert progress_calls[0][0][1]["progress"] == 10
@@ -357,6 +357,10 @@ class TestCeleryTaskPublishesProgress:
         assert progress_calls[4][0][1]["progress"] == 80
 
         assert progress_calls[5][0][1]["step"] == "profile"
+        assert progress_calls[5][0][1]["progress"] == 90
+
+        assert progress_calls[6][0][1]["step"] == "health-score"
+        assert progress_calls[6][0][1]["progress"] == 92
         assert progress_calls[5][0][1]["progress"] == 90
 
         # Each insight card produces an insight-ready event

@@ -28,6 +28,12 @@ vi.mock("../hooks/use-profile", () => ({
   useProfile: () => mockUseProfile(),
 }));
 
+// Mock useHealthScore hook
+const mockUseHealthScore = vi.fn();
+vi.mock("../hooks/use-health-score", () => ({
+  useHealthScore: () => mockUseHealthScore(),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -42,6 +48,12 @@ describe("ProfilePage", () => {
     vi.clearAllMocks();
     mockUseSession.mockReturnValue({
       data: { accessToken: "test-token" },
+    });
+    mockUseHealthScore.mockReturnValue({
+      healthScore: null,
+      isLoading: false,
+      isError: false,
+      isNotFound: true,
     });
   });
 
@@ -111,6 +123,70 @@ describe("ProfilePage", () => {
     // Check categories are listed
     expect(screen.getByText("food")).toBeTruthy();
     expect(screen.getByText("transport")).toBeTruthy();
+  });
+
+  it("renders health score section when score exists", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000, transport: -5000 },
+        periodStart: "2026-01-01T00:00:00Z",
+        periodEnd: "2026-03-31T00:00:00Z",
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseHealthScore.mockReturnValue({
+      healthScore: {
+        score: 72,
+        breakdown: {
+          savings_ratio: 80,
+          category_diversity: 65,
+          expense_regularity: 70,
+          income_coverage: 60,
+        },
+        calculatedAt: "2026-03-15T10:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Financial Health Score")).toBeTruthy();
+    expect(screen.getByText("72")).toBeTruthy();
+  });
+
+  it("renders health score empty state when no score", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: { food: -15000 },
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseHealthScore.mockReturnValue({
+      healthScore: null,
+      isLoading: false,
+      isError: false,
+      isNotFound: true,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Upload a statement to see your Financial Health Score")).toBeTruthy();
   });
 
   it("renders category breakdown with correct items", () => {

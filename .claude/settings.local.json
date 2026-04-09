@@ -235,7 +235,8 @@
       "Bash(python3 -c \"import sys,json; print\\(json.loads\\('{' + sys.stdin.read\\(\\).rstrip\\(','\\) + '}'\\)['text']\\)\")",
       "Bash(git stash:*)",
       "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py::TestCeleryTaskPublishesProgress::test_happy_path_publishes_progress_events -q --tb=short)",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(.venv/bin/python -m pytest tests/test_health_score_service.py tests/test_health_score_api.py tests/test_sse_streaming.py -v --tb=short)"
     ]
   }
 }
