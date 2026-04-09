@@ -23,6 +23,7 @@ from app.services.parser_service import (
     UnsupportedFormatError,
     sync_parse_and_store_transactions,
 )
+from app.services.profile_service import build_or_update_profile
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -246,7 +247,25 @@ def process_upload(self, job_id: str) -> dict:
                 job.step = "categorization_failed"
                 # Continue — transactions are stored even without categories
 
-            # 8. Update ProcessingJob to "completed"
+            # 8. Build/update financial profile
+            publish_job_progress(job_id, {
+                "event": "pipeline-progress",
+                "jobId": job_id,
+                "step": "profile",
+                "progress": 90,
+                "message": "Building your financial profile...",
+            })
+
+            try:
+                build_or_update_profile(session, job.user_id)
+            except Exception as profile_exc:
+                logger.warning(
+                    "Profile build failed (job stays completed): %s",
+                    profile_exc,
+                    extra={"job_id": job_id},
+                )
+
+            # 9. Update ProcessingJob to "completed"
             job.status = "completed"
             if job.step != "categorization_failed":
                 job.step = "done"

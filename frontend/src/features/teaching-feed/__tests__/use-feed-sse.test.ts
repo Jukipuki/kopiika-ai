@@ -144,6 +144,7 @@ describe("useFeedSSE", () => {
     });
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["teaching-feed"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["profile"] });
   });
 
   it("sets isStreaming: false and clears pendingInsightIds on job-failed", async () => {

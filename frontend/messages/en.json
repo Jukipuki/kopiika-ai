@@ -68,6 +68,7 @@
     "title": "Kopiika AI",
     "settings": "Settings",
     "history": "Upload history",
+    "profile": "Financial Profile",
     "logOut": "Log out",
     "logOutSuccess": "You've been logged out successfully",
     "upload": "Upload statement",
@@ -172,6 +173,17 @@
     "language": "Language",
     "preferenceSaved": "Preference saved",
     "saveFailed": "Failed to save preference"
+  },
+  "profile": {
+    "title": "Financial Profile",
+    "totalIncome": "Total Income",
+    "totalExpenses": "Total Expenses",
+    "netBalance": "Net Balance",
+    "categoryBreakdown": "Category Breakdown",
+    "period": "Period: {start} — {end}",
+    "noProfile": "No financial profile yet. Upload a bank statement to get started.",
+    "goToUpload": "Upload Statement",
+    "loadFailed": "Failed to load your financial profile. Please try again."
   },
   "feed": {
     "title": "Teaching Feed",

@@ -1,4 +1,5 @@
 from app.models.embedding import DocumentEmbedding
+from app.models.financial_profile import FinancialProfile
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.insight import Insight
 from app.models.processing_job import ProcessingJob
@@ -8,6 +9,7 @@ from app.models.user import User
 
 __all__ = [
     "DocumentEmbedding",
+    "FinancialProfile",
     "FlaggedImportRow",
     "Insight",
     "ProcessingJob",

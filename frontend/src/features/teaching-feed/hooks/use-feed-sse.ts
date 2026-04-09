@@ -67,6 +67,7 @@ export function useFeedSSE(jobId: string | null, accessToken: string | undefined
       setIsStreaming(false);
       setMessage(null);
       queryClient.invalidateQueries({ queryKey: ["teaching-feed"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
       cleanup();
     });
 
