@@ -365,7 +365,7 @@ Unique constraint: `uq_feedback_responses_user_type` on `(user_id, feedback_card
 | **Frontend Auth** | Custom UI + Cognito API (via NextAuth.js CognitoProvider) | NextAuth.js latest | Full design control over onboarding experience. Seamless Teaching Feed first impression. NextAuth handles token management |
 | **Backend Auth** | JWT validation middleware | fastapi-cloudauth or manual boto3 | Every FastAPI endpoint validates Cognito JWT. Extracts user_id for data scoping |
 | **Authorization** | RBAC + PostgreSQL RLS | — | User role (free/premium) checked via FastAPI dependency. RLS as defense-in-depth — users can only query their own rows |
-| **Data Encryption** | AES-256 at rest, TLS 1.3 in transit | — | RDS encryption enabled. All API communication over HTTPS. S3 server-side encryption for uploaded files |
+| **Data Encryption** | AES-256 at rest, TLS 1.3 in transit | — | Every storage layer (RDS, S3, ElastiCache, Secrets Manager, ECR) encrypted with AWS-managed KMS keys. See **Encryption at Rest** section below for the full compliance table and operator runbook |
 | **API Security** | CORS whitelist, rate limiting, input validation | — | CORS restricted to frontend domain. Rate limiting via Redis token bucket. Pydantic validation on all inputs |
 
 **Auth Flow:**
@@ -378,6 +378,64 @@ User -> Next.js (Custom Login UI) -> Cognito User Pool -> JWT issued
 ```
 
 **Affects:** Every API endpoint, file upload, AI pipeline access, payment flows
+
+### Encryption at Rest
+
+_Compliance reference for Epic 5 (Data Privacy, Trust & Consent). Added by Story 5.1._
+
+Every storage layer that holds financial data, secrets, or container images is encrypted at rest with an AWS-managed KMS CMK (`aws/<service>`). Customer-managed keys are **intentionally not used** — AWS-managed keys rotate yearly automatically, require no key policy maintenance, and add no per-key cost. Revisit this decision if a compliance auditor ever requires customer control of the key material.
+
+**Compliance table:**
+
+| Layer | Resource | Encrypted | Key | Terraform location |
+|---|---|---|---|---|
+| Primary database | `aws_db_instance.main` (PostgreSQL 16) | ✅ AES-256 | `aws/rds` | [modules/rds/main.tf:52](../../infra/terraform/modules/rds/main.tf#L52) `storage_encrypted = true` |
+| RDS automated backups & snapshots | RDS backup subsystem | ✅ AES-256 (inherited) | `aws/rds` | Inherited from parent instance — no explicit config needed |
+| Financial data (transactions, profile, health score history, pgvector embeddings) | Stored inside PostgreSQL | ✅ AES-256 (transparent) | `aws/rds` | Same as primary database — no application-level encryption |
+| S3 uploads bucket | `aws_s3_bucket.uploads` | ✅ SSE-S3 AES-256 + S3 Bucket Keys | `aws/s3` | [modules/s3/main.tf:13-22](../../infra/terraform/modules/s3/main.tf#L13-L22) |
+| S3 bucket policy | `aws_s3_bucket_policy.uploads` | ✅ denies non-AES256 PutObject + insecure transport | n/a | [modules/s3/main.tf](../../infra/terraform/modules/s3/main.tf) `DenyNonAES256Encryption` / `DenyInsecureTransport` |
+| ElastiCache Redis (Celery broker, SSE, cached responses) | `aws_elasticache_replication_group.main` | ✅ AES-256 at rest + TLS in transit | `aws/elasticache` | [modules/elasticache/main.tf](../../infra/terraform/modules/elasticache/main.tf) `at_rest_encryption_enabled = true` |
+| Secrets Manager (database, redis, cognito, s3, ses, llm-api-keys) | `aws_secretsmanager_secret.*` | ✅ AES-256 | `aws/secretsmanager` (default) | [modules/secrets/main.tf](../../infra/terraform/modules/secrets/main.tf) — no explicit `kms_key_id`, relies on default |
+| ECR backend image repo | `aws_ecr_repository.backend` | ✅ AES-256 | `aws/ecr` | [main.tf:95-97](../../infra/terraform/main.tf#L95-L97) `encryption_type = "AES256"` |
+
+**Why `aws_elasticache_replication_group` instead of `aws_elasticache_cluster`:** `at_rest_encryption_enabled` is only available on the replication-group resource in the AWS Terraform provider. The cluster is still single-node (`num_cache_clusters = 1`, no failover, no multi-AZ) — semantically identical to the prior `aws_elasticache_cluster` but now supports at-rest encryption.
+
+**Static-analysis guardrail:** [`.github/workflows/tfsec.yml`](../../.github/workflows/tfsec.yml) runs [tfsec](https://aquasecurity.github.io/tfsec) on every PR touching `infra/**`. Waivers (with rationale) live in [`infra/terraform/.tfsec/config.yml`](../../infra/terraform/.tfsec/config.yml). This prevents regressions to the encryption posture above.
+
+**Operator runbook — on-demand verification:**
+
+```bash
+# RDS instance storage encryption
+aws rds describe-db-instances \
+  --query 'DBInstances[?DBInstanceIdentifier==`kopiika-ai-dev-rds`].{id:DBInstanceIdentifier,enc:StorageEncrypted,key:KmsKeyId}'
+
+# RDS automated snapshots inherit encryption
+aws rds describe-db-snapshots \
+  --db-instance-identifier kopiika-ai-dev-rds \
+  --query 'DBSnapshots[].{id:DBSnapshotIdentifier,enc:Encrypted}'
+
+# S3 default bucket encryption
+aws s3api get-bucket-encryption --bucket kopiika-ai-uploads-dev
+
+# S3 bucket policy (should contain DenyNonAES256Encryption + DenyInsecureTransport)
+aws s3api get-bucket-policy --bucket kopiika-ai-uploads-dev --query Policy --output text | jq .
+
+# ElastiCache at-rest + in-transit encryption
+aws elasticache describe-replication-groups \
+  --replication-group-id kopiika-ai-dev-redis \
+  --query 'ReplicationGroups[].{id:ReplicationGroupId,rest:AtRestEncryptionEnabled,transit:TransitEncryptionEnabled}'
+
+# Secrets Manager (any one secret — all six use the same default key)
+aws secretsmanager describe-secret --secret-id kopiika-ai/dev/database --query KmsKeyId
+
+# ECR repository encryption
+aws ecr describe-repositories --repository-names kopiika-ai-backend \
+  --query 'repositories[].{name:repositoryName,enc:encryptionConfiguration}'
+```
+
+**Key rotation:** All keys above are AWS-managed, which rotate automatically on a yearly cadence. No operator action required. If a compliance review later demands customer-managed keys, create per-service `aws_kms_key` resources and reference them via `kms_key_id` in the consuming resources — no application code changes needed.
+
+**Related Epic 5 stories:** 5.2 (consent UI), 5.3 (financial-advice disclaimer), 5.4 (view-my-stored-data), 5.5 (delete-all-my-data). This story establishes the ground truth that later stories rely on when explaining data handling to users.
 
 ### API & Communication Patterns
 

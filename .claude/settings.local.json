@@ -243,7 +243,18 @@
       "Bash(.venv/bin/python -m pytest -v --tb=short)",
       "Bash(.venv/bin/python -m pytest tests/test_profile_service.py::TestGetMonthlyComparison -x -q)",
       "Bash(.venv/bin/python -m pytest tests/test_profile_service.py tests/test_profile_api.py -q)",
-      "Bash(.venv/bin/python -m pytest tests/test_auth.py -x -q)"
+      "Bash(.venv/bin/python -m pytest tests/test_auth.py -x -q)",
+      "Bash(tfsec --version)",
+      "Bash(terraform validate:*)",
+      "Bash(terraform fmt:*)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(terraform workspace:*)",
+      "Bash(terraform state:*)",
+      "Bash(ls -la terraform.tfstate*)",
+      "Bash(python3 -c \"import json; s=json.load\\(open\\('terraform.tfstate'\\)\\); [print\\(f\\\\\"{r['module'] + '.' if r.get\\('module'\\) else ''}{r['type']}.{r['name']}\\\\\"\\) for r in s.get\\('resources', []\\)]\")",
+      "Bash(tfsec . --config-file .tfsec/config.yml)",
+      "Bash(echo \"fmt=$?\")",
+      "Bash(git checkout:*)"
     ]
   }
 }

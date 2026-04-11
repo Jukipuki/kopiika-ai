@@ -1,8 +1,8 @@
 output "endpoint" {
-  value = aws_elasticache_cluster.main.cache_nodes[0].address
+  value = aws_elasticache_replication_group.main.primary_endpoint_address
 }
 
 output "connection_url" {
-  value     = "rediss://${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
+  value     = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:${aws_elasticache_replication_group.main.port}"
   sensitive = true
 }

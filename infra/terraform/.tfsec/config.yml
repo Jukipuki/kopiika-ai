@@ -1,0 +1,49 @@
+---
+# tfsec configuration — Story 5.1 (Data Encryption at Rest)
+#
+# AC #8 scopes this guardrail to "encryption rules corresponding to ACs 1–6".
+# The goal is to prevent regressions to the encryption posture of RDS, S3,
+# ElastiCache, Secrets Manager, and ECR — NOT to block PRs on unrelated
+# pre-existing findings (those belong to separate hardening stories).
+#
+# Severity floor: HIGH. Every encryption-regression tfsec check (missing SSE,
+# storage_encrypted=false, at_rest_encryption_enabled=false, etc.) is HIGH or
+# CRITICAL, so the guardrail still catches them. MEDIUM/LOW informational
+# findings on unrelated concerns (deletion protection, IAM auth, etc.) are
+# waived at this floor — they belong to their own hardening stories.
+minimum_severity: HIGH
+#
+# Two buckets of exclusions:
+#   (A) AC explicitly allows AWS-managed KMS keys (ACs 1, 2, 5, 6).
+#       Customer-managed-key tfsec checks are therefore waived.
+#   (B) Pre-existing, non-encryption findings unrelated to Story 5.1.
+#       Waived here so the encryption guardrail is not blocked by concerns
+#       that will be addressed in their own stories.
+#
+# Revisit every exclusion below during any compliance review or before
+# public launch.
+
+exclude:
+  # --- (A) AWS-managed KMS is explicitly acceptable per Story 5.1 ACs ---
+  - aws-s3-encryption-customer-key         # AC #2 — SSE-S3 with AWS-managed key
+  - aws-ssm-secret-use-customer-key        # AC #5 — default aws/secretsmanager key
+  - aws-ecr-repository-customer-key        # AC #6 — AES256 with aws/ecr key
+  - aws-cloudwatch-log-group-customer-key  # logs — AWS-managed key acceptable at MVP
+  - aws-dynamodb-table-customer-key        # N/A — no DynamoDB in use
+  - aws-rds-enable-performance-insights-encryption # PI not enabled at all
+
+  # --- (B) Non-encryption, pre-existing, out of Story 5.1 scope ---
+  # Each of these should be addressed in a dedicated hardening story.
+  - aws-ec2-no-public-egress-sgr                   # SG egress hardening — separate story
+  - aws-ec2-no-public-ip-subnet                    # public subnets intentional (NAT cost)
+  - aws-ec2-require-vpc-flow-logs-for-all-vpcs     # observability — separate story
+  - aws-ec2-add-description-to-security-group-rule # style — separate story
+  - aws-ecr-enforce-immutable-repository           # ECR tag mutability — separate story
+  - aws-iam-no-policy-wildcards                    # SES policy — separate story
+  - aws-rds-enable-iam-auth                        # DB auth — separate story
+  - AVD-AWS-0176                                   # ^ same, rego-rule form
+  - aws-rds-no-deletion-protection                 # prod concern — separate story
+  - AVD-AWS-0177                                   # ^ same, rego-rule form
+  - aws-rds-enable-performance-insights            # PI disabled by design
+  - aws-s3-enable-bucket-logging                   # observability — separate story
+  - aws-elasticache-enable-backup-retention        # dev snapshots intentionally 0

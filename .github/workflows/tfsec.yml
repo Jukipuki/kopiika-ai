@@ -1,0 +1,33 @@
+name: tfsec
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/tfsec.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+      - ".github/workflows/tfsec.yml"
+
+jobs:
+  tfsec:
+    name: tfsec static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra/terraform
+          # Rules and exclusions are declared in infra/terraform/.tfsec/config.yml
+          # per Story 5.1. Fail the build on any unexcluded finding.
+          soft_fail: false
+          additional_args: --config-file .tfsec/config.yml

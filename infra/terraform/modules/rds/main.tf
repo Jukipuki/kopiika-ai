@@ -31,6 +31,15 @@ resource "random_password" "rds_master" {
   special = false
 }
 
+# Story 5.1 AC #1: pin the RDS KMS key to the AWS-managed alias so the
+# compliance documentation in architecture.md is code-verifiable, not just
+# "whatever AWS defaults to today". `alias/aws/rds` is the default when
+# storage_encrypted = true, so this is a no-op in plan output — but it
+# makes the claim explicit and protected against future AWS default drift.
+data "aws_kms_alias" "rds" {
+  name = "alias/aws/rds"
+}
+
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-rds"
 
@@ -64,5 +73,17 @@ resource "aws_db_instance" "main" {
 
   tags = {
     Name = "${local.name_prefix}-rds"
+  }
+}
+
+# Story 5.1 AC #1: post-apply assertion that the RDS instance is encrypted
+# with the AWS-managed `aws/rds` key. Uses a Terraform `check` block (TF 1.5+)
+# so the compliance claim in architecture.md is code-verifiable without
+# needing to set `kms_key_id` on the resource directly (which would be
+# ForceNew on an existing instance and trigger a destructive replacement).
+check "rds_uses_aws_managed_kms" {
+  assert {
+    condition     = aws_db_instance.main.kms_key_id == data.aws_kms_alias.rds.target_key_arn
+    error_message = "RDS instance ${aws_db_instance.main.identifier} is not encrypted with the aws/rds managed KMS key. AC #1 requires AWS-managed key."
   }
 }

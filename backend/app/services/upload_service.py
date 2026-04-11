@@ -253,6 +253,10 @@ async def upload_to_s3(s3_key: str, file_content: bytes, content_type: str) -> N
             Key=s3_key,
             Body=file_content,
             ContentType=content_type,
+            # Story 5.1 AC #2: bucket policy strictly denies PutObject without
+            # an AES256 SSE header. Explicit request-level SSE; the bucket's
+            # default SSE-S3 configuration is still the fallback.
+            ServerSideEncryption="AES256",
         )
     except ClientError as e:
         logger.error("S3 upload failed", extra={"s3_key": s3_key, "error": str(e)})
