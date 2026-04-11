@@ -1,4 +1,4 @@
-"""Tests for ProfileService (Story 4.4, 4.7)."""
+"""Tests for ProfileService (Story 4.4, 4.7, 4.8)."""
 import os
 import tempfile
 import uuid
@@ -291,6 +291,209 @@ async def _create_txn_async(
     session.add(txn)
     await session.flush()
     return txn
+
+
+class TestGetCategoryBreakdown:
+    """Tests for get_category_breakdown (async, Story 4.8)."""
+
+    @pytest.mark.asyncio
+    async def test_multiple_categories(self, profile_async_session):
+        """Returns breakdown sorted by amount descending with correct percentages."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="cat-multi@test.com", cognito_sub="cat-multi-sub", locale="en")
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=100000,
+            total_expenses=-55000,
+            category_totals={
+                "groceries": -25000,
+                "dining_out": -18500,
+                "transport": -12000,
+                "salary": 150000,
+            },
+        )
+        profile_async_session.add(user)
+        profile_async_session.add(profile)
+        await profile_async_session.commit()
+
+        result = await get_category_breakdown(profile_async_session, user_id)
+        assert result is not None
+        assert len(result) == 3  # Only expenses, salary excluded
+
+        # Sorted by amount descending
+        assert result[0]["category"] == "groceries"
+        assert result[0]["amount"] == 25000  # abs value
+        assert result[1]["category"] == "dining_out"
+        assert result[1]["amount"] == 18500
+        assert result[2]["category"] == "transport"
+        assert result[2]["amount"] == 12000
+
+        # Percentages should sum to ~100%
+        total_pct = sum(item["percentage"] for item in result)
+        assert 99.5 <= total_pct <= 100.5
+
+        # Verify individual percentages
+        total_exp = 25000 + 18500 + 12000
+        assert result[0]["percentage"] == round(25000 / total_exp * 100, 1)
+        assert result[1]["percentage"] == round(18500 / total_exp * 100, 1)
+
+    @pytest.mark.asyncio
+    async def test_single_category(self, profile_async_session):
+        """Single expense category returns 100% share."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="cat-single@test.com", cognito_sub="cat-single-sub", locale="en")
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=50000,
+            total_expenses=-10000,
+            category_totals={"food": -10000, "salary": 50000},
+        )
+        profile_async_session.add(user)
+        profile_async_session.add(profile)
+        await profile_async_session.commit()
+
+        result = await get_category_breakdown(profile_async_session, user_id)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["category"] == "food"
+        assert result[0]["amount"] == 10000
+        assert result[0]["percentage"] == 100.0
+
+    @pytest.mark.asyncio
+    async def test_empty_profile_no_expenses(self, profile_async_session):
+        """Profile with only income returns empty list."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="cat-empty@test.com", cognito_sub="cat-empty-sub", locale="en")
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=50000,
+            total_expenses=0,
+            category_totals={"salary": 50000},
+        )
+        profile_async_session.add(user)
+        profile_async_session.add(profile)
+        await profile_async_session.commit()
+
+        result = await get_category_breakdown(profile_async_session, user_id)
+        assert result is not None
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_no_profile_returns_none(self, profile_async_session):
+        """Returns None when no profile exists for user."""
+        from app.services.profile_service import get_category_breakdown
+
+        result = await get_category_breakdown(profile_async_session, uuid.uuid4())
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_null_categories_in_profile(self, profile_async_session):
+        """Profile with null/empty category_totals returns empty list."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="cat-null@test.com", cognito_sub="cat-null-sub", locale="en")
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=0,
+            total_expenses=0,
+            category_totals={},
+        )
+        profile_async_session.add(user)
+        profile_async_session.add(profile)
+        await profile_async_session.commit()
+
+        result = await get_category_breakdown(profile_async_session, user_id)
+        assert result is not None
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_uncategorized_included(self, profile_async_session):
+        """Uncategorized expenses are included in breakdown."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="cat-uncat@test.com", cognito_sub="cat-uncat-sub", locale="en")
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=0,
+            total_expenses=-8000,
+            category_totals={"uncategorized": -5000, "food": -3000},
+        )
+        profile_async_session.add(user)
+        profile_async_session.add(profile)
+        await profile_async_session.commit()
+
+        result = await get_category_breakdown(profile_async_session, user_id)
+        assert result is not None
+        assert len(result) == 2
+        # Sorted by amount desc
+        assert result[0]["category"] == "uncategorized"
+        assert result[0]["amount"] == 5000
+        assert result[1]["category"] == "food"
+        assert result[1]["amount"] == 3000
+
+    @pytest.mark.asyncio
+    async def test_sort_order_by_amount(self, profile_async_session):
+        """Categories sorted by absolute amount descending."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_id = uuid.uuid4()
+        user = User(id=user_id, email="cat-sort@test.com", cognito_sub="cat-sort-sub", locale="en")
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=0,
+            total_expenses=-30000,
+            category_totals={
+                "entertainment": -2000,
+                "groceries": -15000,
+                "transport": -5000,
+                "dining": -8000,
+            },
+        )
+        profile_async_session.add(user)
+        profile_async_session.add(profile)
+        await profile_async_session.commit()
+
+        result = await get_category_breakdown(profile_async_session, user_id)
+        assert result is not None
+        assert [r["category"] for r in result] == ["groceries", "dining", "transport", "entertainment"]
+
+    @pytest.mark.asyncio
+    async def test_tenant_isolation(self, profile_async_session):
+        """Only returns breakdown for the requesting user."""
+        from app.services.profile_service import get_category_breakdown
+
+        user_a = uuid.uuid4()
+        user_b = uuid.uuid4()
+        user_a_obj = User(id=user_a, email="cat-a@test.com", cognito_sub="cat-a-sub", locale="en")
+        user_b_obj = User(id=user_b, email="cat-b@test.com", cognito_sub="cat-b-sub", locale="en")
+        profile_a = FinancialProfile(
+            user_id=user_a, total_income=0, total_expenses=-10000,
+            category_totals={"food": -10000},
+        )
+        profile_b = FinancialProfile(
+            user_id=user_b, total_income=0, total_expenses=-20000,
+            category_totals={"transport": -20000},
+        )
+        profile_async_session.add_all([user_a_obj, user_b_obj, profile_a, profile_b])
+        await profile_async_session.commit()
+
+        result_a = await get_category_breakdown(profile_async_session, user_a)
+        assert result_a is not None
+        assert len(result_a) == 1
+        assert result_a[0]["category"] == "food"
+
+        result_b = await get_category_breakdown(profile_async_session, user_b)
+        assert result_b is not None
+        assert len(result_b) == 1
+        assert result_b[0]["category"] == "transport"
 
 
 class TestGetMonthlyComparison:

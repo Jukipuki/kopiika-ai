@@ -240,7 +240,10 @@
       "Bash(.venv/bin/python -m pytest tests/test_profile_service.py tests/test_profile_api.py -v --tb=short)",
       "Bash(.venv/bin/python -m pytest tests/test_profile_api.py -v --tb=short)",
       "Bash(.venv/bin/python -m pytest tests/test_profile_service.py -v --tb=short)",
-      "Bash(.venv/bin/python -m pytest -v --tb=short)"
+      "Bash(.venv/bin/python -m pytest -v --tb=short)",
+      "Bash(.venv/bin/python -m pytest tests/test_profile_service.py::TestGetMonthlyComparison -x -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_profile_service.py tests/test_profile_api.py -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_auth.py -x -q)"
     ]
   }
 }

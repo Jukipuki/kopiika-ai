@@ -28,6 +28,48 @@ async def get_profile_for_user(
     return result.first()
 
 
+async def get_category_breakdown(
+    session: SQLModelAsyncSession, user_id: uuid.UUID
+) -> list[dict] | None:
+    """Return spending breakdown by category from the financial profile.
+
+    Reads from the materialized category_totals JSONB field.
+    Only expense categories (negative amounts) are included.
+    Returns sorted list by absolute amount descending, or None if no profile.
+    """
+    profile = await get_profile_for_user(session, user_id)
+    if profile is None:
+        return None
+
+    category_totals: dict[str, int] = profile.category_totals or {}
+
+    # Filter expenses only (negative amounts) and convert to positive kopiykas
+    expenses = {
+        cat: abs(amount)
+        for cat, amount in category_totals.items()
+        if amount < 0
+    }
+
+    if not expenses:
+        return []
+
+    total = sum(expenses.values())
+
+    items = []
+    for cat, amount in expenses.items():
+        percentage = round(amount / total * 100, 1) if total > 0 else 0.0
+        items.append({
+            "category": cat,
+            "amount": amount,
+            "percentage": percentage,
+        })
+
+    # Sort by amount descending
+    items.sort(key=lambda x: x["amount"], reverse=True)
+
+    return items
+
+
 async def get_monthly_comparison(
     session: SQLModelAsyncSession, user_id: uuid.UUID
 ) -> dict | None:
@@ -63,11 +105,15 @@ async def get_monthly_comparison(
     previous_year, previous_month = int(months[1].year), int(months[1].month)
 
     # Step 2: Get per-category totals for both months
+    # NOTE: Group by the raw category column (not coalesce) — SQLAlchemy binds
+    # literal defaults as separate parameters in SELECT vs GROUP BY, which
+    # PostgreSQL rejects as non-matching expressions. NULL → "uncategorized"
+    # is handled in Python below.
     category_query = (
         select(
             func.extract("year", Transaction.date).label("year"),
             func.extract("month", Transaction.date).label("month"),
-            func.coalesce(Transaction.category, "uncategorized").label("cat"),
+            Transaction.category.label("cat"),
             func.sum(func.abs(Transaction.amount)).label("total"),
         )
         .where(
@@ -87,16 +133,18 @@ async def get_monthly_comparison(
         .group_by(
             func.extract("year", Transaction.date),
             func.extract("month", Transaction.date),
-            func.coalesce(Transaction.category, "uncategorized"),
+            Transaction.category,
         )
     )
     result = await session.exec(category_query)
     rows = list(result.all())
 
     # Step 3: Build lookup: {category: {(year, month): total}}
+    # NULL categories from the DB map to "uncategorized" in Python.
     cat_data: dict[str, dict[tuple[int, int], int]] = {}
     for row in rows:
-        y, m, cat, total = int(row.year), int(row.month), row.cat, int(row.total)
+        y, m, total = int(row.year), int(row.month), int(row.total)
+        cat = row.cat or "uncategorized"
         if cat not in cat_data:
             cat_data[cat] = {}
         cat_data[cat][(y, m)] = total

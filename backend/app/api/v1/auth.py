@@ -176,9 +176,21 @@ async def login(
 @router.post("/refresh-token", response_model=RefreshTokenResponse)
 async def refresh_token(
     body: RefreshTokenRequest,
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
     cognito: Annotated[CognitoService, Depends(get_cognito_service)],
 ) -> RefreshTokenResponse:
-    tokens = cognito.refresh_tokens(refresh_token=body.refresh_token, email=body.email)
+    # Cognito's REFRESH_TOKEN_AUTH flow validates SECRET_HASH against the
+    # user's cognito_sub, not the email alias. Look it up by email so the
+    # hash is computed with the correct value.
+    cognito_sub: str | None = None
+    if body.email:
+        result = await session.exec(select(User).where(User.email == body.email))
+        user = result.first()
+        if user:
+            cognito_sub = user.cognito_sub
+    tokens = cognito.refresh_tokens(
+        refresh_token=body.refresh_token, cognito_sub=cognito_sub
+    )
     return RefreshTokenResponse(
         access_token=tokens["access_token"],
         expires_in=tokens["expires_in"],

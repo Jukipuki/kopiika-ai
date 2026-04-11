@@ -2,7 +2,7 @@
 
 import { useTranslations, useLocale } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency } from "../format";
+import { formatCurrency, useCategoryLabel } from "../format";
 import type { MonthlyComparison as MonthlyComparisonType } from "../types";
 
 function formatMonth(yearMonth: string, locale: string): string {
@@ -55,6 +55,7 @@ export function MonthlyComparison({
 }) {
   const t = useTranslations("profile.monthlyComparison");
   const locale = useLocale();
+  const categoryLabel = useCategoryLabel();
 
   return (
     <Card>
@@ -74,11 +75,7 @@ export function MonthlyComparison({
               key={cat.category}
               className="flex items-center justify-between border-b border-foreground/5 pb-2 last:border-0"
             >
-              <span className="text-sm capitalize">
-                {cat.category === "uncategorized"
-                  ? t("uncategorized")
-                  : cat.category}
-              </span>
+              <span className="text-sm">{categoryLabel(cat.category)}</span>
               <span className="flex items-center gap-2">
                 <span className="text-sm font-medium">
                   {formatCurrency(cat.currentAmount, locale)}

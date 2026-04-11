@@ -25,6 +25,17 @@ export interface HealthScore {
 export type HealthScoreHistoryItem = HealthScore;
 export type HealthScoreHistory = HealthScoreHistoryItem[];
 
+export interface CategoryBreakdownItem {
+  category: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface CategoryBreakdown {
+  categories: CategoryBreakdownItem[];
+  totalExpenses: number;
+}
+
 export interface CategoryComparison {
   category: string;
   currentAmount: number;

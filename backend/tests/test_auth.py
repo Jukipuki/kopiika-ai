@@ -227,6 +227,12 @@ async def test_login_rate_limited(client, mock_rate_limiter):
 @pytest.mark.asyncio
 async def test_refresh_token_success(client, mock_cognito_service):
     """9.6 Test token refresh -> 200 + new access token"""
+    # Create a user first so the endpoint can resolve email -> cognito_sub.
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "test@example.com", "password": "StrongPass1!"},
+    )
+
     response = await client.post(
         "/api/v1/auth/refresh-token",
         json={"refreshToken": "valid-refresh-token", "email": "test@example.com"},
@@ -236,8 +242,10 @@ async def test_refresh_token_success(client, mock_cognito_service):
     data = response.json()
     assert "accessToken" in data
     assert "expiresIn" in data
+    # SECRET_HASH must be computed with cognito_sub, not email (REFRESH_TOKEN_AUTH
+    # gotcha — Cognito validates the hash against the sub).
     mock_cognito_service.refresh_tokens.assert_called_once_with(
-        refresh_token="valid-refresh-token", email="test@example.com"
+        refresh_token="valid-refresh-token", cognito_sub="test-cognito-sub-123"
     )
 
 

@@ -46,6 +46,12 @@ vi.mock("../hooks/use-monthly-comparison", () => ({
   useMonthlyComparison: () => mockUseMonthlyComparison(),
 }));
 
+// Mock useCategoryBreakdown hook
+const mockUseCategoryBreakdown = vi.fn();
+vi.mock("../hooks/use-category-breakdown", () => ({
+  useCategoryBreakdown: () => mockUseCategoryBreakdown(),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -74,6 +80,11 @@ describe("ProfilePage", () => {
     });
     mockUseMonthlyComparison.mockReturnValue({
       comparison: null,
+      isLoading: false,
+      isError: false,
+    });
+    mockUseCategoryBreakdown.mockReturnValue({
+      breakdown: null,
       isLoading: false,
       isError: false,
     });
@@ -140,11 +151,7 @@ describe("ProfilePage", () => {
     expect(screen.getByText("Total Income")).toBeTruthy();
     expect(screen.getByText("Total Expenses")).toBeTruthy();
     expect(screen.getByText("Net Balance")).toBeTruthy();
-    expect(screen.getByText("Category Breakdown")).toBeTruthy();
-
-    // Check categories are listed
-    expect(screen.getByText("food")).toBeTruthy();
-    expect(screen.getByText("transport")).toBeTruthy();
+    expect(screen.getAllByText("Category Breakdown").length).toBeGreaterThan(0);
   });
 
   it("renders health score section when score exists", () => {
@@ -253,18 +260,13 @@ describe("ProfilePage", () => {
     expect(svg).toBeTruthy();
   });
 
-  it("renders category breakdown with correct items", () => {
+  it("renders category breakdown with correct items from hook", () => {
     mockUseProfile.mockReturnValue({
       profile: {
         id: "test-id",
         totalIncome: 100000,
         totalExpenses: -45000,
-        categoryTotals: {
-          salary: 100000,
-          food: -25000,
-          transport: -10000,
-          entertainment: -10000,
-        },
+        categoryTotals: {},
         periodStart: "2026-01-01T00:00:00Z",
         periodEnd: "2026-03-31T00:00:00Z",
         updatedAt: "2026-04-01T00:00:00Z",
@@ -273,13 +275,104 @@ describe("ProfilePage", () => {
       isError: false,
       isNotFound: false,
     });
+    mockUseCategoryBreakdown.mockReturnValue({
+      breakdown: {
+        categories: [
+          { category: "food", amount: 25000, percentage: 55.6, },
+          { category: "transport", amount: 10000, percentage: 22.2, },
+          { category: "entertainment", amount: 10000, percentage: 22.2, },
+        ],
+        totalExpenses: 45000,
+      },
+      isLoading: false,
+      isError: false,
+    });
 
     renderWithProviders(<ProfilePage />);
 
-    expect(screen.getByText("salary")).toBeTruthy();
-    expect(screen.getByText("food")).toBeTruthy();
-    expect(screen.getByText("transport")).toBeTruthy();
-    expect(screen.getByText("entertainment")).toBeTruthy();
+    expect(screen.getAllByText("Category Breakdown").length).toBeGreaterThan(0);
+    expect(screen.getByText("Food")).toBeTruthy();
+    expect(screen.getByText("Transport")).toBeTruthy();
+    expect(screen.getByText("Entertainment")).toBeTruthy();
+  });
+
+  it("renders breakdown loading skeleton", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: {},
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseCategoryBreakdown.mockReturnValue({
+      breakdown: null,
+      isLoading: true,
+      isError: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    const skeletons = document.querySelectorAll('[data-slot="skeleton"]');
+    expect(skeletons.length).toBeGreaterThan(0);
+  });
+
+  it("renders breakdown error state", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: -20000,
+        categoryTotals: {},
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseCategoryBreakdown.mockReturnValue({
+      breakdown: null,
+      isLoading: false,
+      isError: true,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("Failed to load spending breakdown. Please try again.")).toBeTruthy();
+  });
+
+  it("renders breakdown empty/no-data state", () => {
+    mockUseProfile.mockReturnValue({
+      profile: {
+        id: "test-id",
+        totalIncome: 50000,
+        totalExpenses: 0,
+        categoryTotals: {},
+        periodStart: null,
+        periodEnd: null,
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      isNotFound: false,
+    });
+    mockUseCategoryBreakdown.mockReturnValue({
+      breakdown: { categories: [], totalExpenses: 0 },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<ProfilePage />);
+
+    expect(screen.getByText("No spending data yet. Upload a statement to see your spending breakdown.")).toBeTruthy();
   });
 
   it("renders monthly comparison section when data is available", () => {

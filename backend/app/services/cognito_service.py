@@ -62,13 +62,22 @@ class CognitoService:
             logger.error("Cognito auth failed: %s - %s", error_code, error_message)
             self._handle_auth_error(error_code)
 
-    def refresh_tokens(self, refresh_token: str, email: str | None = None) -> dict[str, Any]:
+    def refresh_tokens(
+        self, refresh_token: str, cognito_sub: str | None = None
+    ) -> dict[str, Any]:
+        """Refresh Cognito tokens.
+
+        For REFRESH_TOKEN_AUTH, Cognito verifies SECRET_HASH against the user's
+        actual username (the `sub` UUID), NOT the email alias used at login.
+        Passing an email here will result in
+        `NotAuthorizedException: Unable to verify secret hash`.
+        """
         try:
             auth_params: dict[str, str] = {
                 "REFRESH_TOKEN": refresh_token,
             }
-            if email:
-                secret_hash = self._compute_secret_hash(email)
+            if cognito_sub:
+                secret_hash = self._compute_secret_hash(cognito_sub)
                 if secret_hash:
                     auth_params["SECRET_HASH"] = secret_hash
             response = self._client.admin_initiate_auth(

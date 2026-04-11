@@ -7,7 +7,11 @@ from pydantic.alias_generators import to_camel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
-from app.services.profile_service import get_monthly_comparison, get_profile_for_user
+from app.services.profile_service import (
+    get_category_breakdown,
+    get_monthly_comparison,
+    get_profile_for_user,
+)
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -22,6 +26,21 @@ class ProfileResponse(BaseModel):
     period_start: Optional[str] = None
     period_end: Optional[str] = None
     updated_at: str
+
+
+class CategoryBreakdownItem(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    category: str
+    amount: int
+    percentage: float
+
+
+class CategoryBreakdownResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    categories: list[CategoryBreakdownItem]
+    total_expenses: int
 
 
 class CategoryComparisonResponse(BaseModel):
@@ -67,6 +86,22 @@ async def get_profile(
         period_start=profile.period_start.isoformat() if profile.period_start else None,
         period_end=profile.period_end.isoformat() if profile.period_end else None,
         updated_at=profile.updated_at.isoformat() + "Z",
+    )
+
+
+@router.get("/category-breakdown", response_model=CategoryBreakdownResponse | None)
+async def get_category_breakdown_endpoint(
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+) -> CategoryBreakdownResponse | None:
+    """Get spending breakdown by category for the authenticated user."""
+    items = await get_category_breakdown(session=session, user_id=user_id)
+    if items is None:
+        return None
+    total_expenses = sum(item["amount"] for item in items)
+    return CategoryBreakdownResponse(
+        categories=[CategoryBreakdownItem(**item) for item in items],
+        total_expenses=total_expenses,
     )
 
 

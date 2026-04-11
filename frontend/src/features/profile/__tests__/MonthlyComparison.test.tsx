@@ -28,9 +28,9 @@ describe("MonthlyComparison", () => {
   it("renders category rows with correct names", () => {
     render(<MonthlyComparison data={mockData} />);
 
-    expect(screen.getByText("food")).toBeTruthy();
-    expect(screen.getByText("transport")).toBeTruthy();
-    expect(screen.getByText("entertainment")).toBeTruthy();
+    expect(screen.getByText("Food")).toBeTruthy();
+    expect(screen.getByText("Transport")).toBeTruthy();
+    expect(screen.getByText("Entertainment")).toBeTruthy();
     expect(screen.getByText("Uncategorized")).toBeTruthy();
   });
 

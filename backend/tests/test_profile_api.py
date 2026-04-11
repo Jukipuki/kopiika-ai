@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/profile endpoints (Stories 4.4, 4.7)."""
+"""Tests for GET /api/v1/profile endpoints (Stories 4.4, 4.7, 4.8)."""
 import os
 import tempfile
 import uuid
@@ -216,6 +216,89 @@ class TestProfileEndpoint:
             assert data["totalIncome"] == 200000
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+# ==================== Category Breakdown API Tests (Story 4.8) ====================
+
+
+class TestCategoryBreakdownEndpoint:
+    """Test GET /api/v1/profile/category-breakdown (Story 4.8)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_200_with_camelcase_data(self, profile_client, profile_api_session):
+        """Returns 200 with camelCase breakdown data when profile has expenses."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "cat-api-sub"
+        user_id = await _create_user(profile_api_session, cognito_sub, "cat@test.com")
+
+        profile = FinancialProfile(
+            user_id=user_id,
+            total_income=100000,
+            total_expenses=-35000,
+            category_totals={
+                "groceries": -20000,
+                "transport": -10000,
+                "dining": -5000,
+                "salary": 100000,
+            },
+        )
+        profile_api_session.add(profile)
+        await profile_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await profile_client.get("/api/v1/profile/category-breakdown")
+            assert response.status_code == 200
+            data = response.json()
+            assert data is not None
+            assert "categories" in data
+            assert "totalExpenses" in data
+            assert data["totalExpenses"] == 35000  # Sum of abs expenses
+
+            cats = data["categories"]
+            assert len(cats) == 3  # salary excluded
+
+            # Sorted by amount descending
+            assert cats[0]["category"] == "groceries"
+            assert cats[0]["amount"] == 20000
+            assert cats[1]["category"] == "transport"
+            assert cats[1]["amount"] == 10000
+            assert cats[2]["category"] == "dining"
+            assert cats[2]["amount"] == 5000
+
+            # camelCase field check
+            assert "percentage" in cats[0]
+
+            # No snake_case keys
+            assert "total_expenses" not in data
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_returns_200_null_for_missing_profile(self, profile_client, profile_api_session):
+        """Returns 200 with null body when no profile exists."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "cat-null-sub"
+        await _create_user(profile_api_session, cognito_sub, "cat-null@test.com")
+        await profile_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await profile_client.get("/api/v1/profile/category-breakdown")
+            assert response.status_code == 200
+            assert response.json() is None
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated(self, profile_client):
+        """Unauthenticated access returns 401/403."""
+        response = await profile_client.get("/api/v1/profile/category-breakdown")
+        assert response.status_code in (401, 403)
 
 
 # ==================== Monthly Comparison API Tests (Story 4.7) ====================

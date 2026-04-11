@@ -6,9 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@/i18n/navigation";
 import { useHealthScore } from "../hooks/use-health-score";
 import { useHealthScoreHistory } from "../hooks/use-health-score-history";
+import { useCategoryBreakdown } from "../hooks/use-category-breakdown";
 import { useMonthlyComparison } from "../hooks/use-monthly-comparison";
 import { useProfile } from "../hooks/use-profile";
 import { formatCurrency } from "../format";
+import { CategoryBreakdown } from "./CategoryBreakdown";
 import { HealthScoreRing } from "./HealthScoreRing";
 import { HealthScoreTrend } from "./HealthScoreTrend";
 import { MonthlyComparison } from "./MonthlyComparison";
@@ -31,6 +33,11 @@ export function ProfilePage() {
     isLoading: isComparisonLoading,
     isError: isComparisonError,
   } = useMonthlyComparison();
+  const {
+    breakdown,
+    isLoading: isBreakdownLoading,
+    isError: isBreakdownError,
+  } = useCategoryBreakdown();
 
   if (isLoading) {
     return <ProfileSkeleton />;
@@ -59,9 +66,6 @@ export function ProfilePage() {
   }
 
   const netBalance = profile.totalIncome + profile.totalExpenses;
-  const categories = Object.entries(profile.categoryTotals).sort(
-    ([, a], [, b]) => a - b
-  );
 
   return (
     <div className="space-y-6">
@@ -192,27 +196,54 @@ export function ProfilePage() {
       )}
 
       {/* Category breakdown */}
-      {categories.length > 0 && (
+      {isBreakdownLoading ? (
         <Card>
           <CardHeader>
-            <CardTitle>{t("categoryBreakdown")}</CardTitle>
+            <Skeleton className="h-4 w-48" />
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {categories.map(([category, amount]) => (
-                <li
-                  key={category}
-                  className="flex items-center justify-between border-b border-foreground/5 pb-2 last:border-0"
-                >
-                  <span className="text-sm capitalize">{category}</span>
-                  <span
-                    className={`text-sm font-medium ${amount >= 0 ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {formatCurrency(amount, locale)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+              <Skeleton className="h-[200px] w-[200px] rounded-full shrink-0" />
+              <div className="w-full space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex justify-between">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : isBreakdownError ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("categoryBreakdown.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-destructive">
+              {t("categoryBreakdown.loadFailed")}
+            </p>
+          </CardContent>
+        </Card>
+      ) : breakdown && breakdown.categories.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("categoryBreakdown.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CategoryBreakdown data={breakdown} />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("categoryBreakdown.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {t("categoryBreakdown.noData")}
+            </p>
           </CardContent>
         </Card>
       )}
