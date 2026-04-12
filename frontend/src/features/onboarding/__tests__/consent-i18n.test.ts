@@ -24,10 +24,15 @@ const REQUIRED_KEYS = [
   "onboarding.privacy.storage.body",
   "onboarding.privacy.access.title",
   "onboarding.privacy.access.body",
+  "onboarding.privacy.disclaimer.title",
+  "onboarding.privacy.disclaimer.body",
   "onboarding.privacy.consentLabel",
   "onboarding.privacy.continue",
   "onboarding.privacy.submitting",
   "onboarding.privacy.logOut",
+  "feed.disclaimer.short",
+  "feed.disclaimer.full",
+  "feed.disclaimer.toggleLabel",
 ];
 
 describe("onboarding.privacy i18n keys", () => {

@@ -47,13 +47,15 @@ describe("PrivacyExplanationScreen", () => {
     });
   });
 
-  it("renders the four privacy topics and a disabled Continue button", () => {
+  it("renders the four privacy topics, the disclaimer section, and a disabled Continue button", () => {
     renderWithClient(<PrivacyExplanationScreen />);
 
     expect(screen.getByText(/what we collect/i)).toBeInTheDocument();
     expect(screen.getByText(/how ai processes it/i)).toBeInTheDocument();
     expect(screen.getByText(/where it's stored/i)).toBeInTheDocument();
     expect(screen.getByText(/who can see it/i)).toBeInTheDocument();
+    expect(screen.getByText(/financial advice disclaimer/i)).toBeInTheDocument();
+    expect(screen.getByText(/this is not professional financial advice/i)).toBeInTheDocument();
 
     const continueBtn = screen.getByRole("button", { name: /continue/i });
     expect(continueBtn).toBeDisabled();

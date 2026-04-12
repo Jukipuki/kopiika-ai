@@ -13,6 +13,7 @@ import { useFeedSSE } from "../hooks/use-feed-sse";
 import { CardStackNavigator } from "./CardStackNavigator";
 import { SkeletonCard } from "./SkeletonCard";
 import { ProgressiveLoadingState } from "./ProgressiveLoadingState";
+import { FeedDisclaimer } from "./FeedDisclaimer";
 
 function SkeletonList() {
   return (
@@ -112,6 +113,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
         isFetchingNextPage={isFetchingNextPage}
         onLoadMore={fetchNextPage}
       />
+      <FeedDisclaimer />
       {isFetchNextPageError && (
         <Card>
           <CardContent className="p-4 text-center">

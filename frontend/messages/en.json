@@ -250,7 +250,12 @@
     "loadFailed": "Failed to load insights. Please try again.",
     "loadMoreFailed": "Failed to load more insights.",
     "retry": "Retry",
-    "processing": "Processing..."
+    "processing": "Processing...",
+    "disclaimer": {
+      "short": "Educational insights only — not financial advice",
+      "full": "kōpiika provides financial insights and education, not professional financial advice. Consult a qualified advisor for financial decisions.",
+      "toggleLabel": "Toggle disclaimer details"
+    }
   },
   "onboarding": {
     "privacy": {
@@ -271,6 +276,10 @@
       "access": {
         "title": "Who can see it",
         "body": "Only you. Your data is scoped to your account and isolated from every other user. Our team may access aggregated, anonymized metrics to improve the product, but not your individual transactions."
+      },
+      "disclaimer": {
+        "title": "Financial Advice Disclaimer",
+        "body": "kōpiika provides financial insights and education based on your uploaded bank statements. This is not professional financial advice. Always consult a qualified financial advisor for decisions about investments, debt, or major financial commitments."
       },
       "consentLabel": "I consent to AI processing of my financial data",
       "continue": "Continue",

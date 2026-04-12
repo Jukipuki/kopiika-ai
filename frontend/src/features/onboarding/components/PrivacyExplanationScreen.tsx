@@ -6,6 +6,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { Scale } from "lucide-react";
 import {
   CONSENT_TYPE_AI_PROCESSING,
   CURRENT_CONSENT_VERSION,
@@ -91,6 +92,16 @@ export default function PrivacyExplanationScreen() {
             </p>
           </section>
         ))}
+
+        <section className="rounded-lg border border-amber-500/30 bg-amber-50/50 p-4 dark:bg-amber-950/20">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <Scale size={18} className="text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            {t("disclaimer.title")}
+          </h2>
+          <p className="mt-1 text-sm text-foreground/80 leading-relaxed">
+            {t("disclaimer.body")}
+          </p>
+        </section>
       </div>
 
       <div className="mt-8 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-4">

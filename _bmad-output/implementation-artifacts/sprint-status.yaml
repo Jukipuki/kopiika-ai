@@ -133,7 +133,7 @@ development_status:
   epic-5: in-progress
   5-1-data-encryption-at-rest: review
   5-2-privacy-explanation-consent-during-onboarding: done
-  5-3-financial-advice-disclaimer: backlog
+  5-3-financial-advice-disclaimer: done
   5-4-view-my-stored-data: backlog
   5-5-delete-all-my-data: backlog
   epic-5-retrospective: optional

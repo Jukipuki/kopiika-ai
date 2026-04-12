@@ -415,6 +415,48 @@ describe("FeedContainer", () => {
     expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument();
   });
 
+  it("renders FeedDisclaimer when cards are present", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: mockItems, total: 2, nextCursor: null, hasMore: false }),
+    });
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    await waitFor(() =>
+      expect(screen.getByText("You spent 30% more on food")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("feed-disclaimer")).toBeInTheDocument();
+  });
+
+  it("does NOT render FeedDisclaimer in empty state", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ items: [], total: 0, nextCursor: null, hasMore: false }),
+    });
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    await waitFor(() =>
+      expect(screen.getByText(/no insights yet/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("feed-disclaimer")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render FeedDisclaimer in loading state", () => {
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    expect(screen.getByLabelText("Loading insights")).toBeInTheDocument();
+    expect(screen.queryByTestId("feed-disclaimer")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render FeedDisclaimer in error state", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    render(<FeedContainer />, { wrapper: createWrapper() });
+    await waitFor(() =>
+      expect(screen.getByText(/failed to load insights/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("feed-disclaimer")).not.toBeInTheDocument();
+  });
+
   it("SSE invalidation still works — queryKey ['teaching-feed'] is used with infinite query", async () => {
     // When pendingInsightIds is non-empty, FeedContainer calls invalidateQueries(["teaching-feed"])
     // TanStack Query v5 with useInfiniteQuery handles this same queryKey correctly
