@@ -172,7 +172,22 @@
     "english": "English",
     "language": "Language",
     "preferenceSaved": "Preference saved",
-    "saveFailed": "Failed to save preference"
+    "saveFailed": "Failed to save preference",
+    "myData": {
+      "title": "My Data",
+      "uploads": "Uploads",
+      "transactions": "Transactions",
+      "insights": "Insights Generated",
+      "dateRange": "Transaction Date Range",
+      "categories": "Categories Detected",
+      "financialProfile": "Financial Profile",
+      "income": "Income",
+      "expenses": "Expenses",
+      "healthScores": "Health Score History",
+      "healthScoreCount": "{count, plural, one {# score recorded} other {# scores recorded}}",
+      "consents": "Consent Records",
+      "empty": "No data yet. Upload a bank statement to get started."
+    }
   },
   "profile": {
     "title": "Financial Profile",

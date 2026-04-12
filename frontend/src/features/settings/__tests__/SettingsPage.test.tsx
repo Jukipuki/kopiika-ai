@@ -25,6 +25,11 @@ vi.mock("@/i18n/navigation", () => ({
   ),
 }));
 
+// Mock MyDataSection to isolate SettingsPage tests
+vi.mock("../components/MyDataSection", () => ({
+  default: () => <div data-testid="my-data-section">My Data</div>,
+}));
+
 // Mock sonner
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
@@ -295,5 +300,13 @@ describe("SettingsPage", () => {
     expect(
       screen.getByText("Choose your preferred language for the interface")
     ).toBeInTheDocument();
+  });
+
+  it("8.9 renders MyDataSection within settings page", async () => {
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("my-data-section")).toBeInTheDocument();
+    });
   });
 });

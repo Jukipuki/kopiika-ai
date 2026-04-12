@@ -275,7 +275,10 @@
       "Bash(.venv/bin/python -m pytest -q tests/ -k \"test_auth\")",
       "Bash(corepack enable:*)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('onboarding',{}\\).get\\('privacy',{}\\).get\\('disclaimer',{}\\), indent=2\\)\\); print\\('---'\\); print\\(json.dumps\\(d.get\\('feed',{}\\).get\\('disclaimer',{}\\), indent=2\\)\\)\")",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('onboarding',{}\\).get\\('privacy',{}\\).get\\('disclaimer',{}\\), indent=2, ensure_ascii=False\\)\\); print\\('---'\\); print\\(json.dumps\\(d.get\\('feed',{}\\).get\\('disclaimer',{}\\), indent=2, ensure_ascii=False\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('onboarding',{}\\).get\\('privacy',{}\\).get\\('disclaimer',{}\\), indent=2, ensure_ascii=False\\)\\); print\\('---'\\); print\\(json.dumps\\(d.get\\('feed',{}\\).get\\('disclaimer',{}\\), indent=2, ensure_ascii=False\\)\\)\")",
+      "Bash(wait)",
+      "Bash(.venv/bin/python -m pytest tests/test_data_summary_api.py -v)",
+      "Bash(pkill -f vitest)"
     ]
   }
 }

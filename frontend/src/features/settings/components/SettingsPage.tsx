@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useUserProfile } from "../hooks/use-user-profile";
 import AccountInfoSection from "./AccountInfoSection";
 import LanguageSection from "./LanguageSection";
+import MyDataSection from "./MyDataSection";
 
 export default function SettingsPage() {
   const t = useTranslations("settings");
@@ -50,6 +51,7 @@ export default function SettingsPage() {
       <div className="space-y-6">
         {profile && <AccountInfoSection profile={profile} />}
         <LanguageSection />
+        <MyDataSection />
       </div>
     </main>
   );
