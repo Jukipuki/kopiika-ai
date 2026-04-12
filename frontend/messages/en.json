@@ -251,5 +251,31 @@
     "loadMoreFailed": "Failed to load more insights.",
     "retry": "Retry",
     "processing": "Processing..."
+  },
+  "onboarding": {
+    "privacy": {
+      "title": "Before you start — how we handle your money data",
+      "subtitle": "We take a moment to explain this in plain language, because your financial data is personal. You stay in control.",
+      "dataCollected": {
+        "title": "What we collect",
+        "body": "When you upload a bank statement, we parse your transactions — dates, amounts, merchant names, and categories. We don't ask for account passwords, card numbers, or anything you haven't uploaded yourself."
+      },
+      "aiProcessing": {
+        "title": "How AI processes it",
+        "body": "An AI model reads your transactions to categorize spending and draft personalized insights about your finances. The model helps you see patterns — it does not make decisions for you, and it does not share your data with other users."
+      },
+      "storage": {
+        "title": "Where it's stored",
+        "body": "Your transactions and insights live in our encrypted database, inside our private cloud. Backups are encrypted too. We keep your data only while your account is active — you can delete everything at any time."
+      },
+      "access": {
+        "title": "Who can see it",
+        "body": "Only you. Your data is scoped to your account and isolated from every other user. Our team may access aggregated, anonymized metrics to improve the product, but not your individual transactions."
+      },
+      "consentLabel": "I consent to AI processing of my financial data",
+      "continue": "Continue",
+      "submitting": "Saving…",
+      "logOut": "Log out"
+    }
   }
 }

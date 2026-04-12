@@ -75,12 +75,26 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 - **Context:** Current defense is Cognito JWT (layer 1) + FastAPI dependency injection (layer 2). RLS was explicitly deferred to a future hardening story per architecture recommendation.
 - **Trigger to revisit:** Hardening pass before production launch, or any compliance/audit milestone.
 
+**Server-side enforcement of AI-processing consent**
+- **Source:** [5-2-privacy-explanation-consent-during-onboarding.md](../implementation-artifacts/5-2-privacy-explanation-consent-during-onboarding.md) "Questions / Clarifications for PO" Q#1, confirmed by PO 2026-04-11
+- **Context:** Story 5.2 implements the onboarding consent UX and persists an append-only `user_consents` record, but the consent gate is **client-side only** (`ConsentGuard` in the frontend). An authenticated user could technically bypass the gate by calling `/api/v1/transactions`, `/api/v1/uploads`, `/api/v1/insights`, etc. directly with a valid Cognito JWT. This is an informed-consent UX gap, not an authentication gap — acceptable for MVP, not acceptable before production/compliance launch.
+- **Scope when triggered:** Add a `require_consent(consent_type='ai_processing')` FastAPI dependency that checks for a current-version row in `user_consents` for the authenticated user. Apply to every endpoint that reads/writes financial data (transactions, uploads, insights, profile, health_score, feedback). Return `403 Forbidden` with a machine-readable error code (`CONSENT_REQUIRED`) so the frontend can detect it and redirect to `/onboarding/privacy` even if the client-side guard is bypassed or out of sync.
+- **Trigger to revisit:** Compliance hardening pass before production launch. **Implement alongside Story 5.6 (Compliance Audit Trail)** — they share an injection point (cross-cutting dependency on every financial-data endpoint) and should be designed as one middleware layer to avoid double instrumentation.
+- **Prerequisite:** Story 5.2 must be done (provides the `user_consents` table and `CURRENT_CONSENT_VERSION` constant this work depends on).
+
 ### 4.2 Auth & account
 
 **Forgot-password flow**
 - **Source:** [1-4-user-login-logout-session-management.md](../implementation-artifacts/1-4-user-login-logout-session-management.md) line 100
 - **Status:** Out of scope for 1.4. Architecture references `/forgot-password/page.tsx` but it has not been created. Login page links to it as a placeholder.
 - **Scope:** Cognito `ForgotPassword` / `ConfirmForgotPassword` wiring + page + tests.
+
+**Privacy explanation copy — legal review before launch**
+- **Source:** [5-2-privacy-explanation-consent-during-onboarding.md](../implementation-artifacts/5-2-privacy-explanation-consent-during-onboarding.md) "Questions / Clarifications for PO" Q#4, confirmed by PO 2026-04-11
+- **Context:** Story 5.2 ships with **dev-agent-drafted** English + Ukrainian copy for the `/onboarding/privacy` screen (four sections: what data is collected, how AI processes it, where it's stored, who has access). This is explicit placeholder-quality text — sufficient for MVP and internal testing, NOT sufficient for public launch or any jurisdiction with meaningful consent requirements (GDPR, UK DPA, Ukraine's Law on Personal Data Protection).
+- **Scope when triggered:** Replace the `onboarding.privacy.*` keys in `frontend/messages/en.json` and `frontend/messages/uk.json` with legally-reviewed copy. Optionally engage Ukrainian-speaking legal counsel for the UK translation (not just a mechanical translation — legal terminology differs). When the new copy lands, **bump `CURRENT_CONSENT_VERSION`** in both `backend/app/core/consent.py` and `frontend/src/features/onboarding/consent-version.ts` — this forces every existing user through the onboarding screen on their next login to re-consent to the updated wording. That's the version system working as designed, not a bug.
+- **Trigger to revisit:** Before public launch, OR before any regulated-market rollout, OR when legal counsel is engaged for the launch readiness review — whichever comes first.
+- **Prerequisite:** Story 5.2 done (provides the i18n keys, the `CURRENT_CONSENT_VERSION` constant, and the version-bump machinery).
 
 ### 4.3 Parsing
 

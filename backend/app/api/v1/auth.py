@@ -10,6 +10,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_cognito_service, get_current_user, get_db, get_rate_limiter
+from app.core.request import get_client_ip
 from app.models.user import User
 from app.services.cognito_service import CognitoService
 from app.services.rate_limiter import RateLimiter
@@ -17,15 +18,6 @@ from app.services.rate_limiter import RateLimiter
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def _get_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return "unknown"
 
 
 class SignupRequest(BaseModel):
@@ -129,7 +121,7 @@ async def login(
     cognito: Annotated[CognitoService, Depends(get_cognito_service)],
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> LoginResponse:
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request) or "unknown"
 
     await rate_limiter.check_rate_limit(ip)
 

@@ -437,6 +437,59 @@ aws ecr describe-repositories --repository-names kopiika-ai-backend \
 
 **Related Epic 5 stories:** 5.2 (consent UI), 5.3 (financial-advice disclaimer), 5.4 (view-my-stored-data), 5.5 (delete-all-my-data). This story establishes the ground truth that later stories rely on when explaining data handling to users.
 
+### Consent Management
+
+_Compliance reference for Epic 5 (Data Privacy, Trust & Consent). Added by Story 5.2._
+
+Authenticated users cannot reach any dashboard route until they have granted the current privacy-explanation consent. The system is built around one append-only table, a version-gated re-consent mechanism, and a client-side guard that redirects non-consented sessions into a dedicated onboarding screen.
+
+**Storage — `user_consents` table** ([migration a7b9c1d2e3f4](../../backend/alembic/versions/a7b9c1d2e3f4_create_user_consents_table.py), [model](../../backend/app/models/consent.py)):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID (PK) | `gen_random_uuid()` default |
+| `user_id` | UUID (FK → `users.id`, `ON DELETE CASCADE`) | Cascade is intentional — Story 5.5 (delete-my-data) removes consents with the user |
+| `consent_type` | text (indexed) | Currently `"ai_processing"`. A constant namespace so future consents (marketing, analytics) can share the same table |
+| `version` | text (indexed) | `YYYY-MM-DD-vN` date-prefixed content version (see below) |
+| `granted_at` | timestamptz | `now()` default — immutable audit record |
+| `locale` | text | `uk` or `en` — the language the user read the privacy text in |
+| `ip` / `user_agent` | text, nullable | Best-effort forensic metadata |
+
+A composite index `(user_id, consent_type, version)` backs the hot lookup from `get_current_consent_status` and the `POST /consent` idempotency check.
+
+**Append-only semantics:** we never update or delete rows in `user_consents`. A user who re-grants the same version gets a second row — which is fine, because `hasCurrentConsent` is computed as "does *any* row match `(user_id, consent_type, CURRENT_CONSENT_VERSION)`?". This gives us a full audit trail at the cost of O(consent_events) rows per user, which is negligible.
+
+**Version-gated re-consent — `CURRENT_CONSENT_VERSION`:**
+
+The single source of truth lives in [backend/app/core/consent.py](../../backend/app/core/consent.py) and is mirrored in [frontend/src/features/onboarding/consent-version.ts](../../frontend/src/features/onboarding/consent-version.ts). The format is `YYYY-MM-DD-vN` (e.g. `2026-04-11-v1`) — date-prefixed to stay legible in audit logs and migration filenames.
+
+Bumping this constant forces every authenticated user back through the onboarding gate on their next page load. That is intentional and powerful, so the rule is:
+
+- **Bump only on material changes** — new data flows, new processors, new data categories, new storage locations, new sharing relationships.
+- **Do NOT bump on cosmetic edits** — typo fixes, copy polish, translation improvements. Those are covered by the existing consent.
+
+**Procedure to bump:**
+1. Edit the privacy text in `frontend/messages/en.json` and `frontend/messages/uk.json` under `onboarding.privacy.*`.
+2. Bump `CURRENT_CONSENT_VERSION` in **both** `backend/app/core/consent.py` and `frontend/src/features/onboarding/consent-version.ts` in the **same commit**.
+3. CI runs [`.github/workflows/consent-version-sync.yml`](../../.github/workflows/consent-version-sync.yml) on any PR touching either file and fails the build if the two drift out of sync. This prevents the class of bug where the frontend posts an old version string and the backend 422s every user out of onboarding.
+
+**Frontend gate — `ConsentGuard`:**
+
+[frontend/src/lib/auth/consent-guard.tsx](../../frontend/src/lib/auth/consent-guard.tsx) wraps `children` inside the `(dashboard)` layout. It:
+- Short-circuits on `/<locale>/onboarding/...` routes to prevent a redirect loop (the onboarding route has its own scoped layout with no `ConsentGuard`).
+- Uses TanStack Query with `staleTime: Infinity` and key `["consent", "ai_processing"]`. After `POST /consent` succeeds, `PrivacyExplanationScreen` invalidates this key so the next navigation re-reads fresh state.
+- On `hasCurrentConsent === false`, redirects via `router.replace('/<locale>/onboarding/privacy')` and renders `null` during the pending redirect to prevent dashboard chrome from flashing.
+- On pending query, renders a dashboard skeleton — no FOUC, no exposed chrome.
+
+The parent dashboard layout ([frontend/src/app/[locale]/(dashboard)/layout.tsx](../../frontend/src/app/[locale]/(dashboard)/layout.tsx)) additionally suppresses its header and upload FAB when `pathname.startsWith('/<locale>/onboarding')`, so a not-yet-consented user sees zero main-app chrome.
+
+**Known gap — client-side enforcement only.** `ConsentGuard` is advisory. A sophisticated client could bypass the guard and call authenticated APIs directly while consent is absent. The MVP accepts this risk because:
+- The privacy-sensitive flow is the upload pipeline, and the upload UI is behind the guard.
+- No API endpoint currently side-effects on data the user hasn't already uploaded.
+- Closing the gap requires a FastAPI dependency (`require_current_consent`) on every mutating route, which is straightforward to add once another Epic 5 story surfaces the need. See [planning-artifacts/future-ideas.md](./future-ideas.md) §4.1.
+
+**Related stories:** 5.1 (encryption at rest — underlying compliance posture), 5.5 (delete-my-data — uses the `ON DELETE CASCADE` on `user_consents.user_id`), 5.6 (view-my-stored-data — surfaces the consent history to the user).
+
 ### API & Communication Patterns
 
 | Decision | Choice | Version | Rationale |

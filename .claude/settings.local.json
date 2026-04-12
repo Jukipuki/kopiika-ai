@@ -254,7 +254,25 @@
       "Bash(python3 -c \"import json; s=json.load\\(open\\('terraform.tfstate'\\)\\); [print\\(f\\\\\"{r['module'] + '.' if r.get\\('module'\\) else ''}{r['type']}.{r['name']}\\\\\"\\) for r in s.get\\('resources', []\\)]\")",
       "Bash(tfsec . --config-file .tfsec/config.yml)",
       "Bash(echo \"fmt=$?\")",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(ls -la /Users/ohumennyi/Personal/kopiika-ai/backend/alembic/versions/*.py)",
+      "Bash(.venv/bin/alembic current:*)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/*.yml /Users/ohumennyi/Personal/kopiika-ai/docker-compose*)",
+      "Bash(.venv/bin/alembic upgrade:*)",
+      "Bash(.venv/bin/alembic downgrade:*)",
+      "Bash(.venv/bin/python -c \"from app.main import app; print\\('ok'\\)\")",
+      "Bash(.venv/bin/pytest -q tests/test_consent.py tests/test_consent_service.py)",
+      "Bash(.venv/bin/pytest -q tests/test_consent.py::test_post_consent_success)",
+      "Bash(.venv/bin/pytest -q tests/test_consent_service.py::test_get_current_consent_status_no_row)",
+      "Bash(.venv/bin/pytest tests/test_consent_service.py::test_get_current_consent_status_no_row)",
+      "Bash(.venv/bin/pytest -q tests/test_consent_service.py::test_grant_consent_creates_row)",
+      "Bash(.venv/bin/python -c ':*)",
+      "Bash(.venv/bin/pytest -q)",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('messages/en.json','utf8'\\)\\); JSON.parse\\(require\\('fs'\\).readFileSync\\('messages/uk.json','utf8'\\)\\); console.log\\('ok'\\)\")",
+      "Bash(pnpm test:*)",
+      "Bash(export PATH=\"$HOME/.local/share/pnpm:$HOME/.nvm/versions/node/*/bin:$PATH\")",
+      "Bash(.venv/bin/python -m pytest -q tests/test_consent.py tests/test_consent_service.py)",
+      "Bash(.venv/bin/python -m pytest -q tests/ -k \"test_auth\")"
     ]
   }
 }

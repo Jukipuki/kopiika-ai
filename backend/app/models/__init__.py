@@ -1,3 +1,4 @@
+from app.models.consent import UserConsent
 from app.models.embedding import DocumentEmbedding
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
@@ -18,4 +19,5 @@ __all__ = [
     "Transaction",
     "Upload",
     "User",
+    "UserConsent",
 ]

@@ -1,0 +1,50 @@
+name: Consent Version Sync
+
+# Ensures the CURRENT_CONSENT_VERSION constant in the backend and the
+# frontend mirror never drift. If they do, a stale client will POST an
+# outdated version string and the backend will 422 — breaking onboarding.
+# See Story 5.2 for context.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/core/consent.py"
+      - "frontend/src/features/onboarding/consent-version.ts"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/app/core/consent.py"
+      - "frontend/src/features/onboarding/consent-version.ts"
+
+jobs:
+  check-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract and compare consent versions
+        run: |
+          set -euo pipefail
+          PATTERN='[0-9]{4}-[0-9]{2}-[0-9]{2}-v[0-9]+'
+          BE_VERSION=$(grep -Eo "$PATTERN" backend/app/core/consent.py | head -n1 || true)
+          FE_VERSION=$(grep -Eo "$PATTERN" frontend/src/features/onboarding/consent-version.ts | head -n1 || true)
+
+          echo "Backend  CURRENT_CONSENT_VERSION = ${BE_VERSION:-<not found>}"
+          echo "Frontend CURRENT_CONSENT_VERSION = ${FE_VERSION:-<not found>}"
+
+          if [[ -z "$BE_VERSION" ]]; then
+            echo "::error file=backend/app/core/consent.py::Could not find CURRENT_CONSENT_VERSION matching $PATTERN"
+            exit 1
+          fi
+          if [[ -z "$FE_VERSION" ]]; then
+            echo "::error file=frontend/src/features/onboarding/consent-version.ts::Could not find CURRENT_CONSENT_VERSION matching $PATTERN"
+            exit 1
+          fi
+
+          if [[ "$BE_VERSION" != "$FE_VERSION" ]]; then
+            echo "::error::CURRENT_CONSENT_VERSION drift detected — backend=$BE_VERSION frontend=$FE_VERSION. Bump both in the same commit."
+            exit 1
+          fi
+
+          echo "OK: consent versions are in sync ($BE_VERSION)"

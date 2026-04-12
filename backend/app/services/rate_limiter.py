@@ -85,3 +85,31 @@ class RateLimiter:
         pipe.zadd(key, {str(now): now})
         pipe.expire(key, window_seconds)
         await pipe.execute()
+
+    async def check_consent_rate_limit(
+        self, user_id: str, max_grants: int = 10, window_seconds: int = 3600
+    ) -> None:
+        key = f"rate_limit:consent:{user_id}"
+        now = time.time()
+        window_start = now - window_seconds
+
+        pipe = self._redis.pipeline()
+        pipe.zremrangebyscore(key, 0, window_start)
+        pipe.zcard(key)
+        results = await pipe.execute()
+
+        attempt_count = results[1]
+
+        if attempt_count >= max_grants:
+            from app.core.exceptions import ValidationError
+
+            raise ValidationError(
+                code="RATE_LIMITED",
+                message="Too many consent requests. Please try again later.",
+                status_code=429,
+            )
+
+        pipe = self._redis.pipeline()
+        pipe.zadd(key, {str(now): now})
+        pipe.expire(key, window_seconds)
+        await pipe.execute()
