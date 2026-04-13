@@ -80,10 +80,14 @@ def _parse_insight_cards(content: str) -> list[dict]:
 
 def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
     """LangGraph node: generate personalized financial education insight cards."""
+    job_id = state["job_id"]
+    user_id = state["user_id"]
+    log_ctx = {"job_id": job_id, "user_id": user_id}
+
     try:
         categorized = state.get("categorized_transactions", [])
         if not categorized:
-            logger.info('{"level": "INFO", "step": "education", "message": "No categorized transactions, skipping"}')
+            logger.info("education_skipped", extra={**log_ctx, "step": "education", "reason": "no_categorized_transactions"})
             completed = list(state.get("completed_nodes", []))
             completed.append("education")
             return {**state, "insight_cards": [], "step": "education", "completed_nodes": completed, "failed_node": None}
@@ -118,17 +122,15 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             llm = get_llm_client()
             response = llm.invoke(prompt)
         except Exception as primary_exc:
-            logger.warning("Primary LLM failed for education, trying fallback: %s", primary_exc)
+            logger.warning("Primary LLM failed for education, trying fallback: %s", primary_exc, extra=log_ctx)
             llm = get_fallback_llm_client()
             response = llm.invoke(prompt)
 
         cards = _parse_insight_cards(response.content)
 
         logger.info(
-            '{"level": "INFO", "step": "education", "cards_generated": %d, "locale": "%s", "literacy_level": "%s"}',
-            len(cards),
-            locale,
-            literacy_level,
+            "education_completed",
+            extra={**log_ctx, "step": "education", "cards_generated": len(cards), "locale": locale, "literacy_level": literacy_level},
         )
         completed = list(state.get("completed_nodes", []))
         completed.append("education")
@@ -140,5 +142,5 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             # Propagate circuit breaker errors so LangGraph checkpointing
             # preserves prior node results for retry
             raise
-        logger.error('{"level": "ERROR", "step": "education", "error": "%s"}', exc)
+        logger.error("education_failed", extra={**log_ctx, "step": "education"}, exc_info=True)
         return {**state, "insight_cards": [], "step": "education", "failed_node": "education"}

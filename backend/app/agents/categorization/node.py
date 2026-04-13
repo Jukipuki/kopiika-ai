@@ -41,7 +41,9 @@ def _build_prompt(transactions: list[dict]) -> str:
     )
 
 
-def _parse_llm_response(content: str, transactions: list[dict]) -> list[dict]:
+def _parse_llm_response(
+    content: str, transactions: list[dict], log_ctx: dict[str, str] | None = None,
+) -> list[dict]:
     """Parse JSON array from LLM response. Falls back to other=0.0 on parse failure."""
     try:
         # Strip markdown code fences if present
@@ -77,7 +79,7 @@ def _parse_llm_response(content: str, transactions: list[dict]) -> list[dict]:
                 })
         return parsed
     except Exception as exc:
-        logger.warning("Failed to parse LLM response: %s", exc)
+        logger.warning("Failed to parse LLM response: %s", exc, extra=log_ctx or {})
         return [
             {
                 "transaction_id": txn["id"],
@@ -95,7 +97,9 @@ def _invoke_llm(llm: Any, prompt: str) -> Any:
     return llm.invoke(prompt)
 
 
-def _categorize_batch(transactions: list[dict], llm: Any) -> tuple[list[dict], int]:
+def _categorize_batch(
+    transactions: list[dict], llm: Any, log_ctx: dict[str, str] | None = None,
+) -> tuple[list[dict], int]:
     """Categorize a batch of transactions using the given LLM.
 
     Returns (results, tokens_used).
@@ -105,18 +109,26 @@ def _categorize_batch(transactions: list[dict], llm: Any) -> tuple[list[dict], i
     tokens = 0
     if hasattr(response, "usage_metadata") and response.usage_metadata:
         tokens = response.usage_metadata.get("total_tokens", 0)
-    results = _parse_llm_response(response.content, transactions)
+    results = _parse_llm_response(response.content, transactions, log_ctx)
     logger.info(
-        '{"level": "INFO", "step": "categorization", "batch_size": %d, "tokens_used": %d, "model": "%s"}',
-        len(transactions),
-        tokens,
-        getattr(llm, "model_name", getattr(llm, "model", "unknown")),
+        "batch_categorized",
+        extra={
+            **(log_ctx or {}),
+            "step": "categorization",
+            "batch_size": len(transactions),
+            "tokens_used": tokens,
+            "model": getattr(llm, "model_name", getattr(llm, "model", "unknown")),
+        },
     )
     return results, tokens
 
 
 def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState:
     """LangGraph node: categorize all transactions using MCC codes + LLM fallback."""
+    job_id = state["job_id"]
+    user_id = state["user_id"]
+    log_ctx = {"job_id": job_id, "user_id": user_id}
+
     transactions = state["transactions"]
     batch_size = settings.CATEGORIZATION_BATCH_SIZE
     confidence_threshold = settings.CATEGORIZATION_CONFIDENCE_THRESHOLD
@@ -149,7 +161,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
             for i in range(0, len(needs_llm), batch_size):
                 batch = needs_llm[i : i + batch_size]
                 try:
-                    results, tokens = _categorize_batch(batch, primary_llm)
+                    results, tokens = _categorize_batch(batch, primary_llm, log_ctx)
                     llm_results.extend(results)
                     total_tokens += tokens
                     record_success("anthropic")
@@ -158,11 +170,12 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                 except Exception as primary_exc:
                     record_failure("anthropic")
                     logger.warning(
-                        "Primary LLM failed for batch, trying fallback: %s", primary_exc
+                        "Primary LLM failed for batch, trying fallback: %s", primary_exc,
+                        extra=log_ctx,
                     )
                     try:
                         fallback_llm = get_fallback_llm_client()
-                        results, tokens = _categorize_batch(batch, fallback_llm)
+                        results, tokens = _categorize_batch(batch, fallback_llm, log_ctx)
                         llm_results.extend(results)
                         total_tokens += tokens
                         record_success("openai")
@@ -171,7 +184,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                     except Exception as fallback_exc:
                         record_failure("openai")
                         logger.error(
-                            "Fallback LLM also failed for batch: %s", fallback_exc
+                            "Fallback LLM also failed for batch: %s", fallback_exc,
+                            extra=log_ctx,
                         )
                         for txn in batch:
                             llm_results.append({
@@ -183,13 +197,13 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
         except CircuitBreakerOpenError:
             raise
         except ValueError as exc:
-            logger.warning("Primary LLM not available: %s. Trying fallback.", exc)
+            logger.warning("Primary LLM not available: %s. Trying fallback.", exc, extra=log_ctx)
             try:
                 fallback_llm = get_fallback_llm_client()
                 for i in range(0, len(needs_llm), batch_size):
                     batch = needs_llm[i : i + batch_size]
                     try:
-                        results, tokens = _categorize_batch(batch, fallback_llm)
+                        results, tokens = _categorize_batch(batch, fallback_llm, log_ctx)
                         llm_results.extend(results)
                         total_tokens += tokens
                         record_success("openai")
@@ -197,7 +211,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         raise
                     except Exception as fb_exc:
                         record_failure("openai")
-                        logger.error("Fallback LLM failed for batch: %s", fb_exc)
+                        logger.error("Fallback LLM failed for batch: %s", fb_exc, extra=log_ctx)
                         for txn in batch:
                             llm_results.append({
                                 "transaction_id": txn["id"],
@@ -208,7 +222,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
             except CircuitBreakerOpenError:
                 raise
             except ValueError as fb_exc:
-                logger.error("Fallback LLM not available: %s", fb_exc)
+                logger.error("Fallback LLM not available: %s", fb_exc, extra=log_ctx)
                 for txn in needs_llm:
                     llm_results.append({
                         "transaction_id": txn["id"],

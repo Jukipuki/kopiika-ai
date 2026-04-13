@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import v1_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.middleware import RequestLoggingMiddleware
 from app.core.exceptions import (
     AuthenticationError,
     CircuitBreakerOpenError,
@@ -31,6 +32,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Accept-Language"],
 )
+
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(v1_router)
 

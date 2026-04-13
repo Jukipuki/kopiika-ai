@@ -304,7 +304,10 @@
       "Bash(git -C /Users/ohumennyi/Personal/kopiika-ai stash)",
       "Bash(git -C /Users/ohumennyi/Personal/kopiika-ai stash pop)",
       "Bash(sed -n '185,200p' /Users/ohumennyi/Personal/kopiika-ai/backend/app/tasks/processing_tasks.py)",
-      "Bash(sed -n '480,495p' /Users/ohumennyi/Personal/kopiika-ai/backend/app/tasks/processing_tasks.py)"
+      "Bash(sed -n '480,495p' /Users/ohumennyi/Personal/kopiika-ai/backend/app/tasks/processing_tasks.py)",
+      "Bash(python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -q)",
+      "Bash(backend/.venv/bin/python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -q)",
+      "Bash(backend/.venv/bin/python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -v)"
     ]
   }
 }

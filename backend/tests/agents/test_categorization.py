@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -873,3 +874,68 @@ def test_process_upload_categorization_updates_transaction_in_db(
         assert txns[0].category == "groceries"
         assert txns[0].confidence_score == pytest.approx(1.0)
         assert txns[0].is_flagged_for_review is False
+
+
+# ---------------------------------------------------------------------------
+# Story 6.4: job_id log propagation test
+# ---------------------------------------------------------------------------
+
+def test_categorization_node_logs_contain_job_id(caplog):
+    """Calling categorization_node with a mock state propagates job_id into log entries (AC #2)."""
+    txn = _make_transaction(mcc=None, description="Shop ABC")
+    test_job_id = "test-job-id-6-4"
+    state = _make_state(transactions=[txn], job_id=test_job_id)
+
+    llm_result = [{"id": txn["id"], "category": "shopping", "confidence": 0.9}]
+    mock_response = _make_llm_response(llm_result)
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = mock_response
+    mock_llm.model = "claude-haiku-4-5-20251001"
+
+    # The app logger has propagate=False, so caplog (attached to root) won't see child records.
+    # Temporarily enable propagation on the app logger itself.
+    app_logger = logging.getLogger("app")
+    app_logger.propagate = True
+    try:
+        with caplog.at_level(logging.INFO, logger="app.agents.categorization.node"):
+            with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
+                categorization_node(state)
+
+        job_id_records = [r for r in caplog.records if getattr(r, "job_id", None) == test_job_id]
+        assert len(job_id_records) >= 1, "Expected at least one log record with job_id"
+    finally:
+        app_logger.propagate = False
+
+
+def test_categorization_node_logs_do_not_contain_financial_data(caplog):
+    """Logs must never contain sensitive financial data like transaction descriptions or amounts."""
+    from app.core.logging import JsonFormatter
+
+    txn = _make_transaction(mcc=None, description="SALARY FROM EMPLOYER", amount=-999999)
+    state = _make_state(transactions=[txn])
+
+    llm_result = [{"id": txn["id"], "category": "finance", "confidence": 0.85}]
+    mock_response = _make_llm_response(llm_result)
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = mock_response
+    mock_llm.model = "claude-haiku-4-5-20251001"
+
+    formatter = JsonFormatter()
+    app_logger = logging.getLogger("app")
+    app_logger.propagate = True
+    try:
+        with caplog.at_level(logging.DEBUG, logger="app.agents.categorization.node"):
+            with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
+                categorization_node(state)
+
+        for record in caplog.records:
+            assert "SALARY FROM EMPLOYER" not in record.getMessage(), \
+                "Log message must not contain transaction description"
+            # Also verify the full JSON output from the formatter doesn't leak PII
+            formatted = formatter.format(record)
+            assert "SALARY FROM EMPLOYER" not in formatted, \
+                "Formatted JSON log must not contain transaction description"
+    finally:
+        app_logger.propagate = False
