@@ -187,6 +187,18 @@
       "healthScoreCount": "{count, plural, one {# score recorded} other {# scores recorded}}",
       "consents": "Consent Records",
       "empty": "No data yet. Upload a bank statement to get started."
+    },
+    "deleteData": {
+      "title": "Danger Zone",
+      "description": "Permanently delete your account and all associated data. This action cannot be undone.",
+      "button": "Delete All My Data",
+      "dialogTitle": "Are you absolutely sure?",
+      "dialogDescription": "This will permanently delete your account, all uploaded statements, transactions, financial profile, health scores, insights, and consent records. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Yes, delete everything",
+      "deleting": "Deleting...",
+      "success": "Your data has been deleted. Goodbye!",
+      "error": "Failed to delete your data. Please try again."
     }
   },
   "profile": {

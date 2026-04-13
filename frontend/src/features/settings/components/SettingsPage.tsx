@@ -8,6 +8,7 @@ import { useUserProfile } from "../hooks/use-user-profile";
 import AccountInfoSection from "./AccountInfoSection";
 import LanguageSection from "./LanguageSection";
 import MyDataSection from "./MyDataSection";
+import DataDeletion from "./DataDeletion";
 
 export default function SettingsPage() {
   const t = useTranslations("settings");
@@ -52,6 +53,7 @@ export default function SettingsPage() {
         {profile && <AccountInfoSection profile={profile} />}
         <LanguageSection />
         <MyDataSection />
+        <DataDeletion />
       </div>
     </main>
   );

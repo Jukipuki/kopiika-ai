@@ -108,7 +108,7 @@ async def grant_consent_endpoint(
     logger.info(
         "Consent granted",
         extra={
-            "user_id": str(current_user.id),
+            "user_id": str(record.user_id),
             "consent_type": CONSENT_TYPE_AI_PROCESSING,
             "version": body.version,
             "action": "consent_grant",

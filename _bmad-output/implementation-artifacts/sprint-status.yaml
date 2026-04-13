@@ -135,7 +135,7 @@ development_status:
   5-2-privacy-explanation-consent-during-onboarding: done
   5-3-financial-advice-disclaimer: done
   5-4-view-my-stored-data: done
-  5-5-delete-all-my-data: backlog
+  5-5-delete-all-my-data: done
   epic-5-retrospective: optional
 
   # Epic 6: Error Handling, Recovery & Operational Monitoring

@@ -25,9 +25,13 @@ vi.mock("@/i18n/navigation", () => ({
   ),
 }));
 
-// Mock MyDataSection to isolate SettingsPage tests
+// Mock MyDataSection and DataDeletion to isolate SettingsPage tests
 vi.mock("../components/MyDataSection", () => ({
   default: () => <div data-testid="my-data-section">My Data</div>,
+}));
+
+vi.mock("../components/DataDeletion", () => ({
+  default: () => <div data-testid="data-deletion">Data Deletion</div>,
 }));
 
 // Mock sonner
@@ -307,6 +311,14 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("my-data-section")).toBeInTheDocument();
+    });
+  });
+
+  it("8.10 renders DataDeletion within settings page", async () => {
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("data-deletion")).toBeInTheDocument();
     });
   });
 });

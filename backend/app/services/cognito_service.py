@@ -111,6 +111,32 @@ class CognitoService:
             logger.error("Cognito auth failed: %s - %s", error_code, error_message)
             self._handle_auth_error(error_code)
 
+    def delete_user(self, cognito_sub: str) -> dict[str, Any]:
+        try:
+            self._client.admin_delete_user(
+                UserPoolId=self._user_pool_id,
+                Username=cognito_sub,
+            )
+            return {"deleted": True}
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+            if error_code == "UserNotFoundException":
+                logger.warning(
+                    "Cognito user already deleted: %s", cognito_sub
+                )
+                return {"deleted": True}
+            logger.error(
+                "Cognito delete_user failed: %s - %s",
+                error_code,
+                error_message,
+            )
+            raise RegistrationError(
+                code="COGNITO_DELETE_ERROR",
+                message="Failed to delete user from identity provider",
+                status_code=500,
+            )
+
     def sign_up(self, email: str, password: str) -> dict[str, Any]:
         try:
             response = self._client.sign_up(
