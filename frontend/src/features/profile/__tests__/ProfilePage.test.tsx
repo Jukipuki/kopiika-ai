@@ -52,6 +52,12 @@ vi.mock("../hooks/use-category-breakdown", () => ({
   useCategoryBreakdown: () => mockUseCategoryBreakdown(),
 }));
 
+// Mock useFlaggedTransactions hook
+const mockUseFlaggedTransactions = vi.fn();
+vi.mock("../hooks/use-flagged-transactions", () => ({
+  useFlaggedTransactions: () => mockUseFlaggedTransactions(),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -85,6 +91,11 @@ describe("ProfilePage", () => {
     });
     mockUseCategoryBreakdown.mockReturnValue({
       breakdown: null,
+      isLoading: false,
+      isError: false,
+    });
+    mockUseFlaggedTransactions.mockReturnValue({
+      flaggedTransactions: [],
       isLoading: false,
       isError: false,
     });

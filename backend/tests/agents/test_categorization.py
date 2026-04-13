@@ -302,7 +302,7 @@ def test_categorization_node_primary_fails_fallback_called():
 
 
 def test_categorization_node_both_llms_fail_returns_other():
-    """Both LLMs failing results in category='other', confidence=0.0, flagged=True."""
+    """Both LLMs failing results in category='uncategorized' (6.3), confidence=0.0, flagged=True."""
     txn = _make_transaction(mcc=None, description="Unknown")
     state = _make_state(transactions=[txn])
 
@@ -322,7 +322,7 @@ def test_categorization_node_both_llms_fail_returns_other():
 
     assert len(result["categorized_transactions"]) == 1
     entry = result["categorized_transactions"][0]
-    assert entry["category"] == "other"
+    assert entry["category"] == "uncategorized"
     assert entry["confidence_score"] == 0.0
     assert entry["flagged"] is True
 
@@ -352,7 +352,7 @@ def test_categorization_node_no_api_key_uses_fallback():
 
 
 def test_categorization_node_no_api_keys_at_all():
-    """When both LLMs raise ValueError (not configured), final fallback assigns other."""
+    """When both LLMs raise ValueError (not configured), final fallback assigns uncategorized (6.3)."""
     txn = _make_transaction(mcc=None, description="Shop")
     state = _make_state(transactions=[txn])
 
@@ -369,7 +369,7 @@ def test_categorization_node_no_api_keys_at_all():
         result = categorization_node(state)
 
     entry = result["categorized_transactions"][0]
-    assert entry["category"] == "other"
+    assert entry["category"] == "uncategorized"
     assert entry["confidence_score"] == 0.0
     assert entry["flagged"] is True
 
@@ -572,6 +572,139 @@ def test_categorization_failure_job_stays_completed(sync_engine):
         job = session.get(ProcessingJob, job_id)
         assert job.status == "completed"
         assert job.step == "categorization_failed"
+
+
+# ---------------------------------------------------------------------------
+# Story 6.3: uncategorized_reason and category override tests
+# ---------------------------------------------------------------------------
+
+def test_categorization_node_low_confidence_sets_reason_and_uncategorized_category():
+    """Low-confidence LLM result → category='uncategorized', uncategorized_reason='low_confidence', flagged=True."""
+    txn = _make_transaction(mcc=None, description="Unknown merchant")
+    state = _make_state(transactions=[txn])
+
+    llm_result = [{"id": txn["id"], "category": "other", "confidence": 0.5}]
+    mock_response = _make_llm_response(llm_result)
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = mock_response
+    mock_llm.model = "claude-haiku-4-5-20251001"
+
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
+        result = categorization_node(state)
+
+    entry = result["categorized_transactions"][0]
+    assert entry["flagged"] is True
+    assert entry["category"] == "uncategorized"
+    assert entry["uncategorized_reason"] == "low_confidence"
+
+
+def test_categorization_node_parse_failure_sets_reason():
+    """LLM parse failure (invalid JSON) → uncategorized_reason='parse_failure', flagged=True."""
+    txn = _make_transaction(mcc=None, description="Merchant X")
+    state = _make_state(transactions=[txn])
+
+    # Return invalid JSON so _parse_llm_response falls into the except branch
+    mock_response = MagicMock()
+    mock_response.content = "not valid json {"
+    mock_response.usage_metadata = {"total_tokens": 10}
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = mock_response
+    mock_llm.model = "claude-haiku-4-5-20251001"
+
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
+        result = categorization_node(state)
+
+    entry = result["categorized_transactions"][0]
+    assert entry["flagged"] is True
+    assert entry["category"] == "uncategorized"
+    assert entry["uncategorized_reason"] == "parse_failure"
+
+
+def test_categorization_node_both_llms_unavailable_sets_reason():
+    """Both LLMs raise ValueError (not configured) → uncategorized_reason='llm_unavailable', flagged=True."""
+    txn = _make_transaction(mcc=None, description="Shop")
+    state = _make_state(transactions=[txn])
+
+    with (
+        patch(
+            "app.agents.categorization.node.get_llm_client",
+            side_effect=ValueError("ANTHROPIC_API_KEY not configured"),
+        ),
+        patch(
+            "app.agents.categorization.node.get_fallback_llm_client",
+            side_effect=ValueError("OPENAI_API_KEY not configured"),
+        ),
+    ):
+        result = categorization_node(state)
+
+    entry = result["categorized_transactions"][0]
+    assert entry["flagged"] is True
+    assert entry["category"] == "uncategorized"
+    assert entry["uncategorized_reason"] == "llm_unavailable"
+
+
+def test_categorization_node_both_llms_fail_exception_sets_reason():
+    """Both primary and fallback LLMs raise Exception → uncategorized_reason='llm_unavailable', flagged=True."""
+    txn = _make_transaction(mcc=None, description="Unknown")
+    state = _make_state(transactions=[txn])
+
+    primary_llm = MagicMock()
+    primary_llm.invoke.side_effect = Exception("Primary failed")
+    primary_llm.model = "claude-haiku-4-5-20251001"
+
+    fallback_llm = MagicMock()
+    fallback_llm.invoke.side_effect = Exception("Fallback also failed")
+    fallback_llm.model = "gpt-4o-mini"
+
+    with (
+        patch("app.agents.categorization.node.get_llm_client", return_value=primary_llm),
+        patch("app.agents.categorization.node.get_fallback_llm_client", return_value=fallback_llm),
+    ):
+        result = categorization_node(state)
+
+    entry = result["categorized_transactions"][0]
+    assert entry["flagged"] is True
+    assert entry["category"] == "uncategorized"
+    assert entry["uncategorized_reason"] == "llm_unavailable"
+
+
+def test_categorization_node_high_confidence_no_reason():
+    """High-confidence LLM result → flagged=False, uncategorized_reason=None."""
+    txn = _make_transaction(mcc=None, description="НОВА ПОШТА")
+    state = _make_state(transactions=[txn])
+
+    llm_result = [{"id": txn["id"], "category": "shopping", "confidence": 0.92}]
+    mock_response = _make_llm_response(llm_result)
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = mock_response
+    mock_llm.model = "claude-haiku-4-5-20251001"
+
+    with patch("app.agents.categorization.node.get_llm_client", return_value=mock_llm):
+        result = categorization_node(state)
+
+    entry = result["categorized_transactions"][0]
+    assert entry["flagged"] is False
+    assert entry["uncategorized_reason"] is None
+    assert entry["category"] == "shopping"
+
+
+def test_categorization_node_mcc_mapped_no_reason():
+    """MCC-mapped transaction → flagged=False, uncategorized_reason not set (no reason needed)."""
+    txn = _make_transaction(mcc=5411, description="СІЛЬПО")
+    state = _make_state(transactions=[txn])
+
+    with patch("app.agents.categorization.node.get_llm_client") as mock_get_llm:
+        result = categorization_node(state)
+
+    mock_get_llm.assert_not_called()
+    entry = result["categorized_transactions"][0]
+    assert entry["flagged"] is False
+    assert entry["category"] == "groceries"
+    # MCC-mapped entries don't go through the LLM path; no uncategorized_reason key expected
+    assert entry.get("uncategorized_reason") is None
 
 
 # ---------------------------------------------------------------------------

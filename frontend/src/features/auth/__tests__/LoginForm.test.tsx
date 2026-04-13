@@ -170,7 +170,7 @@ describe("LoginForm", () => {
           accessToken: "test-access-token",
           refreshToken: "test-refresh-token",
           expiresIn: 900,
-          user: { id: "user-1", email: "test@example.com", locale: "uk" },
+          user: { id: "user-1", email: "test@example.com", locale: "en" },
         }),
     });
     mockSignIn.mockResolvedValueOnce({ error: null });
@@ -192,5 +192,36 @@ describe("LoginForm", () => {
       );
       expect(mockPush).toHaveBeenCalledWith("/en/dashboard");
     });
+  });
+
+  it("10.7 successful login redirects via window.location when user locale differs from URL locale", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          accessToken: "test-access-token",
+          refreshToken: "test-refresh-token",
+          expiresIn: 900,
+          user: { id: "user-1", email: "test@example.com", locale: "uk" },
+        }),
+    });
+    mockSignIn.mockResolvedValueOnce({ error: null });
+
+    const mockLocation = { href: "" };
+    vi.stubGlobal("location", mockLocation);
+
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText(/email/i), "test@example.com");
+    await user.type(screen.getByLabelText(/password/i), "StrongPass1!");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockLocation.href).toBe("/uk/dashboard");
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
   });
 });

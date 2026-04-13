@@ -14,6 +14,7 @@ import { CategoryBreakdown } from "./CategoryBreakdown";
 import { HealthScoreRing } from "./HealthScoreRing";
 import { HealthScoreTrend } from "./HealthScoreTrend";
 import { MonthlyComparison } from "./MonthlyComparison";
+import { UncategorizedTransactions } from "./UncategorizedTransactions";
 
 export function ProfilePage() {
   const t = useTranslations("profile");
@@ -247,6 +248,9 @@ export function ProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Uncategorized transactions */}
+      <UncategorizedTransactions />
     </div>
   );
 }

@@ -300,7 +300,11 @@
       "Bash(.venv/bin/python -m pytest tests/test_retry_endpoint.py::test_retry_completed_job_returns_409 -v)",
       "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -c \"from langgraph.checkpoint.memory import MemorySaver; print\\('OK'\\)\")",
       "Bash(.venv/bin/python -m pytest tests/ --tb=line -q)",
-      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py::TestProcessUploadHappyPath -v --tb=short)"
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py::TestProcessUploadHappyPath -v --tb=short)",
+      "Bash(git -C /Users/ohumennyi/Personal/kopiika-ai stash)",
+      "Bash(git -C /Users/ohumennyi/Personal/kopiika-ai stash pop)",
+      "Bash(sed -n '185,200p' /Users/ohumennyi/Personal/kopiika-ai/backend/app/tasks/processing_tasks.py)",
+      "Bash(sed -n '480,495p' /Users/ohumennyi/Personal/kopiika-ai/backend/app/tasks/processing_tasks.py)"
     ]
   }
 }

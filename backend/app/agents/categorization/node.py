@@ -66,18 +66,25 @@ def _parse_llm_response(content: str, transactions: list[dict]) -> list[dict]:
                     "transaction_id": txn["id"],
                     "category": category,
                     "confidence_score": float(r.get("confidence", 0.0)),
+                    "uncategorized_reason": None,
                 })
             else:
                 parsed.append({
                     "transaction_id": txn["id"],
                     "category": "other",
                     "confidence_score": 0.0,
+                    "uncategorized_reason": None,
                 })
         return parsed
     except Exception as exc:
         logger.warning("Failed to parse LLM response: %s", exc)
         return [
-            {"transaction_id": txn["id"], "category": "other", "confidence_score": 0.0}
+            {
+                "transaction_id": txn["id"],
+                "category": "uncategorized",
+                "confidence_score": 0.0,
+                "uncategorized_reason": "parse_failure",
+            }
             for txn in transactions
         ]
 
@@ -126,6 +133,7 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                 "category": category,
                 "confidence_score": 1.0,
                 "flagged": False,
+                "uncategorized_reason": None,
             })
         else:
             needs_llm.append(txn)
@@ -168,8 +176,9 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         for txn in batch:
                             llm_results.append({
                                 "transaction_id": txn["id"],
-                                "category": "other",
+                                "category": "uncategorized",
                                 "confidence_score": 0.0,
+                                "uncategorized_reason": "llm_unavailable",
                             })
         except CircuitBreakerOpenError:
             raise
@@ -192,8 +201,9 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         for txn in batch:
                             llm_results.append({
                                 "transaction_id": txn["id"],
-                                "category": "other",
+                                "category": "uncategorized",
                                 "confidence_score": 0.0,
+                                "uncategorized_reason": "llm_unavailable",
                             })
             except CircuitBreakerOpenError:
                 raise
@@ -202,13 +212,18 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                 for txn in needs_llm:
                     llm_results.append({
                         "transaction_id": txn["id"],
-                        "category": "other",
+                        "category": "uncategorized",
                         "confidence_score": 0.0,
+                        "uncategorized_reason": "llm_unavailable",
                     })
 
-        # Apply flagging threshold and merge
+        # Apply flagging threshold, set reason, override category for flagged transactions
         for r in llm_results:
             r["flagged"] = r["confidence_score"] < confidence_threshold
+            if r["flagged"]:
+                if r.get("uncategorized_reason") is None:
+                    r["uncategorized_reason"] = "low_confidence"
+                r["category"] = "uncategorized"
             categorized.append(r)
 
     completed = list(state.get("completed_nodes", []))

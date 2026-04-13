@@ -191,7 +191,8 @@ def process_upload(self, job_id: str) -> dict:
                     if cat:
                         txn.category = cat["category"]
                         txn.confidence_score = cat["confidence_score"]
-                        txn.is_flagged_for_review = cat["flagged"]
+                        txn.is_flagged_for_review = cat.get("flagged", False)
+                        txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
                 session.commit()
 
@@ -482,10 +483,11 @@ def resume_upload(self, job_id: str) -> dict:
                 ).all()
                 for txn in txns:
                     cat = cat_lookup.get(str(txn.id))
-                    if cat and txn.category is None:
+                    if cat and txn.category in (None, "uncategorized"):
                         txn.category = cat["category"]
                         txn.confidence_score = cat["confidence_score"]
                         txn.is_flagged_for_review = cat.get("flagged", False)
+                        txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
                 session.commit()
 

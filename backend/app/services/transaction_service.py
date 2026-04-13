@@ -33,6 +33,21 @@ class PaginatedResult:
     has_more: bool
 
 
+async def get_flagged_transactions_for_user(
+    session: SQLModelAsyncSession,
+    user_id: uuid.UUID,
+    limit: int = 100,
+) -> list[Transaction]:
+    """Return flagged transactions for a user, ordered by date DESC."""
+    stmt = (
+        select(Transaction)
+        .where(Transaction.user_id == user_id, Transaction.is_flagged_for_review == True)  # noqa: E712
+        .order_by(col(Transaction.date).desc())
+        .limit(limit)
+    )
+    return list((await session.exec(stmt)).all())
+
+
 async def get_transactions_for_user(
     session: SQLModelAsyncSession,
     user_id: uuid.UUID,

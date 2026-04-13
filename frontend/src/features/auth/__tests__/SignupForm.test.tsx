@@ -106,6 +106,7 @@ describe("SignupForm", () => {
           body: JSON.stringify({
             email: "test@example.com",
             password: "StrongPass1!",
+            locale: "en",
           }),
         })
       );

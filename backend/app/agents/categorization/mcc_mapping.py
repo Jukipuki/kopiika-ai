@@ -8,6 +8,7 @@ VALID_CATEGORIES: frozenset[str] = frozenset({
     "groceries", "restaurants", "transport", "entertainment", "utilities",
     "healthcare", "shopping", "travel", "education", "finance",
     "subscriptions", "fuel", "atm_cash", "government", "other",
+    "uncategorized",
 })
 
 MCC_TO_CATEGORY: dict[int, str] = {

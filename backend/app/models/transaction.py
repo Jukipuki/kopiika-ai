@@ -27,3 +27,4 @@ class Transaction(SQLModel, table=True):
     category: Optional[str] = Field(default=None, max_length=50)
     confidence_score: Optional[float] = Field(default=None)
     is_flagged_for_review: bool = Field(default=False)
+    uncategorized_reason: Optional[str] = Field(default=None, max_length=50)

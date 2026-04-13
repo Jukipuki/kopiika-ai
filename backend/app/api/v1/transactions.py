@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
@@ -7,7 +7,7 @@ from pydantic.alias_generators import to_camel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
-from app.services.transaction_service import get_transactions_for_user
+from app.services.transaction_service import get_flagged_transactions_for_user, get_transactions_for_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -33,6 +33,39 @@ class TransactionListResponse(BaseModel):
     total: int
     next_cursor: Optional[str] = None
     has_more: bool
+
+
+class FlaggedTransactionResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: str
+    upload_id: str
+    date: str
+    description: str
+    amount: int
+    category: str
+    uncategorized_reason: Optional[Literal["low_confidence", "parse_failure", "llm_unavailable"]] = None
+
+
+@router.get("/flagged", response_model=list[FlaggedTransactionResponse])
+async def list_flagged_transactions(
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+) -> list[FlaggedTransactionResponse]:
+    """List all flagged (uncategorized) transactions for the authenticated user."""
+    txns = await get_flagged_transactions_for_user(session=session, user_id=user_id)
+    return [
+        FlaggedTransactionResponse(
+            id=str(txn.id),
+            upload_id=str(txn.upload_id),
+            date=txn.date.strftime("%Y-%m-%d"),
+            description=txn.description,
+            amount=txn.amount,
+            category=txn.category or "uncategorized",
+            uncategorized_reason=txn.uncategorized_reason,
+        )
+        for txn in txns
+    ]
 
 
 @router.get("", response_model=TransactionListResponse)
