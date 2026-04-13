@@ -8,7 +8,9 @@ from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy.exc import OperationalError
 from sqlmodel import func, select
 
-from app.agents.pipeline import financial_pipeline
+from app.agents.checkpointer import get_checkpointer
+from app.agents.circuit_breaker import CircuitBreakerOpenError
+from app.agents.pipeline import build_pipeline, resume_pipeline
 from app.agents.state import FinancialPipelineState
 from app.core.config import settings
 from app.core.database import get_sync_session
@@ -167,9 +169,14 @@ def process_upload(self, job_id: str) -> dict:
                     "locale": locale,
                     "insight_cards": [],
                     "literacy_level": literacy_level,
+                    "completed_nodes": [],
+                    "failed_node": None,
                 }
 
-                result_state = financial_pipeline.invoke(initial_state)
+                with get_checkpointer() as checkpointer:
+                    pipeline = build_pipeline(checkpointer=checkpointer)
+                    config = {"configurable": {"thread_id": job_id}}
+                    result_state = pipeline.invoke(initial_state, config)
 
                 # Bulk-update transactions with categorization results
                 cat_lookup = {
@@ -240,12 +247,15 @@ def process_upload(self, job_id: str) -> dict:
 
             except Exception as cat_exc:
                 logger.warning(
-                    "Categorization failed (job stays completed): %s",
+                    "Pipeline agent failed: %s",
                     cat_exc,
                     extra={"job_id": job_id},
                 )
-                job.step = "categorization_failed"
-                # Continue — transactions are stored even without categories
+                # Track which step failed for retry
+                job.failed_step = job.step or "categorization"
+                job.last_error_at = _utcnow()
+                # Re-raise to let the outer handler manage retry/failure
+                raise
 
             # 8. Build/update financial profile
             publish_job_progress(job_id, {
@@ -327,26 +337,46 @@ def process_upload(self, job_id: str) -> dict:
 
             return job.result_data
 
+        except CircuitBreakerOpenError as exc:
+            # Circuit breaker open — service temporarily unavailable, retryable after cooldown
+            session.rollback()
+            _mark_failed(session, job, "SERVICE_UNAVAILABLE", str(exc), is_retryable=True)
+            return {"error": "service_unavailable"}
+
         except (ClientError, OperationalError) as exc:
             # Transient errors — retry with exponential backoff
-            # No partial results to preserve (S3/DB errors happen before or during parsing)
             session.rollback()
+            job.status = "retrying"
+            job.retry_count += 1
+            job.last_error_at = _utcnow()
+            job.updated_at = _utcnow()
+            session.add(job)
+            session.commit()
+
+            publish_job_progress(job_id, {
+                "event": "job-retrying",
+                "jobId": job_id,
+                "retryCount": job.retry_count,
+                "maxRetries": job.max_retries,
+            })
+
             try:
                 self.retry(exc=exc, countdown=2 ** self.request.retries)
             except MaxRetriesExceededError:
-                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc))
+                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc), is_retryable=True)
                 return {"error": "max_retries_exceeded"}
 
         except UnsupportedFormatError as exc:
-            # Permanent error — no partial results (raised before any transactions created)
+            # Permanent non-retryable error
             session.rollback()
-            _mark_failed(session, job, "UNSUPPORTED_FORMAT", str(exc))
+            _mark_failed(session, job, "UNSUPPORTED_FORMAT", str(exc), is_retryable=False)
             return {"error": "unsupported_format"}
 
         except (SoftTimeLimitExceeded, ValueError, KeyError, Exception) as exc:
             # Preserve partial results: commit any transactions added to session
             # before marking the job as failed
-            _commit_partial_and_mark_failed(session, job, exc, job_id)
+            is_retryable = not isinstance(exc, (ValueError, KeyError))
+            _commit_partial_and_mark_failed(session, job, exc, job_id, is_retryable=is_retryable)
             if isinstance(exc, SoftTimeLimitExceeded):
                 return {"error": "timeout"}
             if isinstance(exc, (ValueError, KeyError)):
@@ -355,7 +385,7 @@ def process_upload(self, job_id: str) -> dict:
 
 
 def _commit_partial_and_mark_failed(
-    session, job: ProcessingJob, exc: Exception, job_id: str
+    session, job: ProcessingJob, exc: Exception, job_id: str, *, is_retryable: bool = True
 ) -> None:
     """Commit any partial results (transactions added to session), then mark job as failed.
 
@@ -378,14 +408,18 @@ def _commit_partial_and_mark_failed(
         session.rollback()
         logger.warning("Could not commit partial results", extra={"job_id": job_id})
 
-    _mark_failed(session, job, error_code, error_message)
+    _mark_failed(session, job, error_code, error_message, is_retryable=is_retryable)
 
 
-def _mark_failed(session, job: ProcessingJob, error_code: str, error_message: str) -> None:
+def _mark_failed(
+    session, job: ProcessingJob, error_code: str, error_message: str, *, is_retryable: bool = True
+) -> None:
     """Mark a ProcessingJob as failed with error details."""
     job.status = "failed"
     job.error_code = error_code
     job.error_message = error_message
+    job.is_retryable = is_retryable
+    job.last_error_at = _utcnow()
     job.updated_at = _utcnow()
     session.add(job)
     session.commit()
@@ -395,9 +429,140 @@ def _mark_failed(session, job: ProcessingJob, error_code: str, error_message: st
         "jobId": str(job.id),
         "status": "failed",
         "error": {"code": error_code, "message": error_message},
+        "isRetryable": is_retryable,
     })
 
     logger.warning(
         "Upload processing failed",
         extra={"job_id": str(job.id), "error_code": error_code, "error_message": error_message},
     )
+
+
+@celery_app.task(bind=True, max_retries=3, acks_late=True, track_started=True)
+def resume_upload(self, job_id: str) -> dict:
+    """Resume a failed pipeline job from its last LangGraph checkpoint.
+
+    Called by the retry API endpoint. Uses the job_id as thread_id to
+    look up the last checkpoint and resume from the interrupted node.
+    """
+    with get_sync_session() as session:
+        job = session.get(ProcessingJob, uuid.UUID(job_id))
+        if job is None:
+            logger.error("ProcessingJob not found for resume", extra={"job_id": job_id})
+            return {"error": "job_not_found"}
+
+        job.status = "processing"
+        job.error_code = None
+        job.error_message = None
+        job.updated_at = _utcnow()
+        session.add(job)
+        session.commit()
+
+        publish_job_progress(job_id, {
+            "event": "job-resumed",
+            "jobId": job_id,
+            "resumeFromStep": job.failed_step,
+        })
+
+        try:
+            with get_checkpointer() as checkpointer:
+                result_state = resume_pipeline(checkpointer, thread_id=job_id)
+
+            # Persist any new results from resumed pipeline
+            upload_id = uuid.UUID(result_state.get("upload_id", str(job.upload_id)))
+
+            # Update categorization results if present
+            cat_lookup = {
+                cat["transaction_id"]: cat
+                for cat in result_state.get("categorized_transactions", [])
+            }
+            if cat_lookup:
+                txns = session.exec(
+                    select(Transaction).where(Transaction.upload_id == upload_id)
+                ).all()
+                for txn in txns:
+                    cat = cat_lookup.get(str(txn.id))
+                    if cat and txn.category is None:
+                        txn.category = cat["category"]
+                        txn.confidence_score = cat["confidence_score"]
+                        txn.is_flagged_for_review = cat.get("flagged", False)
+                        session.add(txn)
+                session.commit()
+
+            # Persist insight cards
+            insight_cards = result_state.get("insight_cards", [])
+            if insight_cards:
+                for card in insight_cards:
+                    insight = Insight(
+                        user_id=job.user_id,
+                        upload_id=upload_id,
+                        headline=card.get("headline", ""),
+                        key_metric=card.get("key_metric", ""),
+                        why_it_matters=card.get("why_it_matters", ""),
+                        deep_dive=card.get("deep_dive", ""),
+                        severity=card.get("severity", "medium"),
+                        category=card.get("category", "other"),
+                    )
+                    session.add(insight)
+                session.commit()
+
+            # Build/update financial profile
+            try:
+                build_or_update_profile(session, job.user_id)
+                try:
+                    from app.services.health_score_service import calculate_health_score
+                    calculate_health_score(session, job.user_id)
+                except Exception:
+                    logger.warning("Health score calculation failed on resume", extra={"job_id": job_id})
+            except Exception:
+                logger.warning("Profile build failed on resume", extra={"job_id": job_id})
+
+            # Mark completed
+            job.status = "completed"
+            job.step = "done"
+            job.progress = 100
+            job.failed_step = None
+            job.updated_at = _utcnow()
+            session.add(job)
+            session.commit()
+
+            publish_job_progress(job_id, {
+                "event": "job-complete",
+                "jobId": job_id,
+                "status": "completed",
+                "totalInsights": len(insight_cards),
+            })
+
+            return {"status": "completed", "insight_count": len(insight_cards)}
+
+        except CircuitBreakerOpenError as exc:
+            _mark_failed(session, job, "SERVICE_UNAVAILABLE", str(exc), is_retryable=True)
+            return {"error": "service_unavailable"}
+
+        except (ClientError, OperationalError) as exc:
+            # Transient infrastructure errors — retry with exponential backoff
+            session.rollback()
+            job.status = "retrying"
+            job.retry_count += 1
+            job.last_error_at = _utcnow()
+            job.updated_at = _utcnow()
+            session.add(job)
+            session.commit()
+
+            publish_job_progress(job_id, {
+                "event": "job-retrying",
+                "jobId": job_id,
+                "retryCount": job.retry_count,
+                "maxRetries": job.max_retries,
+            })
+
+            try:
+                self.retry(exc=exc, countdown=2 ** self.request.retries)
+            except MaxRetriesExceededError:
+                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc), is_retryable=True)
+                return {"error": "max_retries_exceeded"}
+
+        except Exception as exc:
+            logger.exception("Resume pipeline failed", extra={"job_id": job_id})
+            _commit_partial_and_mark_failed(session, job, exc, job_id, is_retryable=True)
+            return {"error": "resume_failed"}

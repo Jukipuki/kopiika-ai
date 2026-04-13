@@ -2,6 +2,7 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -46,8 +47,59 @@ class JobStatusResponse(BaseModel):
     progress: int = 0
     error: Optional[JobError] = None
     result: Optional[JobResult] = None
+    is_retryable: bool = True
+    retry_count: int = 0
     created_at: str
     updated_at: str
+
+
+class RetryResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    job_id: str
+    status: str
+
+
+@router.post("/{job_id}/retry", response_model=RetryResponse, status_code=status.HTTP_202_ACCEPTED)
+async def retry_job(
+    job_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+) -> RetryResponse:
+    """Retry a failed processing job by resuming from its last checkpoint."""
+    job = await session.get(ProcessingJob, job_id)
+
+    if job is None or job.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "JOB_NOT_FOUND", "message": "Job not found"}},
+        )
+
+    if job.status != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "JOB_NOT_FAILED", "message": "Only failed jobs can be retried"}},
+        )
+
+    if not job.is_retryable:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": {"code": "JOB_NOT_RETRYABLE", "message": "This job cannot be retried"}},
+        )
+
+    # Reset job to pending and queue resume task
+    job.status = "pending"
+    job.error_code = None
+    job.error_message = None
+    job.retry_count += 1
+    job.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    session.add(job)
+    await session.commit()
+
+    from app.tasks.processing_tasks import resume_upload
+    resume_upload.delay(str(job_id))
+
+    return RetryResponse(job_id=str(job_id), status="pending")
 
 
 @router.get("/{job_id}", response_model=JobStatusResponse)
@@ -84,6 +136,8 @@ async def get_job_status(
         progress=job.progress,
         error=error,
         result=result,
+        is_retryable=job.is_retryable,
+        retry_count=job.retry_count,
         created_at=job.created_at.isoformat(),
         updated_at=job.updated_at.isoformat(),
     )
@@ -159,6 +213,11 @@ async def stream_job_progress(
 
             # If the DB already shows a terminal status and no Redis state,
             # send a synthetic terminal event
+            if job.status == "retrying":
+                yield (
+                    f"event: job-retrying\n"
+                    f"data: {json.dumps({'jobId': job_id_str, 'retryCount': job.retry_count, 'maxRetries': job.max_retries})}\n\n"
+                )
             if job.status == "completed":
                 yield (
                     f"event: job-complete\n"
@@ -184,6 +243,7 @@ async def stream_job_progress(
                     yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
                     if event_type in ("job-complete", "job-failed"):
                         break
+                    # job-retrying and job-resumed are non-terminal — keep streaming
                 except asyncio.TimeoutError:
                     # Fallback: re-check Redis state in case an event was
                     # published in the window before subscription was active.

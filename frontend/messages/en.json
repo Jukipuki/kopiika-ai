@@ -164,6 +164,9 @@
         "generatingInsights": "Creating personalized tips to help you save more"
       },
       "errorMessage": "We couldn't process this file. Please try again.",
+      "circuitBreakerMessage": "Processing is temporarily unavailable. Please try again in a few minutes.",
+      "retryingMessage": "Retrying... attempt {retryCount} of {maxRetries}",
+      "resumingMessage": "Resuming from last checkpoint...",
       "retry": "Try again",
       "complete": "Processing complete!"
     }

@@ -137,6 +137,11 @@ Items below were mentioned inline in a single story, YAML comment, or review not
   * On a 2nd and 3rd uploads - issue is gone, we should highlight the improvemnt, whis is the result of our advice and steps towards it by the user
 * In general, this will allow to convert plain cards with information into cards showing trends and provide user with a valuable feedback
 
+### 4.6 AI Security
+
+**Statement files AI processing**
+- **Context** Indirect injection in statement files. Valid?
+
 ---
 
 ## Not tracked here

@@ -84,7 +84,9 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
         categorized = state.get("categorized_transactions", [])
         if not categorized:
             logger.info('{"level": "INFO", "step": "education", "message": "No categorized transactions, skipping"}')
-            return {**state, "insight_cards": [], "step": "education"}
+            completed = list(state.get("completed_nodes", []))
+            completed.append("education")
+            return {**state, "insight_cards": [], "step": "education", "completed_nodes": completed, "failed_node": None}
 
         locale = state.get("locale", "uk")
         literacy_level = state.get("literacy_level", "beginner")
@@ -128,8 +130,15 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             locale,
             literacy_level,
         )
-        return {**state, "insight_cards": cards, "step": "education"}
+        completed = list(state.get("completed_nodes", []))
+        completed.append("education")
+        return {**state, "insight_cards": cards, "step": "education", "completed_nodes": completed, "failed_node": None}
 
     except Exception as exc:
+        from app.agents.circuit_breaker import CircuitBreakerOpenError
+        if isinstance(exc, CircuitBreakerOpenError):
+            # Propagate circuit breaker errors so LangGraph checkpointing
+            # preserves prior node results for retry
+            raise
         logger.error('{"level": "ERROR", "step": "education", "error": "%s"}', exc)
-        return {**state, "insight_cards": [], "step": "education"}
+        return {**state, "insight_cards": [], "step": "education", "failed_node": "education"}

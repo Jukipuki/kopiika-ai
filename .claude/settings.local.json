@@ -287,7 +287,20 @@
       "Bash(.venv/bin/python -m pytest tests/test_auth.py::test_signup_with_locale_en tests/test_auth.py::test_signup_without_locale_defaults_to_uk tests/test_auth.py::test_signup_with_invalid_locale_returns_422 -v)",
       "Bash(.venv/bin/python -m pytest tests/test_format_detection.py::TestFormatDetection::test_monobank_english_csv_detected -v)",
       "Bash(.venv/bin/python -m pytest tests/test_monobank_parser.py::TestMonobankParserEnglish -v)",
-      "Bash(.venv/bin/python -m pytest tests/test_auth.py tests/test_format_detection.py tests/test_monobank_parser.py -v)"
+      "Bash(.venv/bin/python -m pytest tests/test_auth.py tests/test_format_detection.py tests/test_monobank_parser.py -v)",
+      "Bash(.venv/bin/pip show:*)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/pip*)",
+      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -m pip show langgraph-checkpoint-postgres)",
+      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -c \"import langgraph.checkpoint.postgres; print\\('OK'\\)\")",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/backend/*.lock)",
+      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -c \"from langgraph.checkpoint.postgres import PostgresSaver; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -m pytest tests/test_circuit_breaker.py -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_retry_endpoint.py -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_retry_endpoint.py::test_retry_failed_job_returns_202 -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_retry_endpoint.py::test_retry_completed_job_returns_409 -v)",
+      "Bash(/Users/ohumennyi/Personal/kopiika-ai/backend/.venv/bin/python -c \"from langgraph.checkpoint.memory import MemorySaver; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -m pytest tests/ --tb=line -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py::TestProcessUploadHappyPath -v --tb=short)"
     ]
   }
 }

@@ -40,15 +40,31 @@ export interface JobFailedEvent {
   jobId: string;
   status: "failed";
   error: { code: string; message: string };
+  isRetryable?: boolean;
 }
 
-export type SSEEvent = PipelineProgressEvent | JobCompleteEvent | JobFailedEvent;
+export interface JobRetryingEvent {
+  event: "job-retrying";
+  jobId: string;
+  retryCount: number;
+  maxRetries: number;
+}
+
+export interface JobResumedEvent {
+  event: "job-resumed";
+  jobId: string;
+  resumeFromStep: string | null;
+}
+
+export type SSEEvent = PipelineProgressEvent | JobCompleteEvent | JobFailedEvent | JobRetryingEvent | JobResumedEvent;
 
 export interface JobStatusState {
-  status: JobStatus | "connecting" | "idle";
+  status: JobStatus | "retrying" | "connecting" | "idle";
   step: string | null;
   progress: number;
   error: { code: string; message: string } | null;
   result: { totalInsights: number; duplicatesSkipped?: number; newTransactions?: number } | null;
   isConnected: boolean;
+  isRetryable: boolean;
+  retryCount: number;
 }

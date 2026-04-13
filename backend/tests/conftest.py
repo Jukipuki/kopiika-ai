@@ -50,6 +50,26 @@ def celery_memory_backend():
 
 
 @pytest.fixture(autouse=True)
+def mock_checkpointer():
+    """Replace PostgreSQL checkpointer with in-memory MemorySaver for tests."""
+    from unittest.mock import patch
+    from contextlib import contextmanager
+    from langgraph.checkpoint.memory import MemorySaver
+
+    memory_saver = MemorySaver()
+
+    @contextmanager
+    def fake_get_checkpointer():
+        yield memory_saver
+
+    with (
+        patch("app.agents.checkpointer.get_checkpointer", fake_get_checkpointer),
+        patch("app.tasks.processing_tasks.get_checkpointer", fake_get_checkpointer),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def fake_redis():
     """Patch all Redis connections in app.core.redis with in-memory fakeredis.
 

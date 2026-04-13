@@ -12,6 +12,7 @@ from typing import Any
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.agents.categorization.mcc_mapping import VALID_CATEGORIES, get_mcc_category
+from app.agents.circuit_breaker import CircuitBreakerOpenError, record_failure, record_success
 from app.agents.llm import get_fallback_llm_client, get_llm_client
 from app.agents.state import FinancialPipelineState
 from app.core.config import settings
@@ -143,7 +144,11 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                     results, tokens = _categorize_batch(batch, primary_llm)
                     llm_results.extend(results)
                     total_tokens += tokens
+                    record_success("anthropic")
+                except CircuitBreakerOpenError:
+                    raise
                 except Exception as primary_exc:
+                    record_failure("anthropic")
                     logger.warning(
                         "Primary LLM failed for batch, trying fallback: %s", primary_exc
                     )
@@ -152,19 +157,23 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         results, tokens = _categorize_batch(batch, fallback_llm)
                         llm_results.extend(results)
                         total_tokens += tokens
+                        record_success("openai")
+                    except CircuitBreakerOpenError:
+                        raise
                     except Exception as fallback_exc:
+                        record_failure("openai")
                         logger.error(
                             "Fallback LLM also failed for batch: %s", fallback_exc
                         )
-                        # Final fallback: assign "other" with 0.0 confidence
                         for txn in batch:
                             llm_results.append({
                                 "transaction_id": txn["id"],
                                 "category": "other",
                                 "confidence_score": 0.0,
                             })
+        except CircuitBreakerOpenError:
+            raise
         except ValueError as exc:
-            # Primary LLM not configured — try fallback directly
             logger.warning("Primary LLM not available: %s. Trying fallback.", exc)
             try:
                 fallback_llm = get_fallback_llm_client()
@@ -174,7 +183,11 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         results, tokens = _categorize_batch(batch, fallback_llm)
                         llm_results.extend(results)
                         total_tokens += tokens
+                        record_success("openai")
+                    except CircuitBreakerOpenError:
+                        raise
                     except Exception as fb_exc:
+                        record_failure("openai")
                         logger.error("Fallback LLM failed for batch: %s", fb_exc)
                         for txn in batch:
                             llm_results.append({
@@ -182,6 +195,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                                 "category": "other",
                                 "confidence_score": 0.0,
                             })
+            except CircuitBreakerOpenError:
+                raise
             except ValueError as fb_exc:
                 logger.error("Fallback LLM not available: %s", fb_exc)
                 for txn in needs_llm:
@@ -196,9 +211,13 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
             r["flagged"] = r["confidence_score"] < confidence_threshold
             categorized.append(r)
 
+    completed = list(state.get("completed_nodes", []))
+    completed.append("categorization")
     return {
         **state,
         "categorized_transactions": categorized,
         "total_tokens_used": total_tokens,
         "step": "categorization",
+        "completed_nodes": completed,
+        "failed_node": None,
     }

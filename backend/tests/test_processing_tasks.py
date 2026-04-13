@@ -254,11 +254,11 @@ class TestProcessUploadPartialResults:
 
 class TestInsightReadySSEEvents:
     @patch("app.tasks.processing_tasks.publish_job_progress")
-    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.build_pipeline")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_insight_ready_events_emitted_per_insight(
-        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
     ):
         """After batch commit, one insight-ready event is emitted per persisted insight."""
         user_id, upload_id, job_id = _seed_data(sync_engine)
@@ -287,7 +287,7 @@ class TestInsightReadySSEEvents:
             },
         ]
 
-        mock_pipeline.invoke.return_value = {
+        mock_build_pipeline.return_value.invoke.return_value = {
             "categorized_transactions": [],
             "insight_cards": insight_cards,
             "total_tokens_used": 0,
@@ -331,11 +331,11 @@ class TestInsightReadySSEEvents:
         )
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
-    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.build_pipeline")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_no_insight_ready_events_when_no_insights(
-        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
     ):
         """No insight-ready events emitted when pipeline produces no insight cards."""
         user_id, upload_id, job_id = _seed_data(sync_engine)
@@ -345,7 +345,7 @@ class TestInsightReadySSEEvents:
         mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
         mock_boto_client.return_value = mock_s3
 
-        mock_pipeline.invoke.return_value = {
+        mock_build_pipeline.return_value.invoke.return_value = {
             "categorized_transactions": [],
             "insight_cards": [],
             "total_tokens_used": 0,
@@ -368,11 +368,11 @@ class TestLiteracyLevelDetection:
     """Tests for literacy level detection in process_upload (Story 3.8)."""
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
-    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.build_pipeline")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_first_upload_sets_beginner(
-        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
     ):
         """First upload for a user sets literacy_level to 'beginner'."""
         user_id, upload_id, job_id = _seed_data(sync_engine)
@@ -382,7 +382,7 @@ class TestLiteracyLevelDetection:
         mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
         mock_boto_client.return_value = mock_s3
 
-        mock_pipeline.invoke.return_value = {
+        mock_build_pipeline.return_value.invoke.return_value = {
             "categorized_transactions": [],
             "insight_cards": [],
             "total_tokens_used": 0,
@@ -393,15 +393,15 @@ class TestLiteracyLevelDetection:
         process_upload(str(job_id))
 
         # Verify pipeline was invoked with literacy_level="beginner"
-        call_args = mock_pipeline.invoke.call_args[0][0]
+        call_args = mock_build_pipeline.return_value.invoke.call_args[0][0]
         assert call_args["literacy_level"] == "beginner"
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
-    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.build_pipeline")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_three_uploads_within_7_days_stays_beginner(
-        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
     ):
         """3+ uploads but first upload < 7 days ago → beginner."""
         user_id, upload_id, job_id = _seed_data(sync_engine)
@@ -424,7 +424,7 @@ class TestLiteracyLevelDetection:
         mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
         mock_boto_client.return_value = mock_s3
 
-        mock_pipeline.invoke.return_value = {
+        mock_build_pipeline.return_value.invoke.return_value = {
             "categorized_transactions": [],
             "insight_cards": [],
             "total_tokens_used": 0,
@@ -434,15 +434,15 @@ class TestLiteracyLevelDetection:
         from app.tasks.processing_tasks import process_upload
         process_upload(str(job_id))
 
-        call_args = mock_pipeline.invoke.call_args[0][0]
+        call_args = mock_build_pipeline.return_value.invoke.call_args[0][0]
         assert call_args["literacy_level"] == "beginner"
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
-    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.build_pipeline")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_three_uploads_after_7_days_sets_intermediate(
-        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
     ):
         """3+ uploads AND first upload >= 7 days ago → intermediate."""
         from datetime import timedelta
@@ -471,7 +471,7 @@ class TestLiteracyLevelDetection:
         mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
         mock_boto_client.return_value = mock_s3
 
-        mock_pipeline.invoke.return_value = {
+        mock_build_pipeline.return_value.invoke.return_value = {
             "categorized_transactions": [],
             "insight_cards": [],
             "total_tokens_used": 0,
@@ -481,16 +481,16 @@ class TestLiteracyLevelDetection:
         from app.tasks.processing_tasks import process_upload
         process_upload(str(job_id))
 
-        call_args = mock_pipeline.invoke.call_args[0][0]
+        call_args = mock_build_pipeline.return_value.invoke.call_args[0][0]
         assert call_args["literacy_level"] == "intermediate"
 
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
-    @patch("app.tasks.processing_tasks.financial_pipeline")
+    @patch("app.tasks.processing_tasks.build_pipeline")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_three_uploads_exactly_7_days_sets_intermediate(
-        self, mock_get_session, mock_boto_client, mock_pipeline, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
     ):
         """3+ uploads AND first upload exactly 7 days ago → intermediate (boundary test)."""
         from datetime import timedelta
@@ -518,7 +518,7 @@ class TestLiteracyLevelDetection:
         mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
         mock_boto_client.return_value = mock_s3
 
-        mock_pipeline.invoke.return_value = {
+        mock_build_pipeline.return_value.invoke.return_value = {
             "categorized_transactions": [],
             "insight_cards": [],
             "total_tokens_used": 0,
@@ -528,8 +528,73 @@ class TestLiteracyLevelDetection:
         from app.tasks.processing_tasks import process_upload
         process_upload(str(job_id))
 
-        call_args = mock_pipeline.invoke.call_args[0][0]
+        call_args = mock_build_pipeline.return_value.invoke.call_args[0][0]
         assert call_args["literacy_level"] == "intermediate"
+
+
+class TestCircuitBreakerHandling:
+    """Tests for SERVICE_UNAVAILABLE error when circuit breaker is open (Story 6.2, AC #4)."""
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.build_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_circuit_breaker_open_marks_service_unavailable(
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
+    ):
+        """CircuitBreakerOpenError sets job to failed with SERVICE_UNAVAILABLE code."""
+        from app.agents.circuit_breaker import CircuitBreakerOpenError
+
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_build_pipeline.return_value.invoke.side_effect = CircuitBreakerOpenError("anthropic")
+
+        from app.tasks.processing_tasks import process_upload
+
+        result = process_upload(str(job_id))
+
+        assert result["error"] == "service_unavailable"
+
+        job = _get_job(sync_engine, job_id)
+        assert job.status == "failed"
+        assert job.error_code == "SERVICE_UNAVAILABLE"
+        assert job.is_retryable is True
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.build_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_circuit_breaker_publishes_job_failed_event(
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, sync_engine
+    ):
+        """CircuitBreakerOpenError publishes job-failed SSE event with SERVICE_UNAVAILABLE code."""
+        from app.agents.circuit_breaker import CircuitBreakerOpenError
+
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_build_pipeline.return_value.invoke.side_effect = CircuitBreakerOpenError("anthropic")
+
+        from app.tasks.processing_tasks import process_upload
+
+        process_upload(str(job_id))
+
+        failed_calls = [
+            c for c in mock_publish.call_args_list
+            if c.args[1].get("event") == "job-failed"
+        ]
+        assert len(failed_calls) >= 1
+        payload = failed_calls[-1].args[1]
+        assert payload["error"]["code"] == "SERVICE_UNAVAILABLE"
 
 
 class TestProcessUploadPerformance:

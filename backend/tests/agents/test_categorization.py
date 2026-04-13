@@ -65,6 +65,9 @@ def _make_state(**overrides) -> FinancialPipelineState:
         "total_tokens_used": 0,
         "locale": "uk",
         "insight_cards": [],
+        "literacy_level": "beginner",
+        "completed_nodes": [],
+        "failed_node": None,
     }
     base.update(overrides)
     return base
@@ -627,11 +630,11 @@ def test_categorization_node_batch_splitting_two_calls():
 @patch("app.tasks.processing_tasks.publish_job_progress")
 @patch("app.tasks.processing_tasks.boto3.client")
 @patch("app.tasks.processing_tasks.get_sync_session")
-@patch("app.tasks.processing_tasks.financial_pipeline")
+@patch("app.tasks.processing_tasks.build_pipeline")
 def test_process_upload_categorization_failure_keeps_completed(
-    mock_pipeline, mock_get_session, mock_boto_client, mock_publish, sync_engine
+    mock_build_pipeline, mock_get_session, mock_boto_client, mock_publish, sync_engine
 ):
-    """When financial_pipeline.invoke() raises, job status stays 'completed' with step='categorization_failed'."""
+    """When pipeline.invoke() raises, job is marked failed with is_retryable=True (Story 6.2)."""
     from app.tasks.processing_tasks import process_upload
 
     user_id = uuid.uuid4()
@@ -667,16 +670,16 @@ def test_process_upload_categorization_failure_keeps_completed(
     ).encode("utf-8")
     mock_boto_client.return_value.get_object.return_value = {"Body": io.BytesIO(csv_data)}
 
-    mock_pipeline.invoke.side_effect = RuntimeError("LLM service unavailable")
+    mock_build_pipeline.return_value.invoke.side_effect = RuntimeError("LLM service unavailable")
 
     result = process_upload(str(job_id))
 
-    assert result["parsed_count"] == 1
+    assert result["error"] == "unknown_error"
 
     with Session(sync_engine) as s:
         job = s.get(ProcessingJob, job_id)
-        assert job.status == "completed", "Job must stay 'completed' even when categorization fails"
-        assert job.step == "categorization_failed"
+        assert job.status == "failed", "Pipeline failure should mark job as failed for retry"
+        assert job.is_retryable is True
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Link, useRouter } from "@/i18n/navigation";
 import { useUpload } from "../hooks/use-upload";
 import { useJobStatus } from "../hooks/use-job-status";
+import { useRetryJob } from "../hooks/use-retry-job";
 import UploadProgress from "./UploadProgress";
 import FileFormatGuide from "./FileFormatGuide";
 import type { UploadState, UploadResponse } from "../types";
@@ -50,6 +51,7 @@ export default function UploadDropzone() {
   const t = useTranslations("upload");
   const router = useRouter();
   const { upload, isUploading, error, clearError, formatResult } = useUpload();
+  const { retryJob, isRetrying } = useRetryJob();
   const [dragState, setDragState] = useState<UploadState>("idle");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -203,10 +205,15 @@ export default function UploadDropzone() {
           {state === "uploading" && (
             <UploadProgress
               jobStatus={activeJobId ? jobStatus : null}
-              onRetry={() => {
-                setActiveJobId(null);
-                setSelectedFile(null);
-              }}
+              isRetryable={jobStatus.isRetryable}
+              retryInProgress={isRetrying}
+              onRetry={activeJobId ? async () => {
+                const success = await retryJob(activeJobId);
+                if (!success) {
+                  setActiveJobId(null);
+                  setSelectedFile(null);
+                }
+              } : undefined}
             />
           )}
 

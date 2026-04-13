@@ -82,6 +82,28 @@ async def forbidden_error_handler(_request: Request, exc: ForbiddenError) -> JSO
     )
 
 
+class CircuitBreakerOpenError(Exception):
+    def __init__(
+        self,
+        provider: str,
+        code: str = "SERVICE_UNAVAILABLE",
+        message: str = "Processing is temporarily unavailable, please try again in a few minutes",
+        status_code: int = 503,
+    ):
+        self.provider = provider
+        self.code = code
+        self.message = message
+        self.status_code = status_code
+
+
+async def circuit_breaker_error_handler(_request: Request, exc: CircuitBreakerOpenError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": exc.code, "message": exc.message, "details": {"provider": exc.provider}}},
+        headers={"Retry-After": "60"},
+    )
+
+
 async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception: %s", exc)
     return JSONResponse(

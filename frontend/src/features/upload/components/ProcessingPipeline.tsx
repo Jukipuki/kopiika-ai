@@ -38,6 +38,9 @@ interface ProcessingPipelineProps {
   step: string | null;
   progress: number;
   error: JobStatusState["error"];
+  isRetryable?: boolean;
+  retryCount?: number;
+  retryInProgress?: boolean;
   onRetry?: () => void;
 }
 
@@ -46,13 +49,17 @@ export default function ProcessingPipeline({
   step,
   progress,
   error,
+  isRetryable = true,
+  retryCount = 0,
+  retryInProgress = false,
   onRetry,
 }: ProcessingPipelineProps) {
   const t = useTranslations("upload.processing");
 
   const isCompleted = status === "completed";
   const isFailed = status === "failed";
-  const isProcessing = status === "processing" || status === "connecting";
+  const isRetrying = status === "retrying";
+  const isProcessing = status === "processing" || status === "connecting" || isRetrying;
 
   const activeIndex = isCompleted
     ? STAGES.length
@@ -114,18 +121,29 @@ export default function ProcessingPipeline({
         })}
       </ol>
 
+      {isRetrying && (
+        <p className="mt-2 text-center text-xs text-muted-foreground motion-safe:animate-pulse">
+          {t("retryingMessage", { retryCount, maxRetries: 3 })}
+        </p>
+      )}
+
       {isFailed && (
         <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-center">
           <AlertCircle className="h-8 w-8 text-destructive" />
-          <p className="text-sm text-destructive">{t("errorMessage")}</p>
-          {onRetry && (
+          <p className="text-sm text-destructive">
+            {error?.code === "SERVICE_UNAVAILABLE"
+              ? t("circuitBreakerMessage")
+              : t("errorMessage")}
+          </p>
+          {onRetry && isRetryable && (
             <Button
               variant="outline"
               size="sm"
               onClick={onRetry}
+              disabled={retryInProgress}
               className="min-h-[44px] min-w-[44px]"
             >
-              {t("retry")}
+              {retryInProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : t("retry")}
             </Button>
           )}
         </div>

@@ -142,7 +142,7 @@ development_status:
   # Epic 6: Error Handling, Recovery & Operational Monitoring
   epic-6: in-progress
   6-1-user-friendly-error-messages-error-states: done
-  6-2-pipeline-failure-recovery-retry: backlog
+  6-2-pipeline-failure-recovery-retry: done
   6-3-uncategorized-transaction-flagging: backlog
   6-4-structured-logging-with-correlation-ids: backlog
   6-5-pipeline-performance-upload-metrics-tracking: backlog

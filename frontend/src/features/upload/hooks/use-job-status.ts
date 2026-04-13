@@ -17,6 +17,8 @@ const initialState: JobStatusState = {
   error: null,
   result: null,
   isConnected: false,
+  isRetryable: true,
+  retryCount: 0,
 };
 
 export function useJobStatus(jobId: string | null): JobStatusState & { retry: () => void } {
@@ -87,6 +89,8 @@ export function useJobStatus(jobId: string | null): JobStatusState & { retry: ()
             newTransactions: data.newTransactions,
           },
           isConnected: false,
+          isRetryable: false,
+          retryCount: 0,
         });
         es.close();
         eventSourceRef.current = null;
@@ -104,9 +108,36 @@ export function useJobStatus(jobId: string | null): JobStatusState & { retry: ()
           error: data.error,
           result: null,
           isConnected: false,
+          isRetryable: data.isRetryable ?? true,
+          retryCount: 0,
         });
         es.close();
         eventSourceRef.current = null;
+      }
+    });
+
+    es.addEventListener("job-retrying", (e: MessageEvent) => {
+      const data = JSON.parse(e.data) as SSEEvent;
+      if (data.event === "job-retrying") {
+        setState((prev) => ({
+          ...prev,
+          status: "retrying",
+          retryCount: data.retryCount,
+          isConnected: true,
+        }));
+      }
+    });
+
+    es.addEventListener("job-resumed", (e: MessageEvent) => {
+      const data = JSON.parse(e.data) as SSEEvent;
+      if (data.event === "job-resumed") {
+        setState((prev) => ({
+          ...prev,
+          status: "processing",
+          step: data.resumeFromStep,
+          error: null,
+          isConnected: true,
+        }));
       }
     });
 

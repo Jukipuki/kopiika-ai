@@ -13,3 +13,5 @@ class FinancialPipelineState(TypedDict):
     locale: str                           # 'en' or 'uk', from user.locale
     insight_cards: list[dict]             # output of education node
     literacy_level: str                   # 'beginner' or 'intermediate'
+    completed_nodes: list[str]            # nodes that finished successfully
+    failed_node: str | None               # node that failed (if any)

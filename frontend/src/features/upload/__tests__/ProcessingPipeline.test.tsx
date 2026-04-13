@@ -96,6 +96,51 @@ describe("ProcessingPipeline", () => {
     expect(progressbar).toHaveAttribute("aria-valuemax", "5");
   });
 
+  it("hides retry button when isRetryable is false (9.6)", () => {
+    const onRetry = vi.fn();
+    render(
+      <ProcessingPipeline
+        status="failed"
+        step={null}
+        progress={0}
+        error={{ code: "LLM_ERROR", message: "Failed" }}
+        onRetry={onRetry}
+        isRetryable={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  it("shows circuit breaker message when error code is SERVICE_UNAVAILABLE (9.8)", () => {
+    render(
+      <ProcessingPipeline
+        status="failed"
+        step={null}
+        progress={0}
+        error={{ code: "SERVICE_UNAVAILABLE", message: "Circuit open" }}
+      />,
+    );
+
+    expect(
+      screen.getByText("Processing is temporarily unavailable. Please try again in a few minutes."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows retrying message with attempt count (8.2)", () => {
+    render(
+      <ProcessingPipeline
+        status="retrying"
+        step="categorization"
+        progress={40}
+        error={null}
+        retryCount={2}
+      />,
+    );
+
+    expect(screen.getByText(/Retrying/)).toBeInTheDocument();
+  });
+
   it("has aria-live polite for stage transitions (8.5)", () => {
     const { container } = render(
       <ProcessingPipeline

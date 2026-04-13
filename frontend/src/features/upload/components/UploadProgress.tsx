@@ -8,9 +8,11 @@ import type { JobStatusState } from "../types";
 interface UploadProgressProps {
   jobStatus?: JobStatusState | null;
   onRetry?: () => void;
+  isRetryable?: boolean;
+  retryInProgress?: boolean;
 }
 
-export default function UploadProgress({ jobStatus, onRetry }: UploadProgressProps) {
+export default function UploadProgress({ jobStatus, onRetry, isRetryable, retryInProgress }: UploadProgressProps) {
   const t = useTranslations("upload");
 
   // If no job status yet (still uploading file), show spinner
@@ -35,6 +37,9 @@ export default function UploadProgress({ jobStatus, onRetry }: UploadProgressPro
         progress={jobStatus.progress}
         error={jobStatus.error}
         onRetry={onRetry}
+        isRetryable={isRetryable ?? jobStatus.isRetryable}
+        retryCount={jobStatus.retryCount}
+        retryInProgress={retryInProgress}
       />
       {jobStatus.status === "processing" && (
         <p className="text-xs text-muted-foreground/70">{t("trustMessage")}</p>
