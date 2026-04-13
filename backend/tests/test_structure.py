@@ -40,3 +40,9 @@ def test_ci_workflows_exist():
 
 def test_gitignore_exists():
     assert (PROJECT_ROOT / ".gitignore").is_file()
+
+
+def test_created_at_index_migration_exists():
+    versions_dir = PROJECT_ROOT / "backend" / "alembic" / "versions"
+    matches = list(versions_dir.glob("*add_created_at_index*"))
+    assert len(matches) == 1

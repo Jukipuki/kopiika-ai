@@ -65,6 +65,22 @@ async def _create_upload_and_job(session, user_id, status="validated", result_da
     return job
 
 
+def test_processing_job_exposes_operator_fields():
+    """ProcessingJob model has all fields an operator needs to query."""
+    job = ProcessingJob(
+        user_id=uuid.uuid4(),
+        upload_id=uuid.uuid4(),
+        status="pending",
+    )
+    required_fields = [
+        "created_at", "started_at", "updated_at", "status",
+        "step", "progress", "error_code", "error_message",
+        "failed_step", "user_id", "result_data",
+    ]
+    for field in required_fields:
+        assert hasattr(job, field), f"ProcessingJob missing field: {field}"
+
+
 @pytest.mark.asyncio
 async def test_get_job_status_success(client, async_session, mock_rate_limiter):
     """GET /api/v1/jobs/{id} returns correct status for completed job."""
