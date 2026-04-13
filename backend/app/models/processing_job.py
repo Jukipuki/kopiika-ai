@@ -27,5 +27,6 @@ class ProcessingJob(SQLModel, table=True):
     failed_step: Optional[str] = Field(default=None)
     last_error_at: Optional[datetime] = Field(default=None)
     is_retryable: bool = Field(default=True)
+    started_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)

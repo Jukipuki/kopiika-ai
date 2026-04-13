@@ -145,6 +145,6 @@ development_status:
   6-2-pipeline-failure-recovery-retry: done
   6-3-uncategorized-transaction-flagging: done
   6-4-structured-logging-with-correlation-ids: done
-  6-5-pipeline-performance-upload-metrics-tracking: backlog
+  6-5-pipeline-performance-upload-metrics-tracking: done
   6-6-operator-job-status-health-queries: backlog
   epic-6-retrospective: optional

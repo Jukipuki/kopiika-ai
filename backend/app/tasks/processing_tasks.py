@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -56,9 +57,15 @@ def process_upload(self, job_id: str) -> dict:
         job.status = "processing"
         job.step = "ingestion"
         job.progress = 10
+        job.started_at = _utcnow()
         job.updated_at = _utcnow()
         session.add(job)
         session.commit()
+
+        task_start = time.monotonic()
+        ingestion_ms = None
+        categorization_ms = None
+        education_ms = None
 
         publish_job_progress(job_id, {
             "event": "pipeline-progress",
@@ -73,6 +80,9 @@ def process_upload(self, job_id: str) -> dict:
             upload = session.get(Upload, job.upload_id)
             if upload is None:
                 raise ValueError(f"Upload record not found for upload_id={job.upload_id}")
+
+            # --- Ingestion timing start ---
+            ingestion_start = time.monotonic()
 
             # 4. Download file from S3
             s3_client = boto3.client("s3", region_name=settings.S3_REGION)
@@ -114,6 +124,9 @@ def process_upload(self, job_id: str) -> dict:
                 format_result=format_result,
             )
 
+            ingestion_ms = round((time.monotonic() - ingestion_start) * 1000)
+            # --- Ingestion timing end ---
+
             # 7. Run categorization pipeline
             new_transactions = result.persisted_count - result.flagged_count
             categorization_count = 0
@@ -127,6 +140,9 @@ def process_upload(self, job_id: str) -> dict:
                 "progress": 40,
                 "message": f"Categorizing {new_transactions} transactions...",
             })
+
+            # --- Categorization timing start ---
+            categorization_start = time.monotonic()
 
             insight_cards = []
             try:
@@ -258,6 +274,12 @@ def process_upload(self, job_id: str) -> dict:
                 # Re-raise to let the outer handler manage retry/failure
                 raise
 
+            categorization_ms = round((time.monotonic() - categorization_start) * 1000)
+            # --- Categorization timing end ---
+
+            # --- Education/profile timing start ---
+            education_start = time.monotonic()
+
             # 8. Build/update financial profile
             publish_job_progress(job_id, {
                 "event": "pipeline-progress",
@@ -303,6 +325,16 @@ def process_upload(self, job_id: str) -> dict:
                     extra={"job_id": job_id},
                 )
 
+            education_ms = round((time.monotonic() - education_start) * 1000)
+            # --- Education/profile timing end ---
+
+            total_ms = round((time.monotonic() - task_start) * 1000)
+            agent_timings = {
+                "ingestion_ms": ingestion_ms,
+                "categorization_ms": categorization_ms,
+                "education_ms": education_ms,
+            }
+
             # 10. Update ProcessingJob to "completed"
             job.status = "completed"
             if job.step != "categorization_failed":
@@ -317,6 +349,8 @@ def process_upload(self, job_id: str) -> dict:
                 "categorization_count": categorization_count,
                 "flagged_count_categorization": flagged_count_categorization,
                 "total_tokens_used": total_tokens_used,
+                "agent_timings": agent_timings,
+                "total_ms": total_ms,
             }
             job.updated_at = _utcnow()
             session.add(job)
@@ -332,8 +366,20 @@ def process_upload(self, job_id: str) -> dict:
             })
 
             logger.info(
-                "Upload processing completed",
-                extra={"job_id": job_id, "result": job.result_data},
+                "pipeline_completed",
+                extra={
+                    "job_id": job_id,
+                    "upload_id": str(upload.id),
+                    "user_id": str(upload.user_id),
+                    "file_size": upload.file_size,
+                    "file_type": upload.mime_type,
+                    "bank_format_detected": upload.detected_format,
+                    "status": "completed",
+                    "ingestion_ms": ingestion_ms,
+                    "categorization_ms": categorization_ms,
+                    "education_ms": education_ms,
+                    "total_ms": total_ms,
+                },
             )
 
             return job.result_data
@@ -341,7 +387,8 @@ def process_upload(self, job_id: str) -> dict:
         except CircuitBreakerOpenError as exc:
             # Circuit breaker open — service temporarily unavailable, retryable after cooldown
             session.rollback()
-            _mark_failed(session, job, "SERVICE_UNAVAILABLE", str(exc), is_retryable=True)
+            partial = _collect_partial_timings(ingestion_ms, categorization_ms, education_ms)
+            _mark_failed(session, job, "SERVICE_UNAVAILABLE", str(exc), is_retryable=True, timings=partial)
             return {"error": "service_unavailable"}
 
         except (ClientError, OperationalError) as exc:
@@ -364,20 +411,23 @@ def process_upload(self, job_id: str) -> dict:
             try:
                 self.retry(exc=exc, countdown=2 ** self.request.retries)
             except MaxRetriesExceededError:
-                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc), is_retryable=True)
+                partial = _collect_partial_timings(ingestion_ms, categorization_ms, education_ms)
+                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc), is_retryable=True, timings=partial)
                 return {"error": "max_retries_exceeded"}
 
         except UnsupportedFormatError as exc:
             # Permanent non-retryable error
             session.rollback()
-            _mark_failed(session, job, "UNSUPPORTED_FORMAT", str(exc), is_retryable=False)
+            partial = _collect_partial_timings(ingestion_ms, categorization_ms, education_ms)
+            _mark_failed(session, job, "UNSUPPORTED_FORMAT", str(exc), is_retryable=False, timings=partial)
             return {"error": "unsupported_format"}
 
         except (SoftTimeLimitExceeded, ValueError, KeyError, Exception) as exc:
             # Preserve partial results: commit any transactions added to session
             # before marking the job as failed
             is_retryable = not isinstance(exc, (ValueError, KeyError))
-            _commit_partial_and_mark_failed(session, job, exc, job_id, is_retryable=is_retryable)
+            partial = _collect_partial_timings(ingestion_ms, categorization_ms, education_ms)
+            _commit_partial_and_mark_failed(session, job, exc, job_id, is_retryable=is_retryable, timings=partial)
             if isinstance(exc, SoftTimeLimitExceeded):
                 return {"error": "timeout"}
             if isinstance(exc, (ValueError, KeyError)):
@@ -385,8 +435,25 @@ def process_upload(self, job_id: str) -> dict:
             return {"error": "unknown_error"}
 
 
+def _collect_partial_timings(
+    ingestion_ms: int | None,
+    categorization_ms: int | None,
+    education_ms: int | None,
+) -> dict | None:
+    """Build a partial timings dict from whatever stages completed before failure."""
+    timings = {}
+    if ingestion_ms is not None:
+        timings["ingestion_ms"] = ingestion_ms
+    if categorization_ms is not None:
+        timings["categorization_ms"] = categorization_ms
+    if education_ms is not None:
+        timings["education_ms"] = education_ms
+    return timings or None
+
+
 def _commit_partial_and_mark_failed(
-    session, job: ProcessingJob, exc: Exception, job_id: str, *, is_retryable: bool = True
+    session, job: ProcessingJob, exc: Exception, job_id: str,
+    *, is_retryable: bool = True, timings: dict | None = None,
 ) -> None:
     """Commit any partial results (transactions added to session), then mark job as failed.
 
@@ -409,11 +476,12 @@ def _commit_partial_and_mark_failed(
         session.rollback()
         logger.warning("Could not commit partial results", extra={"job_id": job_id})
 
-    _mark_failed(session, job, error_code, error_message, is_retryable=is_retryable)
+    _mark_failed(session, job, error_code, error_message, is_retryable=is_retryable, timings=timings)
 
 
 def _mark_failed(
-    session, job: ProcessingJob, error_code: str, error_message: str, *, is_retryable: bool = True
+    session, job: ProcessingJob, error_code: str, error_message: str,
+    *, is_retryable: bool = True, timings: dict | None = None,
 ) -> None:
     """Mark a ProcessingJob as failed with error details."""
     job.status = "failed"
@@ -438,6 +506,26 @@ def _mark_failed(
         extra={"job_id": str(job.id), "error_code": error_code, "error_message": error_message},
     )
 
+    # Emit pipeline_metrics log for failure tracking
+    try:
+        upload = session.get(Upload, job.upload_id) if job.upload_id else None
+        logger.info(
+            "pipeline_metrics",
+            extra={
+                "job_id": str(job.id),
+                "upload_id": str(job.upload_id),
+                "user_id": str(job.user_id),
+                "file_size": upload.file_size if upload else None,
+                "file_type": upload.mime_type if upload else None,
+                "bank_format_detected": upload.detected_format if upload else None,
+                "status": "failed",
+                "error_type": error_code,
+                "partial_timings": timings,
+            },
+        )
+    except Exception:
+        logger.warning("Failed to emit pipeline_metrics log", extra={"job_id": str(job.id)})
+
 
 @celery_app.task(bind=True, max_retries=3, acks_late=True, track_started=True)
 def resume_upload(self, job_id: str) -> dict:
@@ -455,9 +543,14 @@ def resume_upload(self, job_id: str) -> dict:
         job.status = "processing"
         job.error_code = None
         job.error_message = None
+        job.started_at = _utcnow()
         job.updated_at = _utcnow()
         session.add(job)
         session.commit()
+
+        task_start = time.monotonic()
+        categorization_ms = None
+        education_ms = None
 
         publish_job_progress(job_id, {
             "event": "job-resumed",
@@ -466,6 +559,9 @@ def resume_upload(self, job_id: str) -> dict:
         })
 
         try:
+            # --- Categorization timing start ---
+            categorization_start = time.monotonic()
+
             with get_checkpointer() as checkpointer:
                 result_state = resume_pipeline(checkpointer, thread_id=job_id)
 
@@ -508,6 +604,12 @@ def resume_upload(self, job_id: str) -> dict:
                     session.add(insight)
                 session.commit()
 
+            categorization_ms = round((time.monotonic() - categorization_start) * 1000)
+            # --- Categorization timing end ---
+
+            # --- Education/profile timing start ---
+            education_start = time.monotonic()
+
             # Build/update financial profile
             try:
                 build_or_update_profile(session, job.user_id)
@@ -519,11 +621,25 @@ def resume_upload(self, job_id: str) -> dict:
             except Exception:
                 logger.warning("Profile build failed on resume", extra={"job_id": job_id})
 
+            education_ms = round((time.monotonic() - education_start) * 1000)
+            # --- Education/profile timing end ---
+
+            total_ms = round((time.monotonic() - task_start) * 1000)
+            agent_timings = {
+                "categorization_ms": categorization_ms,
+                "education_ms": education_ms,
+            }
+
             # Mark completed
             job.status = "completed"
             job.step = "done"
             job.progress = 100
             job.failed_step = None
+            job.result_data = {
+                **(job.result_data or {}),
+                "agent_timings": agent_timings,
+                "total_ms": total_ms,
+            }
             job.updated_at = _utcnow()
             session.add(job)
             session.commit()
@@ -535,10 +651,29 @@ def resume_upload(self, job_id: str) -> dict:
                 "totalInsights": len(insight_cards),
             })
 
+            upload = session.get(Upload, job.upload_id)
+            logger.info(
+                "pipeline_completed",
+                extra={
+                    "job_id": job_id,
+                    "upload_id": str(job.upload_id),
+                    "user_id": str(job.user_id),
+                    "file_size": upload.file_size if upload else None,
+                    "file_type": upload.mime_type if upload else None,
+                    "bank_format_detected": upload.detected_format if upload else None,
+                    "status": "resumed_completed",
+                    "categorization_ms": categorization_ms,
+                    "education_ms": education_ms,
+                    "total_ms": total_ms,
+                },
+            )
+
             return {"status": "completed", "insight_count": len(insight_cards)}
 
         except CircuitBreakerOpenError as exc:
-            _mark_failed(session, job, "SERVICE_UNAVAILABLE", str(exc), is_retryable=True)
+            session.rollback()
+            partial = _collect_partial_timings(None, categorization_ms, education_ms)
+            _mark_failed(session, job, "SERVICE_UNAVAILABLE", str(exc), is_retryable=True, timings=partial)
             return {"error": "service_unavailable"}
 
         except (ClientError, OperationalError) as exc:
@@ -561,10 +696,13 @@ def resume_upload(self, job_id: str) -> dict:
             try:
                 self.retry(exc=exc, countdown=2 ** self.request.retries)
             except MaxRetriesExceededError:
-                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc), is_retryable=True)
+                partial = _collect_partial_timings(None, categorization_ms, education_ms)
+                _mark_failed(session, job, "MAX_RETRIES_EXCEEDED", str(exc), is_retryable=True, timings=partial)
                 return {"error": "max_retries_exceeded"}
 
         except Exception as exc:
             logger.exception("Resume pipeline failed", extra={"job_id": job_id})
-            _commit_partial_and_mark_failed(session, job, exc, job_id, is_retryable=True)
+            session.rollback()
+            partial = _collect_partial_timings(None, categorization_ms, education_ms)
+            _commit_partial_and_mark_failed(session, job, exc, job_id, is_retryable=True, timings=partial)
             return {"error": "resume_failed"}

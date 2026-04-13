@@ -597,6 +597,201 @@ class TestCircuitBreakerHandling:
         assert payload["error"]["code"] == "SERVICE_UNAVAILABLE"
 
 
+class TestPipelineMetrics:
+    """Tests for pipeline performance metrics tracking (Story 6.5)."""
+
+    @patch("app.tasks.processing_tasks.logger")
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.build_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_successful_pipeline_records_timing_metrics(
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, mock_logger, sync_engine
+    ):
+        """Successful pipeline sets started_at, agent_timings in result_data, and emits pipeline_completed log."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_build_pipeline.return_value.invoke.return_value = {
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import process_upload
+
+        result = process_upload(str(job_id))
+
+        # Verify started_at is set
+        job = _get_job(sync_engine, job_id)
+        assert job.started_at is not None
+
+        # Verify agent_timings in result_data
+        assert "agent_timings" in job.result_data
+        timings = job.result_data["agent_timings"]
+        assert isinstance(timings["ingestion_ms"], int)
+        assert timings["ingestion_ms"] >= 0
+        assert isinstance(timings["categorization_ms"], int)
+        assert timings["categorization_ms"] >= 0
+        assert isinstance(timings["education_ms"], int)
+        assert timings["education_ms"] >= 0
+
+        # Verify total_ms in result_data
+        assert isinstance(job.result_data["total_ms"], int)
+        assert job.result_data["total_ms"] >= 0
+
+        # Verify pipeline_completed log entry
+        pipeline_calls = [
+            c for c in mock_logger.info.call_args_list
+            if c.args[0] == "pipeline_completed"
+        ]
+        assert len(pipeline_calls) == 1
+        extra = pipeline_calls[0].kwargs["extra"]
+        assert extra["job_id"] == str(job_id)
+        assert extra["upload_id"] == str(upload_id)
+        assert extra["file_size"] == 1024
+        assert extra["file_type"] == "text/csv"
+        assert extra["bank_format_detected"] == "monobank"
+        assert extra["status"] == "completed"
+
+    @patch("app.tasks.processing_tasks.logger")
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.build_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_failed_pipeline_emits_metrics_log(
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, mock_publish, mock_logger, sync_engine
+    ):
+        """Failed pipeline emits pipeline_metrics log with status=failed and error_type."""
+        from app.agents.circuit_breaker import CircuitBreakerOpenError
+
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        mock_build_pipeline.return_value.invoke.side_effect = CircuitBreakerOpenError("anthropic")
+
+        from app.tasks.processing_tasks import process_upload
+
+        result = process_upload(str(job_id))
+
+        assert result["error"] == "service_unavailable"
+
+        # Verify pipeline_metrics log entry for failure
+        metrics_calls = [
+            c for c in mock_logger.info.call_args_list
+            if c.args[0] == "pipeline_metrics"
+        ]
+        assert len(metrics_calls) == 1
+        extra = metrics_calls[0].kwargs["extra"]
+        assert extra["job_id"] == str(job_id)
+        assert extra["upload_id"] == str(upload_id)
+        assert extra["user_id"] == str(user_id)
+        assert extra["file_size"] == 1024
+        assert extra["file_type"] == "text/csv"
+        assert extra["bank_format_detected"] == "monobank"
+        assert extra["status"] == "failed"
+        assert extra["error_type"] == "SERVICE_UNAVAILABLE"
+
+
+class TestProcessingJobModel:
+    """Model-level tests for ProcessingJob (Story 6.5)."""
+
+    def test_started_at_defaults_to_none(self):
+        """ProcessingJob can be constructed with started_at=None (default)."""
+        job = ProcessingJob(
+            user_id=uuid.uuid4(),
+            upload_id=uuid.uuid4(),
+        )
+        assert job.started_at is None
+
+    def test_started_at_accepts_datetime(self):
+        """ProcessingJob can be constructed with a datetime value for started_at."""
+        now = _utcnow()
+        job = ProcessingJob(
+            user_id=uuid.uuid4(),
+            upload_id=uuid.uuid4(),
+            started_at=now,
+        )
+        assert job.started_at == now
+
+
+class TestResumeUploadMetrics:
+    """Tests for resume_upload timing/metrics (Story 6.5, Task 3)."""
+
+    @patch("app.tasks.processing_tasks.logger")
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.resume_pipeline")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_resume_records_timing_and_emits_log(
+        self, mock_get_session, mock_resume_pipeline, mock_publish, mock_logger, sync_engine
+    ):
+        """resume_upload sets started_at, stores agent_timings, and emits pipeline_completed log."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+
+        # Mark job as failed so it's eligible for resume
+        with Session(sync_engine) as s:
+            job = s.get(ProcessingJob, job_id)
+            job.status = "failed"
+            job.failed_step = "categorization"
+            s.add(job)
+            s.commit()
+
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_resume_pipeline.return_value = {
+            "upload_id": str(upload_id),
+            "categorized_transactions": [],
+            "insight_cards": [],
+            "total_tokens_used": 0,
+            "errors": [],
+        }
+
+        from app.tasks.processing_tasks import resume_upload
+
+        result = resume_upload(str(job_id))
+
+        assert result["status"] == "completed"
+
+        # Verify started_at is set
+        job = _get_job(sync_engine, job_id)
+        assert job.started_at is not None
+
+        # Verify agent_timings in result_data
+        assert "agent_timings" in job.result_data
+        timings = job.result_data["agent_timings"]
+        assert isinstance(timings["categorization_ms"], int)
+        assert timings["categorization_ms"] >= 0
+        assert isinstance(timings["education_ms"], int)
+        assert timings["education_ms"] >= 0
+
+        # Verify total_ms
+        assert isinstance(job.result_data["total_ms"], int)
+        assert job.result_data["total_ms"] >= 0
+
+        # Verify pipeline_completed log with status="resumed_completed"
+        pipeline_calls = [
+            c for c in mock_logger.info.call_args_list
+            if c.args[0] == "pipeline_completed"
+        ]
+        assert len(pipeline_calls) == 1
+        extra = pipeline_calls[0].kwargs["extra"]
+        assert extra["job_id"] == str(job_id)
+        assert extra["upload_id"] == str(upload_id)
+        assert extra["status"] == "resumed_completed"
+        assert extra["categorization_ms"] >= 0
+        assert extra["education_ms"] >= 0
+        assert extra["total_ms"] >= 0
+
+
 class TestProcessUploadPerformance:
     @pytest.mark.slow
     @patch("app.tasks.processing_tasks.boto3.client")
