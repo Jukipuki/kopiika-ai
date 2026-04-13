@@ -98,7 +98,16 @@
     "loginFailed": "Login failed. Please try again.",
     "signupFailed": "An unexpected error occurred",
     "verificationFailed": "Verification failed. Please try again.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "generic": "Oops, something unexpected happened. Please try again.",
+    "rateLimitToast": "Whoa, slow down! Too many requests — please wait a moment.",
+    "boundary": {
+      "feed": "Our AI tripped over your insights — give it another try?",
+      "profile": "Your financial profile took an unexpected nap — let's wake it up!",
+      "upload": "The upload gremlins struck again — let's give it another shot!",
+      "settings": "Settings got a bit tangled — try again and we'll sort it out!",
+      "retry": "Try again"
+    }
   },
   "upload": {
     "title": "Upload Statement",

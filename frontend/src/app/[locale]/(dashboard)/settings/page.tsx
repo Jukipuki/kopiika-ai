@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import SettingsPage from "@/features/settings/components/SettingsPage";
+import FeatureErrorBoundary from "@/components/error/FeatureErrorBoundary";
 
 export async function generateMetadata() {
   const t = await getTranslations("settings");
@@ -9,5 +10,9 @@ export async function generateMetadata() {
 }
 
 export default function SettingsRoute() {
-  return <SettingsPage />;
+  return (
+    <FeatureErrorBoundary feature="settings">
+      <SettingsPage />
+    </FeatureErrorBoundary>
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -45,55 +45,25 @@ interface UseDataSummaryReturn {
 }
 
 export function useDataSummary(): UseDataSummaryReturn {
-  const { data: session, status } = useSession();
-  const [data, setData] = useState<DataSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const { data: session } = useSession();
+  const accessToken = session?.accessToken;
 
-  const fetchSummary = useCallback(async () => {
-    if (!session?.accessToken) {
-      if (status !== "loading") {
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["dataSummary"],
+    queryFn: async () => {
       const res = await fetch(`${API_URL}/api/v1/users/me/data-summary`, {
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-        signal: controller.signal,
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<DataSummary>;
+    },
+    enabled: !!accessToken,
+  });
 
-      if (!res.ok) {
-        throw new Error("Failed to fetch data summary");
-      }
-
-      const json = await res.json();
-      setData(json);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError("serverError");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [session?.accessToken, status]);
-
-  useEffect(() => {
-    fetchSummary();
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, [fetchSummary]);
-
-  return { data, isLoading, error, refetch: fetchSummary };
+  return {
+    data: data ?? null,
+    isLoading,
+    error: error ? error.message : null,
+    refetch,
+  };
 }

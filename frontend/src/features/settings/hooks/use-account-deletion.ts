@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -13,38 +13,31 @@ interface UseAccountDeletionReturn {
 
 export function useAccountDeletion(): UseAccountDeletionReturn {
   const { data: session } = useSession();
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const deleteAccount = async (): Promise<boolean> => {
-    if (!session?.accessToken) {
-      setError("unauthenticated");
-      return false;
-    }
-
-    setIsDeleting(true);
-    setError(null);
-
-    try {
+  const mutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch(`${API_URL}/api/v1/users/me`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${session.accessToken}`,
+          Authorization: `Bearer ${session?.accessToken}`,
         },
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    },
+  });
 
-      if (!res.ok) {
-        throw new Error("Failed to delete account");
-      }
-
+  const deleteAccount = async (): Promise<boolean> => {
+    try {
+      await mutation.mutateAsync();
       return true;
     } catch {
-      setError("deleteFailed");
       return false;
-    } finally {
-      setIsDeleting(false);
     }
   };
 
-  return { deleteAccount, isDeleting, error };
+  return {
+    deleteAccount,
+    isDeleting: mutation.isPending,
+    error: mutation.error ? mutation.error.message : null,
+  };
 }

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createUseTranslations } from "@/test-utils/intl-mock";
 import SettingsPage from "../components/SettingsPage";
 
@@ -56,6 +57,15 @@ const mockProfile = {
   createdAt: "2025-01-15T10:30:00Z",
 };
 
+function renderWithQuery(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
 describe("SettingsPage", () => {
   const originalLocation = window.location;
 
@@ -81,7 +91,7 @@ describe("SettingsPage", () => {
     // Make fetch never resolve to keep loading state
     mockFetch.mockReturnValue(new Promise(() => {}));
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     // Should render skeleton elements
     const skeletons = document.querySelectorAll("[data-slot='skeleton']");
@@ -91,7 +101,7 @@ describe("SettingsPage", () => {
   });
 
   it("8.2 displays email, locale, and creation date after successful fetch", async () => {
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -108,7 +118,7 @@ describe("SettingsPage", () => {
   });
 
   it("8.3 renders email, formatted date, and verification badge in AccountInfoSection", async () => {
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -131,7 +141,7 @@ describe("SettingsPage", () => {
       json: () => Promise.resolve({ ...mockProfile, isVerified: false }),
     });
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Not verified")).toBeInTheDocument();
@@ -142,7 +152,7 @@ describe("SettingsPage", () => {
   });
 
   it("8.4 renders language preference section", async () => {
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -159,7 +169,7 @@ describe("SettingsPage", () => {
   it("8.5 calls PATCH /api/v1/auth/me on language change", async () => {
     const user = userEvent.setup();
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -194,7 +204,7 @@ describe("SettingsPage", () => {
   it("8.6 shows toast and navigates on successful language change", async () => {
     const user = userEvent.setup();
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -225,7 +235,7 @@ describe("SettingsPage", () => {
       status: 500,
     });
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(
@@ -243,7 +253,7 @@ describe("SettingsPage", () => {
       status: 500,
     });
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Retry")).toBeInTheDocument();
@@ -266,7 +276,7 @@ describe("SettingsPage", () => {
   it("8.6b shows error toast when PATCH /api/v1/auth/me fails", async () => {
     const user = userEvent.setup();
 
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -289,7 +299,7 @@ describe("SettingsPage", () => {
   });
 
   it("8.8 renders correct translated strings", async () => {
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
@@ -307,7 +317,7 @@ describe("SettingsPage", () => {
   });
 
   it("8.9 renders MyDataSection within settings page", async () => {
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByTestId("my-data-section")).toBeInTheDocument();
@@ -315,7 +325,7 @@ describe("SettingsPage", () => {
   });
 
   it("8.10 renders DataDeletion within settings page", async () => {
-    render(<SettingsPage />);
+    renderWithQuery(<SettingsPage />);
 
     await waitFor(() => {
       expect(screen.getByTestId("data-deletion")).toBeInTheDocument();

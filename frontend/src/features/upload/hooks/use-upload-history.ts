@@ -33,7 +33,7 @@ async function fetchUploadsPage(
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  if (!res.ok) throw new Error("Failed to fetch upload history");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 

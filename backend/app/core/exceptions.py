@@ -1,5 +1,10 @@
+import logging
+
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class AuthenticationError(Exception):
@@ -74,4 +79,31 @@ async def forbidden_error_handler(_request: Request, exc: ForbiddenError) -> JSO
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
+    )
+
+
+async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"code": "INTERNAL_ERROR", "message": "Something went wrong", "details": {}}},
+    )
+
+
+async def request_validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    fields: list[str] = []
+    for err in exc.errors():
+        loc = err.get("loc", ())
+        field = ".".join(str(part) for part in loc if part != "body")
+        if field:
+            fields.append(field)
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Please check your input and try again",
+                "details": {"fields": fields},
+            }
+        },
     )

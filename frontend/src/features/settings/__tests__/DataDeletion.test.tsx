@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createUseTranslations } from "@/test-utils/intl-mock";
 import DataDeletion from "../components/DataDeletion";
 
@@ -32,6 +33,15 @@ vi.mock("sonner", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+function renderWithQuery(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
 describe("DataDeletion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,12 +53,12 @@ describe("DataDeletion", () => {
   });
 
   it("renders delete button", () => {
-    render(<DataDeletion />);
+    renderWithQuery(<DataDeletion />);
     expect(screen.getByText("Delete All My Data")).toBeInTheDocument();
   });
 
   it("opens confirmation dialog on button click", async () => {
-    render(<DataDeletion />);
+    renderWithQuery(<DataDeletion />);
     const user = userEvent.setup();
 
     await user.click(screen.getByText("Delete All My Data"));
@@ -59,7 +69,7 @@ describe("DataDeletion", () => {
   });
 
   it("closes dialog on cancel", async () => {
-    render(<DataDeletion />);
+    renderWithQuery(<DataDeletion />);
     const user = userEvent.setup();
 
     await user.click(screen.getByText("Delete All My Data"));
@@ -75,7 +85,7 @@ describe("DataDeletion", () => {
   it("calls API and signs out on successful deletion", async () => {
     mockFetch.mockResolvedValue({ ok: true, status: 204 });
 
-    render(<DataDeletion />);
+    renderWithQuery(<DataDeletion />);
     const user = userEvent.setup();
 
     await user.click(screen.getByText("Delete All My Data"));
@@ -101,7 +111,7 @@ describe("DataDeletion", () => {
   it("shows error toast and does not sign out on failure", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500 });
 
-    render(<DataDeletion />);
+    renderWithQuery(<DataDeletion />);
     const user = userEvent.setup();
 
     await user.click(screen.getByText("Delete All My Data"));

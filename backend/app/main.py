@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import v1_router
@@ -13,6 +14,8 @@ from app.core.exceptions import (
     forbidden_error_handler,
     registration_error_handler,
     validation_error_handler,
+    unhandled_exception_handler,
+    request_validation_error_handler,
 )
 
 setup_logging()
@@ -33,6 +36,8 @@ app.add_exception_handler(AuthenticationError, authentication_error_handler)
 app.add_exception_handler(ForbiddenError, forbidden_error_handler)
 app.add_exception_handler(RegistrationError, registration_error_handler)
 app.add_exception_handler(ValidationError, validation_error_handler)
+app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
 @app.get("/health")
