@@ -138,6 +138,13 @@ class TestFormatDetection:
         assert isinstance(result.confidence_score, float)
         assert isinstance(result.header_row, list)
 
+    def test_monobank_english_csv_detected(self):
+        content = (FIXTURES_DIR / "monobank_english.csv").read_bytes()
+        result = detect_format(content)
+        assert result.bank_format == "monobank"
+        assert result.confidence_score >= 0.6
+        assert result.delimiter == ","
+
     def test_generic_csv_returns_unknown(self):
         content = b"col1,col2,col3\nval1,val2,val3\n"
         result = detect_format(content)

@@ -1,0 +1,4 @@
+"Date and time",Description,MCC,"Card currency amount, (UAH)","Operation amount","Currency","Exchange rate","Commission amount, (UAH)","Cashback amount, (UAH)",Balance
+"01.01.2024 12:00:00","Supermarket ATB",5411,"-150.50","-150.50",UAH,1,"0.00","1.51","10000.00"
+"02.01.2024 15:30:00","Pharmacy",5912,"-75.25","-75.25",UAH,1,"0.00","0.00","9924.75"
+"03.01.2024 10:00:00","Salary",,5000.00,5000.00,UAH,1,"0.00","0.00","14924.75"

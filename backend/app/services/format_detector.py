@@ -9,10 +9,10 @@ logger = logging.getLogger(__name__)
 
 # Monobank exports vary across time — match on characteristic substrings
 # that appear in headers regardless of exact wording.
-MONOBANK_FINGERPRINTS = [
-    "MCC",                  # unique to Monobank among Ukrainian banks
-    "валюті картки",        # "Сума в валюті картки (UAH)"
-    "кешбек",               # "Сума кешбеку (UAH)"
+# Grouped by language so each export only needs to match ONE group.
+MONOBANK_FINGERPRINT_GROUPS: list[list[str]] = [
+    ["MCC", "валюті картки", "кешбек"],               # Ukrainian export
+    ["MCC", "card currency amount", "cashback amount"], # English export
 ]
 
 # Legacy exact-match set (older Monobank exports with semicolons / Win-1251)
@@ -91,9 +91,12 @@ def _check_monobank(header: list[str]) -> float:
     """
     joined = " ".join(header).lower()
 
-    # Fingerprint matching — characteristic substrings
-    fp_matched = sum(1 for fp in MONOBANK_FINGERPRINTS if fp.lower() in joined)
-    fp_score = fp_matched / len(MONOBANK_FINGERPRINTS) if fp_matched >= 2 else 0.0
+    # Fingerprint matching — best score across language groups
+    fp_score = 0.0
+    for group in MONOBANK_FINGERPRINT_GROUPS:
+        matched = sum(1 for fp in group if fp.lower() in joined)
+        if matched >= 2:
+            fp_score = max(fp_score, matched / len(group))
 
     # Legacy exact-match
     header_set = set(header)

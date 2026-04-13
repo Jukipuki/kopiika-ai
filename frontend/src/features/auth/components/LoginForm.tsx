@@ -16,7 +16,11 @@ export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const locale = useLocale();
-  const callbackUrl = searchParams.get("callbackUrl") || `/${locale}/dashboard`;
+  const rawCallbackUrl = searchParams.get("callbackUrl");
+  const callbackUrl =
+    rawCallbackUrl && rawCallbackUrl.startsWith("/") && !rawCallbackUrl.startsWith("//")
+      ? rawCallbackUrl
+      : `/${locale}/dashboard`;
   const t = useTranslations("auth.login");
   const tv = useTranslations("auth.validation");
   const te = useTranslations("errors");
@@ -89,6 +93,8 @@ export default function LoginForm() {
 
         const loginData = await response.json();
 
+        const userLocale = loginData.user.locale || locale;
+
         const result = await signIn("credentials", {
           redirect: false,
           accessToken: loginData.accessToken,
@@ -96,7 +102,7 @@ export default function LoginForm() {
           expiresIn: loginData.expiresIn,
           userId: loginData.user.id,
           email: loginData.user.email,
-          locale: loginData.user.locale,
+          locale: userLocale,
         });
 
         if (result?.error) {
@@ -104,14 +110,21 @@ export default function LoginForm() {
           return;
         }
 
-        router.push(callbackUrl);
+        // Redirect to the user's stored locale, not the URL locale
+        const targetUrl = callbackUrl.replace(/^\/[a-z]{2}\//, `/${userLocale}/`);
+        if (userLocale !== locale) {
+          // Full navigation to switch locale context
+          window.location.href = targetUrl;
+        } else {
+          router.push(targetUrl);
+        }
       } catch {
         setServerError(te("serverError"));
       } finally {
         setIsSubmitting(false);
       }
     },
-    [callbackUrl, router, te]
+    [callbackUrl, locale, router, te]
   );
 
   const isRateLimited = rateLimitSeconds > 0;

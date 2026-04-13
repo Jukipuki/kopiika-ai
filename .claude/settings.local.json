@@ -283,7 +283,11 @@
       "Bash(grep -n \"ForeignKeyConstraint.*users.id\\\\|create_foreign_key.*users\" /Users/ohumennyi/Personal/kopiika-ai/backend/alembic/versions/*.py)",
       "Bash(grep -n \"ForeignKeyConstraint.*uploads.id\" /Users/ohumennyi/Personal/kopiika-ai/backend/alembic/versions/*.py)",
       "Bash(pnpm dlx:*)",
-      "Bash(.venv/bin/python -m pytest tests/test_account_deletion_api.py -v)"
+      "Bash(.venv/bin/python -m pytest tests/test_account_deletion_api.py -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_auth.py::test_signup_with_locale_en tests/test_auth.py::test_signup_without_locale_defaults_to_uk tests/test_auth.py::test_signup_with_invalid_locale_returns_422 -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_format_detection.py::TestFormatDetection::test_monobank_english_csv_detected -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_monobank_parser.py::TestMonobankParserEnglish -v)",
+      "Bash(.venv/bin/python -m pytest tests/test_auth.py tests/test_format_detection.py tests/test_monobank_parser.py -v)"
     ]
   }
 }

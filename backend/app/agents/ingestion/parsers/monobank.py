@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 
 # Flexible header mappings to support both legacy and modern Monobank formats
 HEADER_MAPPINGS: dict[str, list[str]] = {
-    "date": ["Дата і час операції", "Дата i час операції"],
-    "description": ["Опис операції", "Деталі операції"],
+    "date": ["Дата і час операції", "Дата i час операції", "Date and time"],
+    "description": ["Опис операції", "Деталі операції", "Description"],
     "mcc": ["MCC"],
-    "amount": ["Сума в валюті картки (UAH)"],
-    "balance": ["Залишок на рахунку (UAH)", "Залишок після операції"],
+    "amount": ["Сума в валюті картки (UAH)", "Card currency amount, (UAH)"],
+    "balance": ["Залишок на рахунку (UAH)", "Залишок після операції", "Balance"],
 }
 
 

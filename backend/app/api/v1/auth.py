@@ -25,6 +25,15 @@ class SignupRequest(BaseModel):
 
     email: EmailStr
     password: str = Field(min_length=8)
+    locale: str = Field(default="uk")
+
+    @field_validator("locale")
+    @classmethod
+    def validate_locale(cls, v: str) -> str:
+        if v not in ("uk", "en"):
+            msg = "Locale must be 'uk' or 'en'"
+            raise ValueError(msg)
+        return v
 
 
 class SignupResponse(BaseModel):
@@ -250,6 +259,7 @@ async def signup(
         cognito_sub=result["user_sub"],
         email=body.email,
         is_verified=False,
+        locale=body.locale,
     )
     session.add(user)
     await session.commit()

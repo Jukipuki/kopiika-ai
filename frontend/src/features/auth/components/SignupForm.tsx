@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { z } from "zod";
 import { type SignupFormData } from "../schemas/signup-schema";
 
@@ -16,6 +16,7 @@ interface SignupFormProps {
 export default function SignupForm({ onSuccess }: SignupFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const locale = useLocale();
   const t = useTranslations("auth.signup");
   const tv = useTranslations("auth.validation");
   const tp = useTranslations("auth.passwordRequirements");
@@ -78,7 +79,7 @@ export default function SignupForm({ onSuccess }: SignupFormProps) {
       const response = await fetch(`${API_URL}/api/v1/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.email, password: data.password }),
+        body: JSON.stringify({ email: data.email, password: data.password, locale }),
       });
 
       if (!response.ok) {

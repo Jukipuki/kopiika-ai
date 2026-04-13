@@ -111,6 +111,9 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 - **Scope:** Add engagement event tracking (card expand, time on card, thumbs signal) and fold into literacy-level detection for finer resolution.
 - **Related:** overlaps with PRD Growth Feature "Enhanced financial literacy level assessment" — pick whichever approach wins.
 
+**AI to parse unknown banking statements**
+- **Context** Can we use AI, to find out which bank statement were uploaded and to parse it correctly? What degree of confidence could we achieve? Can it somehow be enhanced from the app side, while using frontier models (can't train/fine-tune them)?
+
 ### 4.5 Card / UX content
 
 **Key metric prompt refinement (conciseness)**
@@ -118,16 +121,21 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 - **Context:** Some generated key metric values are too dense (e.g., `"₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"`). Partially addressed by Story 4.2 visual-hierarchy fix, but the *content* density is an Education Agent prompt concern that likely deserves its own pass — probably folded into DS-3 quality-control work.
 
 **Knowledge card decline mechanism**
-- **Context** At the moments, cards stays after each upload. We need add a possibility to mark them as put to archive
+- **Context** At the moments, cards stays after each upload. We need add a possibility to mark them as put to archive. This can be done based on uploads: on new upload - move old cards to archive, to focus on a fresh data results. Also, this can be tied to thumbs signals (4.4 AI pipeline quality, mentio0ned above): user press thumb up/down and we move this cards to archive. UX note: it must be clearly visible and intuitive where cards have been moved and how to access the archived card for re-review
 
 **Redirect to cards after upload**
 - **Context** Still, after upload, I got redirected to cards instantly. I want to see the full flow of agents processing, then - redirrect to cards. Also, I want to see info about upload: number of transactions, discivered bank name etc. Currently this is not visible because of the instant redirrect to cards
 
-**AI to parse unknown banking statements**
-- **Context** Can we use AI, to find out which bank statement were uploaded and to parse it correctly? What degree of confidence could we achieve? Can it somehow be enhanced from the app side, while using frontier models (can't train/fine-tune them)?
-
-
-
+**Relative cards (should work on naming:))**
+- **Context** On a new upload, we can check with a previous sugestion
+* When we see repeated pattern we can highlight it, like: 
+  * Restaraunt spending takes large part of food budget on first upload
+  * We see the same issue on a 2nd (3rd and so on) - we mention, not just the fact, but that this is repeatable occurence
+  * Sometimes it might be false positive and user thinks that this is ok. Then, we might tied this to thumbs signals (4.4 AI pipeline quality, mentio0ned above): thumb down, means user doesn't find it useful or a problem for him - do not highlight
+* Same can be done for an improvement, like:
+  * Restaraunt spending takes large part of food budget on first upload
+  * On a 2nd and 3rd uploads - issue is gone, we should highlight the improvemnt, whis is the result of our advice and steps towards it by the user
+* In general, this will allow to convert plain cards with information into cards showing trends and provide user with a valuable feedback
 
 ---
 

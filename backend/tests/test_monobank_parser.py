@@ -121,6 +121,54 @@ class TestMonobankParserModern:
         assert txn.balance == 1000000  # 10000.00
 
 
+# ==================== MonobankParser — English Format (Story 5.6 review) ====================
+
+
+class TestMonobankParserEnglish:
+    """Test MonobankParser with English export format."""
+
+    def test_english_format_all_fields_parsed(self):
+        content = (FIXTURES_DIR / "monobank_english.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.parsed_count == 3
+        assert result.flagged_count == 0
+
+    def test_english_format_amounts_correct(self):
+        content = (FIXTURES_DIR / "monobank_english.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.transactions[0].amount == -15050  # -150.50
+        assert result.transactions[1].amount == -7525   # -75.25
+        assert result.transactions[2].amount == 500000  # 5000.00
+
+    def test_english_format_descriptions_correct(self):
+        content = (FIXTURES_DIR / "monobank_english.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.transactions[0].description == "Supermarket ATB"
+        assert result.transactions[1].description == "Pharmacy"
+
+    def test_english_format_mcc_parsed(self):
+        content = (FIXTURES_DIR / "monobank_english.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.transactions[0].mcc == 5411
+        assert result.transactions[1].mcc == 5912
+        assert result.transactions[2].mcc is None  # Salary has no MCC
+
+    def test_english_format_balance_parsed(self):
+        content = (FIXTURES_DIR / "monobank_english.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.transactions[0].balance == 1000000  # 10000.00
+
+
 # ==================== 5.7: MonobankParser — Embedded Newlines ====================
 
 

@@ -470,3 +470,47 @@ async def test_default_locale_is_uk(client, mock_cognito_service):
     assert response.status_code == 200
     data = response.json()
     assert data["user"]["locale"] == "uk"
+
+
+# ==================== Signup Locale Tests (Story 5.6 review) ====================
+
+
+@pytest.mark.asyncio
+async def test_signup_with_locale_en(client, mock_cognito_service):
+    """Test signup with locale 'en' stores locale correctly"""
+    await client.post(
+        "/api/v1/auth/signup",
+        json={"email": "signup-en@example.com", "password": "StrongPass1!", "locale": "en"},
+    )
+
+    # Login to verify the stored locale
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "signup-en@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user"]["locale"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_signup_without_locale_defaults_to_uk(client, mock_cognito_service):
+    """Test signup without locale field defaults to 'uk'"""
+    response = await client.post(
+        "/api/v1/auth/signup",
+        json={"email": "signup-default@example.com", "password": "StrongPass1!"},
+    )
+
+    assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_signup_with_invalid_locale_returns_422(client, mock_cognito_service):
+    """Test signup with invalid locale returns 422"""
+    response = await client.post(
+        "/api/v1/auth/signup",
+        json={"email": "signup-bad@example.com", "password": "StrongPass1!", "locale": "fr"},
+    )
+
+    assert response.status_code == 422
