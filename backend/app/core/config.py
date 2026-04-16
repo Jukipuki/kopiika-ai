@@ -1,12 +1,16 @@
 import os
-from typing import Optional
+from typing import ClassVar, Optional
 
 from pydantic_settings import BaseSettings
+
+from app.core.version import APP_VERSION
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Kopiika AI"
-    VERSION: str = "0.1.0"
+    # ClassVar: keep VERSION out of the pydantic field set so a stray env var
+    # named VERSION cannot silently override the file-backed source of truth.
+    VERSION: ClassVar[str] = APP_VERSION
 
     # AWS Profile (set in OS env so boto3 picks it up)
     AWS_PROFILE: str = ""

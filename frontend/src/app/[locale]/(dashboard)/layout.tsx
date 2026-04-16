@@ -9,6 +9,7 @@ import ConsentGuard from "@/lib/auth/consent-guard";
 import { useIdleTimeout } from "@/features/auth/hooks/use-idle-timeout";
 import SessionExpiredDialog from "@/features/auth/components/SessionExpiredDialog";
 import LocaleSwitcher from "@/components/layout/LocaleSwitcher";
+import AppVersionBadge from "@/components/AppVersionBadge";
 import { Link } from "@/i18n/navigation";
 import { Settings, Plus, History, BookOpen, User } from "lucide-react";
 
@@ -116,6 +117,8 @@ export default function DashboardLayout({
               <Plus className="h-6 w-6" />
             </Link>
           )}
+
+          {!isOnboardingRoute && <AppVersionBadge />}
         </div>
 
         {isTimedOut && (

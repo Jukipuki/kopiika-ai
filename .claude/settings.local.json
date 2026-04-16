@@ -311,7 +311,16 @@
       "Bash(grep -E \"\\\\.\\(py|ts\\)$\")",
       "Bash(.venv/bin/pytest tests/test_auth.py -x -q)",
       "Bash(.venv/bin/pytest -x -q)",
-      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config.*)"
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config.*)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/*.ts /Users/ohumennyi/Personal/kopiika-ai/frontend/*.mjs /Users/ohumennyi/Personal/kopiika-ai/frontend/*.config.*)",
+      "Bash(node -e \"console.log\\(JSON.parse\\(require\\('fs'\\).readFileSync\\('/Users/ohumennyi/Personal/kopiika-ai/frontend/package.json','utf8'\\)\\).type || 'commonjs'\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(echo \"exitcode=$?\")",
+      "Bash(gtimeout 45 npx next build)",
+      "Bash(grep -l 'v1\\\\.2\\\\.0' .next/static/chunks/*.js)",
+      "Bash(grep -oE 'v1\\\\.2\\\\.0' .next/static/chunks/*.js)",
+      "Bash(grep -oE '.{0,40}\"1\\\\.2\\\\.0\".{0,20}' .next/static/chunks/0y~qxm1s2h3.0.js)",
+      "Bash(grep -l \"^export.*cn\\\\|^export function cn\\\\|^export const cn\" /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib/*.ts /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib/**/*.ts)"
     ]
   }
 }

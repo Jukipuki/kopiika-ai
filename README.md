@@ -114,6 +114,12 @@ npm run dev
 - Backend health: http://localhost:8000/health
 - Frontend: http://localhost:3000
 
+## Versioning
+
+The canonical project version lives in a single [`VERSION`](VERSION) file at the repo root (currently `1.2.0`). Both backend (`GET /health`) and frontend (dashboard version badge) read it at runtime/build time.
+
+Bump rules: **MAJOR** = phase boundary, **MINOR** = story merged (any epic), **PATCH** = bug-fix/polish story. Version digits are **not** mapped to epic numbers — they increment monotonically. The bump happens as a one-line edit to [`VERSION`](VERSION) in the same PR that closes the story. See [docs/versioning.md](docs/versioning.md) for the full policy.
+
 ## Development
 
 - **Frontend linting:** `cd frontend && npm run lint`

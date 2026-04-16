@@ -50,7 +50,7 @@ development_status:
   1-6-language-selection-ukrainian-english: done
   1-7-account-settings-page: done
   1-8-forgot-password-flow: done
-  1-9-project-versioning-baseline: ready-for-dev
+  1-9-project-versioning-baseline: done
   epic-1-retrospective: optional
 
   # Epic 2: Statement Upload & Data Ingestion

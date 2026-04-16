@@ -112,6 +112,7 @@
     <action>Categorize findings: HIGH (must fix), MEDIUM (should fix), LOW (nice to fix)</action>
     <action>Set {{fixed_count}} = 0</action>
     <action>Set {{action_count}} = 0</action>
+    <action>Set {{td_promoted_count}} = 0</action>
 
     <output>**🔥 CODE REVIEW FINDINGS, {user_name}!**
 
@@ -153,12 +154,21 @@
       <action>Update story Dev Agent Record with fixes applied</action>
       <action>Set {{fixed_count}} = number of HIGH and MEDIUM issues fixed</action>
       <action>Set {{action_count}} = 0</action>
+
+      <!-- Any LOW findings, plus any HIGH/MEDIUM the user waived, are now
+           deferred. Route them through the promote-to-TD decision below. -->
+      <action>Set {{deferred_findings}} = all LOW findings + any HIGH/MEDIUM the user explicitly waived</action>
+      <invoke-protocol name="promote_deferred_to_tech_debt" />
     </check>
 
     <check if="user chooses 2">
-      <action>Add "Review Follow-ups (AI)" subsection to Tasks/Subtasks</action>
-      <action>For each issue: `- [ ] [AI-Review][Severity] Description [file:line]`</action>
-      <action>Set {{action_count}} = number of action items created</action>
+      <action>Set {{deferred_findings}} = all findings (HIGH + MEDIUM + LOW)</action>
+      <invoke-protocol name="promote_deferred_to_tech_debt" />
+      <!-- Anything NOT promoted to the tech-debt register falls back to a
+           story-local Tasks/Subtasks entry so it is still tracked somewhere. -->
+      <action>Add "Review Follow-ups (AI)" subsection to Tasks/Subtasks for findings kept story-local</action>
+      <action>For each story-local issue: `- [ ] [AI-Review][Severity] Description [file:line]`</action>
+      <action>Set {{action_count}} = number of story-local action items created</action>
       <action>Set {{fixed_count}} = 0</action>
     </check>
 
@@ -219,9 +229,89 @@
       **Story Status:** {{new_status}}
       **Issues Fixed:** {{fixed_count}}
       **Action Items Created:** {{action_count}}
+      **Tech-Debt Entries Created:** {{td_promoted_count}}
 
       {{#if new_status == "done"}}Code review complete!{{else}}Address the action items and continue development.{{/if}}
     </output>
   </step>
+
+  <protocols>
+    <protocol name="promote_deferred_to_tech_debt"
+              desc="For each deferred finding, ask whether to promote it to docs/tech-debt.md as a TD-NNN entry or keep it story-local.">
+      <objective>Route deferred review findings through the central tech-debt register so opportunistic pickup is discoverable, while keeping cosmetic/low-value nits out of the register.</objective>
+
+      <critical>Only invoke this on findings that will NOT be fixed in the current review — i.e., LOW severity findings and any HIGH/MEDIUM the user waived.</critical>
+
+      <flow>
+        <step n="1" title="Locate the tech-debt register">
+          <action>Set {{tech_debt_path}} = "{project-root}/docs/tech-debt.md"</action>
+          <check if="{{tech_debt_path}} does not exist">
+            <action>Output: "⚠️ docs/tech-debt.md not found — skipping TD promotion. All deferred findings will stay story-local."</action>
+            <action>Set {{td_promoted_count}} = 0</action>
+            <action>Exit protocol</action>
+          </check>
+          <action>Read {{tech_debt_path}} fully</action>
+          <action>Parse existing `TD-NNN` IDs from headings; set {{next_td_id}} = max + 1 (zero-padded to 3 digits, e.g. `TD-007`)</action>
+        </step>
+
+        <step n="2" title="Decide per finding">
+          <iterate>For each finding in {{deferred_findings}}:</iterate>
+
+          <action>Recommend default: promote if the finding has a concrete Fix shape AND a non-zero chance of future pickup; keep story-local if it is cosmetic, task-text drift, or unlikely-to-matter polish.</action>
+
+          <ask>Finding: [{{severity}}] {{title}} — [{{file}}:{{line}}]
+
+            Promote to {{next_td_id}} in docs/tech-debt.md, or keep story-local?
+
+            [p] Promote (recommended: {{recommendation}})
+            [s] Keep story-local (no TD entry)
+            [d] Drop entirely (neither — finding is a false alarm on reflection)
+
+            Choose [p/s/d]:</ask>
+
+          <check if="user chooses p">
+            <action>Assign {{next_td_id}} to this finding</action>
+            <action>Append a new entry to the `## Open` section of {{tech_debt_path}} using the standard format:
+              ```
+              ### {{next_td_id}} — {{concise title}} [{{SEVERITY}}]
+
+              **Where:** {{markdown links to file:line}}
+
+              **Problem:** {{what's wrong and why it matters}}
+
+              **Why deferred:** {{why not fixed in this story}}
+
+              **Fix shape:** {{concrete steps to resolve}}
+
+              **Surfaced in:** Story {{story_key}} code review ({{date}})
+              ```
+            </action>
+            <action>In the story file's Code Review section, replace the finding's inline note with a link: `L{{n}} → [{{next_td_id}}](../../../docs/tech-debt.md). {{one-line summary}}`</action>
+            <action>Increment {{next_td_id}} for the next finding</action>
+            <action>Increment {{td_promoted_count}}</action>
+          </check>
+
+          <check if="user chooses s">
+            <action>Keep finding in the story's Code Review section (inline note) or Tasks/Subtasks (if option 2 was chosen)</action>
+            <action>Do NOT touch docs/tech-debt.md</action>
+          </check>
+
+          <check if="user chooses d">
+            <action>Remove the finding from the review entirely</action>
+            <action>Note in the story's Code Review section: `L{{n}}: withdrawn on review — {{brief reason}}`</action>
+          </check>
+        </step>
+
+        <step n="3" title="Report promotion summary">
+          <check if="{{td_promoted_count}} gt 0">
+            <output>📘 Promoted {{td_promoted_count}} finding(s) to docs/tech-debt.md. New IDs are back-linked from the story's Code Review section.</output>
+          </check>
+          <check if="{{td_promoted_count}} == 0">
+            <output>ℹ️ No findings promoted to tech-debt register. All deferred items kept story-local.</output>
+          </check>
+        </step>
+      </flow>
+    </protocol>
+  </protocols>
 
 </workflow>
