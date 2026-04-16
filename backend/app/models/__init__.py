@@ -1,3 +1,4 @@
+from app.models.audit_log import AuditLog
 from app.models.consent import UserConsent
 from app.models.embedding import DocumentEmbedding
 from app.models.financial_health_score import FinancialHealthScore
@@ -10,6 +11,7 @@ from app.models.upload import Upload
 from app.models.user import User
 
 __all__ = [
+    "AuditLog",
     "DocumentEmbedding",
     "FinancialHealthScore",
     "FinancialProfile",

@@ -1,4 +1,5 @@
 """Tests for DELETE /api/v1/users/me endpoint (Story 5.5)."""
+import hashlib
 import os
 import tempfile
 import uuid
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
+from app.models.audit_log import AuditLog
 from app.models.consent import UserConsent
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
@@ -322,5 +324,72 @@ class TestAccountDeletion:
             response = await client.delete("/api/v1/users/me")
             assert response.status_code == 204
             mock_cognito.delete_user.assert_called_once_with(cognito_sub)
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    @patch("app.services.account_deletion_service.delete_s3_objects")
+    async def test_deletion_anonymizes_audit_records(
+        self, mock_s3_delete, del_client, del_api_session
+    ):
+        """Story 5.6 integration: DELETE /users/me anonymizes the deleted user's
+        audit_logs rows (cognito_sub → SHA-256 hash) and leaves OTHER users' rows
+        untouched. This guards the wiring inside delete_all_user_data, which the
+        unit tests in test_audit_middleware.py do not exercise end-to-end."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        client, _ = del_client
+
+        cognito_sub = "del-audit-sub"
+        other_sub = "other-user-sub"
+        expected_hash = hashlib.sha256(cognito_sub.encode()).hexdigest()
+        user_id = await _create_user(del_api_session, cognito_sub, "audit@test.com")
+
+        # Seed audit rows for both the user being deleted and an unrelated user
+        del_api_session.add(
+            AuditLog(user_id=cognito_sub, action_type="read", resource_type="transactions")
+        )
+        del_api_session.add(
+            AuditLog(user_id=cognito_sub, action_type="write", resource_type="uploads")
+        )
+        del_api_session.add(
+            AuditLog(user_id=other_sub, action_type="read", resource_type="insights")
+        )
+        await del_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await client.delete("/api/v1/users/me")
+            assert response.status_code == 204
+
+            async with SQLModelAsyncSession(del_api_session.bind) as verify_session:
+                # User row gone
+                user = (await verify_session.exec(
+                    select(AuditLog).where(AuditLog.user_id == cognito_sub)
+                )).all()
+                assert len(user) == 0, "raw cognito_sub must not survive deletion"
+
+                # Both audit rows for the deleted user survive, anonymized
+                hashed_rows = (await verify_session.exec(
+                    select(AuditLog).where(AuditLog.user_id == expected_hash)
+                )).all()
+                assert len(hashed_rows) == 2
+                assert {r.resource_type for r in hashed_rows} == {"transactions", "uploads"}
+
+                # Other user's row untouched
+                other_rows = (await verify_session.exec(
+                    select(AuditLog).where(AuditLog.user_id == other_sub)
+                )).all()
+                assert len(other_rows) == 1
+                assert other_rows[0].resource_type == "insights"
+
+            # Sanity: the user row itself is gone too
+            from app.models.user import User as UserModel
+            async with SQLModelAsyncSession(del_api_session.bind) as verify_session:
+                u = (await verify_session.exec(
+                    select(UserModel).where(UserModel.id == user_id)
+                )).first()
+                assert u is None
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)

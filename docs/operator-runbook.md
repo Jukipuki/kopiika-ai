@@ -1,7 +1,8 @@
-# Operator Runbook: Job Status & Pipeline Health Queries
+# Operator Runbook: Job Status, Pipeline Health & Compliance Audit Queries
 
-All queries run against the `processing_jobs` table in PostgreSQL.
-Connect via `psql` or any PostgreSQL client with read access.
+Queries run against PostgreSQL via `psql` or any client with read access.
+Sections cover the `processing_jobs` table (operational pipeline) and the
+`audit_logs` table (GDPR compliance audit trail — see Story 5.6).
 
 ## processing_jobs Schema
 
@@ -205,3 +206,97 @@ FROM processing_jobs
 WHERE started_at IS NOT NULL
   AND created_at >= NOW() - INTERVAL '24 hours';
 ```
+
+---
+
+## Compliance Audit Log Queries (Story 5.6, AC #4)
+
+The `audit_logs` table records every successful financial-data access event for
+GDPR accountability. The four indexed filter dimensions are `user_id`, `timestamp`,
+`action_type`, and `resource_type`.
+
+### `audit_logs` Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `user_id` | varchar(64) | Cognito `sub` for live users; SHA-256 hex digest after account deletion (no FK — records survive user deletion) |
+| `timestamp` | timestamp | When the access occurred (UTC) |
+| `action_type` | varchar(10) | `read` (GET) / `write` (POST/PUT/PATCH) / `delete` (DELETE) |
+| `resource_type` | varchar(50) | `transactions` / `insights` / `profile` / `health_scores` / `uploads` / `user_data` / `user` |
+| `resource_id` | varchar(255) | UUID extracted from path tail when present |
+| `ip_address` | varchar(45) | IPv4 or IPv6 of the requester |
+| `user_agent` | varchar(500) | Browser/client UA string |
+
+### Reconstruct one user's full access history
+
+```sql
+SELECT timestamp, action_type, resource_type, resource_id, ip_address
+FROM audit_logs
+WHERE user_id = '<cognito-sub-or-sha256-hex>'
+ORDER BY timestamp DESC;
+```
+
+For a deleted user, look up the hash with:
+`SELECT encode(digest('<original-cognito-sub>', 'sha256'), 'hex');`
+(requires `pgcrypto`; otherwise compute the SHA-256 client-side).
+
+### Filter by date range
+
+```sql
+SELECT user_id, timestamp, action_type, resource_type, resource_id
+FROM audit_logs
+WHERE timestamp >= '2026-04-01'
+  AND timestamp <  '2026-05-01'
+ORDER BY timestamp DESC;
+```
+
+### Filter by action type (e.g., all deletions in last 30 days)
+
+```sql
+SELECT user_id, timestamp, resource_type, resource_id, ip_address
+FROM audit_logs
+WHERE action_type = 'delete'
+  AND timestamp >= NOW() - INTERVAL '30 days'
+ORDER BY timestamp DESC;
+```
+
+### Filter by resource type (e.g., who read a specific user's transactions)
+
+```sql
+SELECT user_id, timestamp, action_type, resource_id, ip_address
+FROM audit_logs
+WHERE resource_type = 'transactions'
+  AND timestamp >= NOW() - INTERVAL '7 days'
+ORDER BY timestamp DESC;
+```
+
+### Combined filter: one user's writes in a date range
+
+```sql
+SELECT timestamp, resource_type, resource_id, ip_address, user_agent
+FROM audit_logs
+WHERE user_id = '<cognito-sub>'
+  AND action_type = 'write'
+  AND timestamp >= '2026-04-01' AND timestamp < '2026-05-01'
+ORDER BY timestamp ASC;
+```
+
+### Access volume per resource type (last 24 hours)
+
+```sql
+SELECT resource_type, action_type, COUNT(*) AS events
+FROM audit_logs
+WHERE timestamp >= NOW() - INTERVAL '24 hours'
+GROUP BY resource_type, action_type
+ORDER BY events DESC;
+```
+
+### Notes
+
+- The middleware logs only **successful** (status `< 400`) requests; failed/unauthorized
+  attempts are not currently captured (see TD-013).
+- Records are **append-only**: there is no application-level deletion. Long-term
+  retention enforcement is tracked in TD-014.
+- Anonymized rows (post-deletion) keep all columns except `user_id`, which becomes
+  the SHA-256 hex of the original Cognito `sub`.

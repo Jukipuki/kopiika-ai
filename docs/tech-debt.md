@@ -206,3 +206,54 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 **Fix shape:** Either (a) have parsers stamp a canonical key into `raw_data` (e.g. `raw_data["_currency_raw"] = raw_currency`) so the helper just reads one key, or (b) extend `extract_raw_currency` to accept the parser's header-alias list. Option (a) is cleaner but requires touching all three parser implementations; option (b) is more surgical.
 
 **Surfaced in:** Story 2.9 code review (2026-04-16)
+
+---
+
+### TD-013 — `AuditMiddleware` skips failed/unauthorized requests, masking enumeration & abuse [HIGH]
+
+**Where:** [backend/app/core/audit.py:53](backend/app/core/audit.py#L53)
+
+**Problem:** The middleware short-circuits with `if response.status_code >= 400: return response`, so the audit trail records only happy-path access. Enumeration attempts (401/403 on other users' UUIDs), 404 scans, and 5xx during exploitation never appear in `audit_logs`. GDPR Article 32 expects evidence of unauthorized access *attempts*, not just successful ones — a real compliance audit would flag this gap immediately. Story 5.6 AC1 is technically satisfied (it speaks of requests that "access" data, i.e. successes), so this didn't block the story, but the trail is materially weaker than what the compliance posture implies.
+
+**Why deferred:** Logging failures properly needs a new `status_code` column on `audit_logs` (another migration) plus a design decision on attribution for `401` responses (the bearer token may be invalid/missing — no trustworthy `sub` to log against). That's a full sub-story, not a 10-line patch.
+
+**Fix shape:**
+1. Add `status_code SMALLINT NOT NULL` to `audit_logs` (new Alembic migration).
+2. Drop the `>= 400` skip; always log when there is a parseable Bearer token + a sub claim.
+3. For `401` with no/invalid token, decide explicitly: either log with `user_id = 'anonymous'` + IP/UA (good signal for abuse detection) or skip (current behavior, document the choice).
+4. Add tests covering each status-code class.
+5. Update the operator runbook with a "failed-access investigation" query.
+
+**Surfaced in:** Story 5.6 code review (2026-04-16)
+
+---
+
+### TD-014 — `audit_logs` 2-year retention policy is claimed but not enforced anywhere [MEDIUM]
+
+**Where:** [backend/alembic/versions/o1p2q3r4s5t6_add_audit_logs_table.py](backend/alembic/versions/o1p2q3r4s5t6_add_audit_logs_table.py), Story 5.6 Dev Notes ("Retention policy" section)
+
+**Problem:** Story 5.6 AC5 mandates "retention policy of 2 years minimum". The dev notes assert this is "enforced at the infrastructure level (CloudWatch log group retention + no automated DB cleanup)", but there is no IaC change, no CloudWatch retention setting, no Alembic comment, no scheduled job, and no test pinning the policy. Today the table is append-only, which trivially satisfies "minimum 2 years" by never deleting — but that also means no upper-bound retention, no GDPR-mandated deletion-after-purpose, and no proof of policy if an external auditor asks "show me the retention configuration".
+
+**Why deferred:** This is an infra/IaC story (Terraform or AWS Console + a documented runbook), not a backend code change. Out of scope for the application-level audit trail story.
+
+**Fix shape:**
+1. Decide policy (likely: 24 months active in DB, then archive to S3 Glacier, then delete after 7 years for financial-services parity).
+2. Implement via either (a) a partitioned table + monthly partition drop job, or (b) a scheduled Lambda / Celery beat task + S3 archival.
+3. Document the configured retention in `docs/operator-runbook.md` next to the audit query section.
+4. Add an integration test that the cleanup job moves rows older than the threshold.
+
+**Surfaced in:** Story 5.6 code review (2026-04-16)
+
+---
+
+### TD-015 — `AuditMiddleware` integration tests use a stub FastAPI app, not the real one [MEDIUM]
+
+**Where:** [backend/tests/test_audit_middleware.py:51-79](backend/tests/test_audit_middleware.py#L51-L79)
+
+**Problem:** The audit middleware suite builds a minimal `stub_app = FastAPI()` and registers `AuditMiddleware` in isolation. This is fast and reproducible, but it never validates: (a) the real middleware-stack ordering against `RequestLoggingMiddleware` and `CORSMiddleware`, (b) interaction with the real auth dependency (`get_current_user_payload`), or (c) that audit rows from unrelated endpoint tests don't leak into a shared test DB and cause flakiness. The deletion-flow integration test added in Story 5.6 covers part (b) for one path; broader coverage would catch a future middleware reorder regression.
+
+**Why deferred:** Real-app integration would require either spinning up the full `app` per test (slow, conflicts with existing fixtures) or refactoring `conftest.py` to support an audit-aware client fixture. Test-infra refactor with no immediate user-visible payoff.
+
+**Fix shape:** Add an opt-in `audit_real_client` fixture in `conftest.py` that wires `AuditMiddleware` against the real `app` with a per-test SQLite. Migrate one or two representative tests (`test_get_transactions_creates_read_record`, `test_no_bearer_token_no_audit_record`) to use it. Keep the stub-based tests for fast iteration on middleware internals.
+
+**Surfaced in:** Story 5.6 code review (2026-04-16)

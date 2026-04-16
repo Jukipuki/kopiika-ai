@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import v1_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.audit import AuditMiddleware
 from app.core.middleware import RequestLoggingMiddleware
 from app.core.exceptions import (
     AuthenticationError,
@@ -34,6 +35,7 @@ app.add_middleware(
 )
 
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(AuditMiddleware)
 
 app.include_router(v1_router)
 

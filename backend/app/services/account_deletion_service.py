@@ -8,6 +8,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select as sa_select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
+from app.core.audit import anonymize_user_audit_records
 from app.core.config import settings
 from app.models.consent import UserConsent
 from app.models.financial_health_score import FinancialHealthScore
@@ -74,6 +75,10 @@ async def delete_all_user_data(
     for model in child_tables:
         await session.exec(sa_delete(model).where(model.user_id == user_id))
 
+    # Anonymize audit records before deleting user — keeps GDPR accountability
+    # without retaining the raw cognito_sub (replaced with SHA-256 hash)
+    await anonymize_user_audit_records(session, cognito_sub)
+
     await session.exec(sa_delete(User).where(User.id == user_id))
     await session.commit()
 
@@ -93,5 +98,9 @@ async def delete_all_user_data(
     # 4. Audit log — user_id + timestamp only, no PII
     logger.info(
         "User data deleted",
-        extra={"user_id": str(user_id), "timestamp": datetime.now(UTC).isoformat()},
+        extra={
+            "user_id": str(user_id),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "audit_anonymized": True,
+        },
     )
