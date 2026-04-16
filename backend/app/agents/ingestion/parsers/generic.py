@@ -10,6 +10,11 @@ from app.agents.ingestion.parsers.base import (
     ParseResult,
     TransactionData,
 )
+from app.services.currency import (
+    DEFAULT_CURRENCY_CODE,
+    UNKNOWN_CURRENCY_CODE,
+    resolve_currency,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +24,6 @@ AMOUNT_KEYWORDS = ["сума", "amount", "sum"]
 DESCRIPTION_KEYWORDS = ["опис", "description", "призначення"]
 CURRENCY_KEYWORDS = ["валюта", "currency"]
 
-# ISO 4217 numeric currency codes
-CURRENCY_MAP: dict[str, int] = {
-    "UAH": 980,
-    "USD": 840,
-    "EUR": 978,
-    "GBP": 826,
-    "PLN": 985,
-}
-
 # Date formats to try in order
 DATE_FORMATS = [
     "%d.%m.%Y %H:%M:%S",
@@ -35,8 +31,6 @@ DATE_FORMATS = [
     "%Y-%m-%d",
     "%d/%m/%Y",
 ]
-
-DEFAULT_CURRENCY_CODE = 980  # UAH
 
 
 def _find_column_by_keywords(header: list[str], keywords: list[str]) -> int | None:
@@ -120,11 +114,22 @@ class GenericParser(AbstractParser):
                 description = row[desc_idx].strip() if desc_idx is not None and desc_idx < len(row) else ""
 
                 currency_code = DEFAULT_CURRENCY_CODE
+                currency_alpha: str | None = None
+                currency_unknown_raw: str | None = None
                 if currency_idx is not None and currency_idx < len(row):
-                    currency_str = row[currency_idx].strip().upper()
-                    currency_code = CURRENCY_MAP.get(currency_str, DEFAULT_CURRENCY_CODE)
-                    if currency_str and currency_str not in CURRENCY_MAP:
-                        logger.warning("Unknown currency '%s', defaulting to UAH (980)", currency_str)
+                    raw_currency = row[currency_idx].strip()
+                    if raw_currency:
+                        info = resolve_currency(raw_currency)
+                        if info is not None:
+                            currency_code = info.numeric_code
+                            currency_alpha = info.alpha_code
+                        else:
+                            currency_code = UNKNOWN_CURRENCY_CODE
+                            currency_unknown_raw = raw_currency.upper()
+                            logger.warning(
+                                "currency_unknown",
+                                extra={"raw_currency": currency_unknown_raw, "parser": "generic"},
+                            )
 
                 transactions.append(TransactionData(
                     date=date,
@@ -134,6 +139,8 @@ class GenericParser(AbstractParser):
                     balance=None,
                     currency_code=currency_code,
                     raw_data=raw_data,
+                    currency_alpha=currency_alpha,
+                    currency_unknown_raw=currency_unknown_raw,
                 ))
             except (IndexError, ValueError, InvalidOperation) as exc:
                 flagged_rows.append(FlaggedRow(

@@ -34,4 +34,48 @@ describe("formatCurrency", () => {
     // Should fall back to uk-UA
     expect(result).toContain("₴");
   });
+
+  // Story 2.9: Multi-currency support
+  describe("multi-currency (Story 2.9)", () => {
+    it("formats CHF using Swiss franc output", () => {
+      const result = formatCurrency(100, "uk", "CHF");
+      expect(result).toContain("100");
+      expect(result).toContain("CHF");
+    });
+
+    it("formats JPY using Yen symbol", () => {
+      const result = formatCurrency(100, "en", "JPY");
+      expect(result).toContain("100");
+      // Intl output for JPY can be "¥100.00" or "JPY 100.00" depending on ICU version.
+      expect(result).toMatch(/¥|JPY/);
+    });
+
+    it("formats CZK", () => {
+      const result = formatCurrency(100, "uk", "CZK");
+      expect(result).toContain("100");
+      expect(result).toMatch(/Kč|CZK/);
+    });
+
+    it("formats TRY", () => {
+      const result = formatCurrency(100, "en", "TRY");
+      expect(result).toContain("100");
+      expect(result).toMatch(/₺|TRY/);
+    });
+
+    it("no currency arg defaults to UAH (backward compat)", () => {
+      const result = formatCurrency(100, "uk");
+      expect(result).toContain("₴");
+    });
+
+    it("unknown currency falls back to UAH to avoid throwing", () => {
+      const result = formatCurrency(100, "uk", "XYZ");
+      expect(result).toContain("₴");
+    });
+
+    it("currency code is case-insensitive", () => {
+      const upper = formatCurrency(100, "en", "USD");
+      const lower = formatCurrency(100, "en", "usd");
+      expect(lower).toBe(upper);
+    });
+  });
 });

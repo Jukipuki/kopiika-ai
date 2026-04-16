@@ -5,13 +5,20 @@ import { useSession } from "next-auth/react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export type UncategorizedReason =
+  | "low_confidence"
+  | "parse_failure"
+  | "llm_unavailable"
+  | "currency_unknown";
+
 export interface FlaggedTransaction {
   id: string;
   uploadId: string;
   date: string;
   description: string;
   amount: number;
-  uncategorizedReason: string | null;
+  uncategorizedReason: UncategorizedReason | null;
+  currencyUnknownRaw?: string | null;
 }
 
 class NotFoundError extends Error {

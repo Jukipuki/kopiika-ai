@@ -225,8 +225,10 @@ def process_upload(self, job_id: str) -> dict:
                     if cat:
                         txn.category = cat["category"]
                         txn.confidence_score = cat["confidence_score"]
-                        txn.is_flagged_for_review = cat.get("flagged", False)
-                        txn.uncategorized_reason = cat.get("uncategorized_reason")
+                        # Preserve parser-side pre-flag (e.g. currency_unknown).
+                        if txn.uncategorized_reason is None:
+                            txn.is_flagged_for_review = cat.get("flagged", False)
+                            txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
                 session.commit()
 
@@ -618,8 +620,10 @@ def resume_upload(self, job_id: str) -> dict:
                     if cat and txn.category in (None, "uncategorized"):
                         txn.category = cat["category"]
                         txn.confidence_score = cat["confidence_score"]
-                        txn.is_flagged_for_review = cat.get("flagged", False)
-                        txn.uncategorized_reason = cat.get("uncategorized_reason")
+                        # Preserve parser-side pre-flag (e.g. currency_unknown).
+                        if txn.uncategorized_reason is None:
+                            txn.is_flagged_for_review = cat.get("flagged", False)
+                            txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
                 session.commit()
 

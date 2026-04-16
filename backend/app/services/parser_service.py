@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
-from app.agents.ingestion.parsers.base import AbstractParser, ParseResult
+from app.agents.ingestion.parsers.base import AbstractParser
 from app.agents.ingestion.parsers.generic import GenericParser
 from app.agents.ingestion.parsers.monobank import MonobankParser
 from app.agents.ingestion.parsers.privatbank import PrivatBankParser
@@ -77,6 +77,10 @@ def _parse_and_build_records(
             raw_data=txn_data.raw_data,
             dedup_hash=compute_dedup_hash(
                 user_id, txn_data.date, txn_data.amount, txn_data.description,
+            ),
+            is_flagged_for_review=txn_data.currency_unknown_raw is not None,
+            uncategorized_reason=(
+                "currency_unknown" if txn_data.currency_unknown_raw is not None else None
             ),
         )
         for txn_data in result.transactions

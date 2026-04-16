@@ -10,16 +10,25 @@ from app.agents.ingestion.parsers.base import (
     ParseResult,
     TransactionData,
 )
+from app.services.currency import (
+    DEFAULT_CURRENCY_CODE,
+    UNKNOWN_CURRENCY_CODE,
+    resolve_currency,
+)
 
 logger = logging.getLogger(__name__)
 
-# Flexible header mappings to support both legacy and modern Monobank formats
+# Flexible header mappings to support both legacy and modern Monobank formats.
+# The `amount` column stays pinned to the card-currency column (UAH): Transaction.amount
+# must be comparable across rows for downstream aggregations. Foreign currency rows
+# carry the operation currency in the `currency` column; amount remains in UAH.
 HEADER_MAPPINGS: dict[str, list[str]] = {
     "date": ["Дата і час операції", "Дата i час операції", "Date and time"],
     "description": ["Опис операції", "Деталі операції", "Description"],
     "mcc": ["MCC"],
     "amount": ["Сума в валюті картки (UAH)", "Card currency amount, (UAH)"],
     "balance": ["Залишок на рахунку (UAH)", "Залишок після операції", "Balance"],
+    "currency": ["Валюта", "Currency"],
 }
 
 
@@ -75,6 +84,7 @@ class MonobankParser(AbstractParser):
         mcc_idx = _resolve_column_index(header, "mcc")
         amount_idx = _resolve_column_index(header, "amount")
         balance_idx = _resolve_column_index(header, "balance")
+        currency_idx = _resolve_column_index(header, "currency")
 
         if date_idx is None or amount_idx is None:
             return ParseResult(
@@ -110,14 +120,34 @@ class MonobankParser(AbstractParser):
                     else None
                 )
 
+                currency_code = DEFAULT_CURRENCY_CODE
+                currency_alpha: str | None = None
+                currency_unknown_raw: str | None = None
+                if currency_idx is not None and currency_idx < len(row):
+                    raw_currency = row[currency_idx].strip()
+                    if raw_currency:
+                        info = resolve_currency(raw_currency)
+                        if info is not None:
+                            currency_code = info.numeric_code
+                            currency_alpha = info.alpha_code
+                        else:
+                            currency_code = UNKNOWN_CURRENCY_CODE
+                            currency_unknown_raw = raw_currency.upper()
+                            logger.warning(
+                                "currency_unknown",
+                                extra={"raw_currency": currency_unknown_raw, "parser": "monobank"},
+                            )
+
                 transactions.append(TransactionData(
                     date=date,
                     description=description,
                     mcc=mcc,
                     amount=amount,
                     balance=balance,
-                    currency_code=980,
+                    currency_code=currency_code,
                     raw_data=raw_data,
+                    currency_alpha=currency_alpha,
+                    currency_unknown_raw=currency_unknown_raw,
                 ))
             except (IndexError, ValueError, InvalidOperation) as exc:
                 flagged_rows.append(FlaggedRow(

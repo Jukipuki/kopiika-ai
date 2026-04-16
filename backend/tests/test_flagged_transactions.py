@@ -107,7 +107,8 @@ async def _seed_user_with_transactions(
             date=spec.get("date", datetime(2026, 1, i + 1)),
             description=spec.get("description", f"Unknown Merchant {i}"),
             amount=spec.get("amount", -10000),
-            currency_code=980,
+            currency_code=spec.get("currency_code", 980),
+            raw_data=spec.get("raw_data"),
             dedup_hash=f"hash-{user_id}-{i}",
             is_flagged_for_review=spec.get("is_flagged_for_review", False),
             category=spec.get("category", "other"),
@@ -280,6 +281,42 @@ class TestFlaggedTransactionsEndpoint:
         """Requires valid JWT — returns 401 or 403 without auth."""
         response = await flagged_client.get("/api/v1/transactions/flagged")
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_currency_unknown_reason_and_raw_surfaced(
+        self, flagged_client, flagged_async_session
+    ):
+        """Story 2.9: GET /transactions/flagged exposes currency_unknown + currencyUnknownRaw."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "flagged-currency-sub"
+        await _seed_user_with_transactions(
+            flagged_async_session,
+            cognito_sub,
+            "flagged-currency@test.com",
+            flagged_txns=[
+                {
+                    "is_flagged_for_review": True,
+                    "uncategorized_reason": "currency_unknown",
+                    "currency_code": 0,
+                    "raw_data": {"Валюта": "XYZ", "Сума": "-10.00"},
+                    "description": "Exotic Exchange",
+                    "date": datetime(2026, 3, 15),
+                },
+            ],
+        )
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+
+        try:
+            response = await flagged_client.get("/api/v1/transactions/flagged")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["uncategorizedReason"] == "currency_unknown"
+            assert data[0]["currencyUnknownRaw"] == "XYZ"
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
 
     @pytest.mark.asyncio
     async def test_non_flagged_not_included(

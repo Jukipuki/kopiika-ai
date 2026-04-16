@@ -252,3 +252,71 @@ class TestParserServicePrivatBank:
         assert txn.mcc is None
         assert txn.balance is None
         assert txn.currency_code == 980
+
+
+# ==================== Story 2.9: PrivatBankParser — Currency Resolution ====================
+
+
+class TestPrivatBankParserCurrencyExtended:
+    """Test PrivatBank parser resolves new currencies and flags unknowns."""
+
+    def _make_csv(self, rows: list[str]) -> bytes:
+        header = "Дата операції,Опис операції,Категорія,Сума,Валюта\n"
+        return (header + "\n".join(rows) + "\n").encode("utf-8")
+
+    def test_known_currencies_resolved(self):
+        content = self._make_csv([
+            "01.01.2024 12:00:00,Zurich Coffee,Food,-10.00,CHF",
+            "02.01.2024 12:00:00,Tokyo Ramen,Food,-1500.00,JPY",
+            "03.01.2024 12:00:00,Prague Metro,Transport,-80.00,CZK",
+            "04.01.2024 12:00:00,Istanbul Taxi,Transport,-50.00,TRY",
+        ])
+        parser = PrivatBankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.parsed_count == 4
+        mappings = [(t.currency_code, t.currency_alpha) for t in result.transactions]
+        assert mappings == [
+            (756, "CHF"),
+            (392, "JPY"),
+            (203, "CZK"),
+            (949, "TRY"),
+        ]
+        for txn in result.transactions:
+            assert txn.currency_unknown_raw is None
+
+    def test_unknown_currency_flagged(self, caplog):
+        import logging as _logging
+
+        content = self._make_csv([
+            "01.01.2024 12:00:00,Exotic Exchange,Other,-10.00,XYZ",
+        ])
+        parser = PrivatBankParser()
+        app_logger = _logging.getLogger("app")
+        app_logger.propagate = True
+        try:
+            with caplog.at_level(_logging.WARNING, logger="app.agents.ingestion.parsers.privatbank"):
+                result = parser.parse(content, encoding="utf-8", delimiter=",")
+        finally:
+            app_logger.propagate = False
+
+        assert result.parsed_count == 1
+        txn = result.transactions[0]
+        assert txn.currency_code == 0
+        assert txn.currency_alpha is None
+        assert txn.currency_unknown_raw == "XYZ"
+        warnings = [r for r in caplog.records if r.message == "currency_unknown"]
+        assert len(warnings) == 1
+        assert getattr(warnings[0], "raw_currency", None) == "XYZ"
+        assert getattr(warnings[0], "parser", None) == "privatbank"
+
+    def test_uah_remains_unflagged_regression(self):
+        """Existing UAH rows must parse unchanged — regression safety net (AC #5)."""
+        content = (FIXTURES_DIR / "privatbank_standard.csv").read_bytes()
+        parser = PrivatBankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        for txn in result.transactions:
+            assert txn.currency_code == 980
+            assert txn.currency_alpha == "UAH"
+            assert txn.currency_unknown_raw is None

@@ -450,6 +450,81 @@ class TestTransactionsEndpoint:
             assert "uploadId" in item
             assert "currencyCode" in item
             assert "createdAt" in item
+            # Story 2.9: new alpha + raw currency fields are always present on the response.
+            assert "currency" in item
+            assert "currencyUnknownRaw" in item
+            # All seed rows use UAH (980) with no unknown_raw.
+            for it in data["items"]:
+                assert it["currencyCode"] == 980
+                assert it["currency"] == "UAH"
+                assert it["currencyUnknownRaw"] is None
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_list_transactions_exposes_currency_unknown_raw(
+        self, txn_client, txn_async_session
+    ):
+        """Story 2.9: TransactionResponse surfaces alpha + raw for unknown currencies."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "txn-currency-sub"
+        user_id = uuid.uuid4()
+        upload_id = uuid.uuid4()
+
+        user = User(id=user_id, email="txn-currency@test.com", cognito_sub=cognito_sub, locale="en")
+        txn_async_session.add(user)
+        await txn_async_session.flush()
+
+        upload = Upload(
+            id=upload_id, user_id=user_id, file_name="test.csv",
+            s3_key=f"{user_id}/test.csv", file_size=100,
+            mime_type="text/csv", detected_format="monobank",
+        )
+        txn_async_session.add(upload)
+        await txn_async_session.flush()
+
+        # One CHF row (recognized) and one XYZ row (unknown).
+        chf_date = datetime(2026, 2, 1)
+        xyz_date = datetime(2026, 2, 2)
+        chf = Transaction(
+            user_id=user_id, upload_id=upload_id,
+            date=chf_date, description="Zurich Coffee",
+            amount=-40000, currency_code=756,
+            raw_data={"Валюта": "CHF"},
+            dedup_hash=compute_dedup_hash(user_id, chf_date, -40000, "Zurich Coffee"),
+        )
+        xyz = Transaction(
+            user_id=user_id, upload_id=upload_id,
+            date=xyz_date, description="Exotic Exchange",
+            amount=-9900, currency_code=0,
+            raw_data={"Валюта": "XYZ"},
+            is_flagged_for_review=True,
+            uncategorized_reason="currency_unknown",
+            dedup_hash=compute_dedup_hash(user_id, xyz_date, -9900, "Exotic Exchange"),
+        )
+        txn_async_session.add(chf)
+        txn_async_session.add(xyz)
+        await txn_async_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await txn_client.get("/api/v1/transactions")
+            assert response.status_code == 200
+            items = response.json()["items"]
+            by_desc = {it["description"]: it for it in items}
+
+            chf_item = by_desc["Zurich Coffee"]
+            assert chf_item["currencyCode"] == 756
+            assert chf_item["currency"] == "CHF"
+            assert chf_item["currencyUnknownRaw"] is None
+
+            xyz_item = by_desc["Exotic Exchange"]
+            assert xyz_item["currencyCode"] == 0
+            # 0 is not in CURRENCY_MAP → alpha resolves to None.
+            assert xyz_item["currency"] is None
+            assert xyz_item["currencyUnknownRaw"] == "XYZ"
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
 

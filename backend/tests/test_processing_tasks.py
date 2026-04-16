@@ -958,3 +958,100 @@ class TestProcessUploadSummaryPayload:
         ]
         assert len(complete_calls) == 1
         assert complete_calls[0].args[1]["bankName"] is None
+
+
+# ==================== Story 2.9: currency_unknown integration ====================
+
+# Modern Monobank CSV with one USD row and one unknown "XYZ" row.
+MONOBANK_MULTI_CURRENCY_CSV = (
+    '"Дата i час операції","Деталі операції",MCC,"Сума в валюті картки (UAH)",'
+    '"Сума в валюті операції",Валюта,Курс,"Сума комісій (UAH)","Сума кешбеку (UAH)",'
+    '"Залишок після операції"\n'
+    '"01.01.2024 12:00:00","Grocery",5411,"-150.50","-150.50",UAH,1,"0.00","0.00","10000.00"\n'
+    '"02.01.2024 09:30:00","Amazon.com",5942,"-500.00","-13.50",USD,37.04,"0.00","0.00","9500.00"\n'
+    '"07.01.2024 16:30:00","Exotic Exchange",6011,"-99.00","-10.00",XYZ,9.90,"0.00","0.00","9401.00"\n'
+).encode("utf-8")
+
+
+class TestProcessUploadCurrencyUnknownFlag:
+    """Story 2.9: parser-side currency_unknown flag must survive the categorization step.
+
+    Covers the guard at processing_tasks.py that prevents the categorization agent
+    from clobbering the parser's pre-flagged `uncategorized_reason="currency_unknown"`.
+    """
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.build_pipeline")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_unknown_currency_row_persists_flag_after_categorization(
+        self, mock_get_session, mock_boto_client, mock_build_pipeline, _mock_publish, sync_engine
+    ):
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+
+        # Modern Monobank uses UTF-8 + comma.
+        with Session(sync_engine) as s:
+            upload = s.get(Upload, upload_id)
+            upload.detected_encoding = "utf-8"
+            upload.detected_delimiter = ","
+            s.add(upload)
+            s.commit()
+
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_MULTI_CURRENCY_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        # Simulate the categorization agent trying to CLEAR the parser's pre-flag
+        # on every transaction (the worst case for the guard).
+        def invoke_side_effect(initial_state, _config):
+            categorized = [
+                {
+                    "transaction_id": t["id"],
+                    "category": "other",
+                    "confidence_score": 0.9,
+                    "flagged": False,
+                    "uncategorized_reason": None,
+                }
+                for t in initial_state["transactions"]
+            ]
+            return {
+                "categorized_transactions": categorized,
+                "insight_cards": [],
+                "total_tokens_used": 0,
+                "errors": [],
+            }
+
+        mock_build_pipeline.return_value.invoke.side_effect = invoke_side_effect
+
+        from app.tasks.processing_tasks import process_upload
+
+        result = process_upload(str(job_id))
+        assert result["parsed_count"] == 3
+
+        with Session(sync_engine) as s:
+            txns = s.exec(select(Transaction).where(Transaction.upload_id == upload_id)).all()
+            by_desc = {t.description: t for t in txns}
+
+            xyz = by_desc["Exotic Exchange"]
+            # Parser-side pre-flag must survive categorization.
+            assert xyz.currency_code == 0
+            assert xyz.is_flagged_for_review is True
+            assert xyz.uncategorized_reason == "currency_unknown"
+            # Categorization is still allowed to assign a category — the flag is what matters.
+            assert xyz.category == "other"
+            assert xyz.raw_data is not None
+            assert xyz.raw_data.get("Валюта") == "XYZ"
+
+            # Non-flagged rows picked up the category without issue.
+            grocery = by_desc["Grocery"]
+            assert grocery.is_flagged_for_review is False
+            assert grocery.uncategorized_reason is None
+            assert grocery.category == "other"
+
+            # USD row was recognized and NOT flagged.
+            amazon = by_desc["Amazon.com"]
+            assert amazon.currency_code == 840
+            assert amazon.is_flagged_for_review is False
+            assert amazon.uncategorized_reason is None

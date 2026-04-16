@@ -10,6 +10,11 @@ from app.agents.ingestion.parsers.base import (
     ParseResult,
     TransactionData,
 )
+from app.services.currency import (
+    DEFAULT_CURRENCY_CODE,
+    UNKNOWN_CURRENCY_CODE,
+    resolve_currency,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +26,6 @@ COLUMN_AMOUNT = "Сума"
 COLUMN_CURRENCY = "Валюта"
 
 EXPECTED_COLUMNS = [COLUMN_DATE, COLUMN_DESCRIPTION, COLUMN_CATEGORY, COLUMN_AMOUNT, COLUMN_CURRENCY]
-
-# ISO 4217 numeric currency codes
-CURRENCY_MAP: dict[str, int] = {
-    "UAH": 980,
-    "USD": 840,
-    "EUR": 978,
-    "GBP": 826,
-    "PLN": 985,
-}
-
-DEFAULT_CURRENCY_CODE = 980  # UAH
 
 
 def _resolve_column_index(header: list[str], column_name: str) -> int | None:
@@ -56,16 +50,6 @@ def _parse_amount_kopiykas(value: str) -> int:
     return int(round(Decimal(normalized) * 100))
 
 
-def _resolve_currency_code(value: str) -> int:
-    """Map currency string to ISO 4217 numeric code."""
-    stripped = value.strip().upper()
-    code = CURRENCY_MAP.get(stripped)
-    if code is None:
-        logger.warning("Unknown currency '%s', defaulting to UAH (980)", stripped)
-        return DEFAULT_CURRENCY_CODE
-    return code
-
-
 class PrivatBankParser(AbstractParser):
     def parse(self, file_bytes: bytes, encoding: str, delimiter: str) -> ParseResult:
         """Parse PrivatBank CSV file bytes into structured transaction data."""
@@ -84,7 +68,6 @@ class PrivatBankParser(AbstractParser):
         # Resolve column indexes
         date_idx = _resolve_column_index(header, COLUMN_DATE)
         desc_idx = _resolve_column_index(header, COLUMN_DESCRIPTION)
-        cat_idx = _resolve_column_index(header, COLUMN_CATEGORY)
         amount_idx = _resolve_column_index(header, COLUMN_AMOUNT)
         currency_idx = _resolve_column_index(header, COLUMN_CURRENCY)
 
@@ -116,10 +99,23 @@ class PrivatBankParser(AbstractParser):
                 description = row[desc_idx].strip() if desc_idx is not None and desc_idx < len(row) else ""
                 amount = _parse_amount_kopiykas(row[amount_idx])
 
-                # Resolve currency code from currency column
                 currency_code = DEFAULT_CURRENCY_CODE
+                currency_alpha: str | None = None
+                currency_unknown_raw: str | None = None
                 if currency_idx is not None and currency_idx < len(row):
-                    currency_code = _resolve_currency_code(row[currency_idx])
+                    raw_currency = row[currency_idx].strip()
+                    if raw_currency:
+                        info = resolve_currency(raw_currency)
+                        if info is not None:
+                            currency_code = info.numeric_code
+                            currency_alpha = info.alpha_code
+                        else:
+                            currency_code = UNKNOWN_CURRENCY_CODE
+                            currency_unknown_raw = raw_currency.upper()
+                            logger.warning(
+                                "currency_unknown",
+                                extra={"raw_currency": currency_unknown_raw, "parser": "privatbank"},
+                            )
 
                 transactions.append(TransactionData(
                     date=date,
@@ -129,6 +125,8 @@ class PrivatBankParser(AbstractParser):
                     balance=None,  # PrivatBank CSV has no balance column
                     currency_code=currency_code,
                     raw_data=raw_data,
+                    currency_alpha=currency_alpha,
+                    currency_unknown_raw=currency_unknown_raw,
                 ))
             except (IndexError, ValueError, InvalidOperation) as exc:
                 flagged_rows.append(FlaggedRow(

@@ -10,8 +10,14 @@ class TransactionData:
     mcc: int | None
     amount: int  # kopiykas
     balance: int | None  # kopiykas
-    currency_code: int
+    currency_code: int  # ISO 4217 numeric; UNKNOWN_CURRENCY_CODE (0) when unrecognized
     raw_data: dict
+    # Parser → parser_service handoff only (not persisted):
+    # - currency_alpha: set to the ISO alpha-3 when the source row's currency was recognized.
+    # - currency_unknown_raw: set to the raw trimmed/uppercased string when it was NOT recognized.
+    # Mutually exclusive. Both None for rows without a currency column (legacy Monobank).
+    currency_alpha: str | None = None
+    currency_unknown_raw: str | None = None
 
 
 @dataclass

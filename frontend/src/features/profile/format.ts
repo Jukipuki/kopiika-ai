@@ -1,9 +1,39 @@
 import { useTranslations } from "next-intl";
 
-export function formatCurrency(kopiykas: number, locale: string): string {
+const SUPPORTED_CURRENCIES = new Set([
+  "UAH",
+  "USD",
+  "EUR",
+  "GBP",
+  "PLN",
+  "CHF",
+  "JPY",
+  "CZK",
+  "TRY",
+]);
+
+export function formatCurrency(
+  kopiykas: number,
+  locale: string,
+  currency: string = "UAH",
+): string {
+  const normalizedCurrency = currency.toUpperCase();
+  const safeCurrency = SUPPORTED_CURRENCIES.has(normalizedCurrency)
+    ? normalizedCurrency
+    : "UAH";
   return new Intl.NumberFormat(locale === "uk" ? "uk-UA" : "en-US", {
     style: "currency",
-    currency: "UAH",
+    currency: safeCurrency,
+  }).format(kopiykas / 100);
+}
+
+// Render amount without any currency symbol — used when the source currency
+// is unknown and applying a UAH/foreign glyph would mislead the user.
+// Pair with a separate badge showing the raw currency code.
+export function formatAmountOnly(kopiykas: number, locale: string): string {
+  return new Intl.NumberFormat(locale === "uk" ? "uk-UA" : "en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(kopiykas / 100);
 }
 

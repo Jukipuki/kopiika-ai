@@ -4,9 +4,14 @@ import { useTranslations, useLocale } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFlaggedTransactions } from "../hooks/use-flagged-transactions";
-import { formatCurrency } from "../format";
+import { formatAmountOnly, formatCurrency } from "../format";
 
-const KNOWN_REASONS = new Set(["low_confidence", "parse_failure", "llm_unavailable"]);
+const KNOWN_REASONS = new Set([
+  "low_confidence",
+  "parse_failure",
+  "llm_unavailable",
+  "currency_unknown",
+]);
 
 export function UncategorizedTransactions() {
   const t = useTranslations("profile");
@@ -57,15 +62,24 @@ export function UncategorizedTransactions() {
                   )}
                 </span>
                 {txn.uncategorizedReason && (
-                  <span className="text-xs text-muted-foreground italic">
-                    {KNOWN_REASONS.has(txn.uncategorizedReason)
-                      ? t(`uncategorized.reason.${txn.uncategorizedReason}`)
-                      : txn.uncategorizedReason.replace(/_/g, " ")}
+                  <span className="text-xs text-muted-foreground italic flex items-center gap-2">
+                    <span>
+                      {KNOWN_REASONS.has(txn.uncategorizedReason)
+                        ? t(`uncategorized.reason.${txn.uncategorizedReason}`)
+                        : txn.uncategorizedReason.replace(/_/g, " ")}
+                    </span>
+                    {txn.currencyUnknownRaw && (
+                      <span className="font-mono not-italic rounded border border-border px-1.5 py-0 text-[10px] uppercase">
+                        {txn.currencyUnknownRaw}
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
               <span className="text-sm font-semibold tabular-nums">
-                {formatCurrency(txn.amount, locale)}
+                {txn.currencyUnknownRaw
+                  ? formatAmountOnly(txn.amount, locale)
+                  : formatCurrency(txn.amount, locale)}
               </span>
             </div>
           ))}

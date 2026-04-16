@@ -139,3 +139,49 @@ Frontend has to know both codes to render the same error message. Doubles the su
 **Fix shape:** Either (a) add a `processingComplete` short-circuit in `getState()` that returns a new `"completed"` state with neutral styling, or (b) compute the className inline in JSX so `processingComplete` overrides the `"selected"` border class. Option (b) is the smaller change; option (a) is the cleaner long-term fix.
 
 **Surfaced in:** Story 2.8 code review (2026-04-16)
+
+---
+
+### TD-009 — Two parallel `formatCurrency` helpers with different amount semantics [LOW]
+
+**Where:** [frontend/src/lib/format/currency.ts](frontend/src/lib/format/currency.ts), [frontend/src/features/profile/format.ts](frontend/src/features/profile/format.ts)
+
+**Problem:** There are two `formatCurrency` exports. The `lib/format` version takes a unit amount (e.g. `1234.56`) and formats with fixed 2-fraction digits. The `features/profile` version takes **kopiykas** (integer), divides by 100, and relies on Intl's per-currency default fraction digits (JPY → 0, UAH → 2). Story 2.9 added the optional `currency` argument to both in parallel; the implementations now drift in three dimensions: amount units, fraction-digit behaviour, and locale-fallback logic. Callers must know which one to import based on whether their data is already-decimal or kopiykas — an easy regression hazard.
+
+**Why deferred:** Task 9.2 of Story 2.9 explicitly recommended deduplicating, but the dev deferred because consolidation requires auditing every call site (MonthlyComparison, CategoryBreakdown, UncategorizedTransactions, upload summary, etc.) and deciding on a single kopiykas-vs-units API. The tactical fix (just adding the `currency` arg to both) kept the story focused.
+
+**Fix shape:**
+1. Decide on a canonical API in `@/lib/format/currency` — likely `formatKopiykas(amount: number, locale, currency)` and delete the profile-local copy.
+2. Grep `formatCurrency(` across `frontend/src` and migrate each call site, being careful about the `amount / 100` difference.
+3. Align fraction-digit behaviour — the lib version hardcodes 2, the profile version uses Intl defaults; choose one (Intl defaults are more correct for JPY).
+4. Drop `SUPPORTED_CURRENCIES` duplication — export the set from a single module.
+
+**Surfaced in:** Story 2.9 code review (2026-04-16)
+
+---
+
+### TD-010 — `CurrencyInfo.symbol` field is populated but never consumed [LOW]
+
+**Where:** [backend/app/services/currency.py:16](backend/app/services/currency.py#L16)
+
+**Problem:** `CurrencyInfo` defines a `symbol: str` field and every entry in `CURRENCY_MAP` populates it ("₴", "$", "CHF", etc.). No backend or API code reads it — the frontend uses `Intl.NumberFormat` to derive symbols, which is the correct source. The field sits there as dead metadata.
+
+**Why deferred:** Not a functional issue, and removing it is a (tiny) API change to `CurrencyInfo` that could surface if anyone imported the symbol elsewhere. Cheap to clean up opportunistically.
+
+**Fix shape:** Either (a) delete the `symbol` field and drop the third constructor arg from all nine entries, or (b) expose it via a new API endpoint if there's a real consumer need. Option (a) is the default — YAGNI wins here.
+
+**Surfaced in:** Story 2.9 code review (2026-04-16)
+
+---
+
+### TD-011 — `extract_raw_currency` hardcodes CSV header keys [LOW]
+
+**Where:** [backend/app/services/currency.py:54-65](backend/app/services/currency.py#L54-L65)
+
+**Problem:** `extract_raw_currency(raw_data)` only checks `("Валюта", "Currency")` when recovering the raw alpha from a parsed row's `raw_data`. Any future bank parser whose CSV uses a different header (e.g. PrivatBank Lite, a different European bank, a localized variant) will silently return `None` even when `raw_data` contains the value under another key — the API's `currencyUnknownRaw` field will be blank and the user will see a flagged row with no indication of which currency failed.
+
+**Why deferred:** Only two parsers (Monobank, PrivatBank) and they share "Валюта". Generic parser uses heuristic column detection but its keyword list includes both "Валюта" and "Currency" already. Real risk only when bank #4 lands.
+
+**Fix shape:** Either (a) have parsers stamp a canonical key into `raw_data` (e.g. `raw_data["_currency_raw"] = raw_currency`) so the helper just reads one key, or (b) extend `extract_raw_currency` to accept the parser's header-alias list. Option (a) is cleaner but requires touching all three parser implementations; option (b) is more surgical.
+
+**Surfaced in:** Story 2.9 code review (2026-04-16)

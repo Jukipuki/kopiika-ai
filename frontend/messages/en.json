@@ -316,7 +316,8 @@
       "reason": {
         "low_confidence": "Our AI wasn't confident enough to categorize this one",
         "parse_failure": "Our AI gave an unexpected response for this transaction",
-        "llm_unavailable": "Our AI was temporarily unavailable when processing this"
+        "llm_unavailable": "Our AI was temporarily unavailable when processing this",
+        "currency_unknown": "Unrecognized currency"
       }
     }
   },

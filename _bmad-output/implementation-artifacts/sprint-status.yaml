@@ -63,7 +63,7 @@ development_status:
   2-6-real-time-processing-progress-via-sse: done
   2-7-multiple-statement-uploads-cumulative-history: done
   2-8-upload-completion-ux-summary: done
-  2-9-expand-currency-map: backlog
+  2-9-expand-currency-map: done
   epic-2-retrospective: optional
 
   # Epic 3: AI-Powered Financial Insights & Teaching Feed

@@ -728,3 +728,93 @@ class TestMonobankParserEdgeCases:
         assert result.parsed_count == 0
         assert result.flagged_count == 0
         assert result.total_rows == 0
+
+
+# ==================== Story 2.9: MonobankParser — Currency Resolution ====================
+
+
+class TestMonobankParserCurrency:
+    """Test Monobank parser reads the `Валюта` column and flags unknown currencies."""
+
+    def test_modern_multi_currency_recognized(self):
+        content = (FIXTURES_DIR / "monobank_multi_currency.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        assert result.parsed_count == 7
+        assert result.flagged_count == 0
+
+        # Expected mapping by row index: UAH, USD, CHF, JPY, CZK, TRY, (unknown XYZ)
+        expected = [
+            ("UAH", 980),
+            ("USD", 840),
+            ("CHF", 756),
+            ("JPY", 392),
+            ("CZK", 203),
+            ("TRY", 949),
+        ]
+        for idx, (alpha, numeric) in enumerate(expected):
+            txn = result.transactions[idx]
+            assert txn.currency_code == numeric, f"row {idx}: expected {numeric}, got {txn.currency_code}"
+            assert txn.currency_alpha == alpha, f"row {idx}: expected {alpha}, got {txn.currency_alpha}"
+            assert txn.currency_unknown_raw is None, f"row {idx}: unexpected unknown_raw"
+
+    def test_unknown_currency_flagged(self, caplog):
+        import logging as _logging
+
+        content = (FIXTURES_DIR / "monobank_multi_currency.csv").read_bytes()
+        parser = MonobankParser()
+
+        # app logger has propagate=False — enable it so caplog (attached to root) sees records.
+        app_logger = _logging.getLogger("app")
+        app_logger.propagate = True
+        try:
+            with caplog.at_level(_logging.WARNING, logger="app.agents.ingestion.parsers.monobank"):
+                result = parser.parse(content, encoding="utf-8", delimiter=",")
+        finally:
+            app_logger.propagate = False
+
+        # Last row is XYZ — currency_code should be the unknown sentinel
+        unknown_txn = result.transactions[-1]
+        assert unknown_txn.currency_code == 0
+        assert unknown_txn.currency_alpha is None
+        assert unknown_txn.currency_unknown_raw == "XYZ"
+
+        # A warning log must have been emitted with structured extras
+        currency_warnings = [r for r in caplog.records if r.message == "currency_unknown"]
+        assert len(currency_warnings) >= 1
+        record = currency_warnings[-1]
+        assert getattr(record, "raw_currency", None) == "XYZ"
+        assert getattr(record, "parser", None) == "monobank"
+
+    def test_legacy_format_unchanged_regression(self):
+        """Legacy 5-col Monobank has no Валюта column — must still default to UAH (AC #5)."""
+        content = (FIXTURES_DIR / "monobank_legacy.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="windows-1251", delimiter=";")
+
+        assert result.parsed_count > 0
+        for txn in result.transactions:
+            assert txn.currency_code == 980
+            assert txn.currency_alpha is None
+            assert txn.currency_unknown_raw is None
+
+    def test_modern_multi_currency_column_parsed(self):
+        """Original modern fixture has one USD row — the parser must now resolve it (was hardcoded to UAH pre-2.9)."""
+        content = (FIXTURES_DIR / "monobank_modern_multi.csv").read_bytes()
+        parser = MonobankParser()
+        result = parser.parse(content, encoding="utf-8", delimiter=",")
+
+        # Row 5 (Amazon.com) has "USD" in the currency column.
+        amazon = next(t for t in result.transactions if "Amazon" in t.description)
+        assert amazon.currency_code == 840
+        assert amazon.currency_alpha == "USD"
+        assert amazon.currency_unknown_raw is None
+
+        # All other rows are UAH.
+        for txn in result.transactions:
+            if "Amazon" in txn.description:
+                continue
+            assert txn.currency_code == 980
+            assert txn.currency_alpha == "UAH"
+            assert txn.currency_unknown_raw is None

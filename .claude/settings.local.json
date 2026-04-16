@@ -326,7 +326,16 @@
       "Bash(pnpm lint *)",
       "Bash(pnpm typecheck *)",
       "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py::TestProcessUploadSummaryPayload tests/test_sse_streaming.py::TestSSESyntheticCompleteFallback -x --tb=short)",
-      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py tests/test_processing_tasks.py -x --tb=short)"
+      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py tests/test_processing_tasks.py -x --tb=short)",
+      "Bash(.venv/bin/alembic heads *)",
+      "Bash(.venv/bin/python -m pytest tests/test_currency_map.py -x -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_monobank_parser.py tests/test_privatbank_parser.py tests/test_generic_parser.py tests/test_flagged_transactions.py tests/test_currency_map.py -x -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py -q)",
+      "Bash(ls test_processing*)",
+      "Bash(.venv/bin/python -m pytest tests/test_currency_map.py tests/test_monobank_parser.py tests/test_privatbank_parser.py tests/test_generic_parser.py tests/test_flagged_transactions.py -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_transactions.py -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py::TestProcessUploadCurrencyUnknownFlag -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_currency_map.py -q)"
     ]
   }
 }

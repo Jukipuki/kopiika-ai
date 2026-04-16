@@ -7,6 +7,7 @@ from pydantic.alias_generators import to_camel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
+from app.services.currency import alpha_for_numeric, extract_raw_currency
 from app.services.transaction_service import get_flagged_transactions_for_user, get_transactions_for_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -22,7 +23,9 @@ class TransactionResponse(BaseModel):
     mcc: Optional[int] = None
     amount: int
     balance: Optional[int] = None
-    currency_code: int
+    currency_code: int  # ISO 4217 numeric (UNKNOWN_CURRENCY_CODE = 0 if unrecognized)
+    currency: Optional[str] = None  # ISO 4217 alpha-3 (e.g., "UAH", "CHF") for known currencies
+    currency_unknown_raw: Optional[str] = None  # Raw alpha from source CSV when unrecognized; None otherwise
     created_at: str
 
 
@@ -44,7 +47,10 @@ class FlaggedTransactionResponse(BaseModel):
     description: str
     amount: int
     category: str
-    uncategorized_reason: Optional[Literal["low_confidence", "parse_failure", "llm_unavailable"]] = None
+    uncategorized_reason: Optional[
+        Literal["low_confidence", "parse_failure", "llm_unavailable", "currency_unknown"]
+    ] = None
+    currency_unknown_raw: Optional[str] = None
 
 
 @router.get("/flagged", response_model=list[FlaggedTransactionResponse])
@@ -63,6 +69,11 @@ async def list_flagged_transactions(
             amount=txn.amount,
             category=txn.category or "uncategorized",
             uncategorized_reason=txn.uncategorized_reason,
+            currency_unknown_raw=(
+                extract_raw_currency(txn.raw_data)
+                if txn.uncategorized_reason == "currency_unknown"
+                else None
+            ),
         )
         for txn in txns
     ]
@@ -93,6 +104,12 @@ async def list_transactions(
             amount=txn.amount,
             balance=txn.balance,
             currency_code=txn.currency_code,
+            currency=alpha_for_numeric(txn.currency_code),
+            currency_unknown_raw=(
+                extract_raw_currency(txn.raw_data)
+                if txn.uncategorized_reason == "currency_unknown"
+                else None
+            ),
             created_at=txn.created_at.isoformat() + "Z",
         )
         for txn in result.items

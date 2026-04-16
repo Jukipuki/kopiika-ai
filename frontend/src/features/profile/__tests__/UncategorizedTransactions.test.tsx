@@ -157,4 +157,123 @@ describe("UncategorizedTransactions", () => {
       screen.getByText("Our AI was temporarily unavailable when processing this")
     ).toBeTruthy();
   });
+
+  // Story 2.9: currency_unknown
+  it("maps currency_unknown reason to localized label", () => {
+    const txn: FlaggedTransaction = {
+      id: "txn-4",
+      uploadId: "upload-1",
+      date: "2026-03-01",
+      description: "Exotic Exchange",
+      amount: -10000,
+      uncategorizedReason: "currency_unknown",
+      currencyUnknownRaw: "XYZ",
+    };
+
+    vi.mocked(useFlaggedTransactions).mockReturnValue({
+      flaggedTransactions: [txn],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<UncategorizedTransactions />);
+
+    expect(screen.getByText("Unrecognized currency")).toBeTruthy();
+  });
+
+  it("renders raw currency badge when currencyUnknownRaw is present", () => {
+    const txn: FlaggedTransaction = {
+      id: "txn-5",
+      uploadId: "upload-1",
+      date: "2026-02-28",
+      description: "Mystery Transaction",
+      amount: -5000,
+      uncategorizedReason: "currency_unknown",
+      currencyUnknownRaw: "XYZ",
+    };
+
+    vi.mocked(useFlaggedTransactions).mockReturnValue({
+      flaggedTransactions: [txn],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<UncategorizedTransactions />);
+
+    expect(screen.getByText("XYZ")).toBeTruthy();
+  });
+
+  it("does not render raw currency badge when currencyUnknownRaw is absent", () => {
+    const txn: FlaggedTransaction = {
+      id: "txn-6",
+      uploadId: "upload-1",
+      date: "2026-02-27",
+      description: "Low Confidence Item",
+      amount: -3000,
+      uncategorizedReason: "low_confidence",
+    };
+
+    vi.mocked(useFlaggedTransactions).mockReturnValue({
+      flaggedTransactions: [txn],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<UncategorizedTransactions />);
+
+    expect(screen.queryByText(/^[A-Z]{3}$/)).toBeNull();
+  });
+
+  it("suppresses currency glyph/code on the amount when currencyUnknownRaw is set", () => {
+    // Would be actively misleading to render "−100,00 ₴" (or "UAH 100.00") next to an "XYZ" badge.
+    const txn: FlaggedTransaction = {
+      id: "txn-7",
+      uploadId: "upload-1",
+      date: "2026-02-20",
+      description: "Exotic Exchange",
+      amount: -10000,
+      uncategorizedReason: "currency_unknown",
+      currencyUnknownRaw: "XYZ",
+    };
+
+    vi.mocked(useFlaggedTransactions).mockReturnValue({
+      flaggedTransactions: [txn],
+      isLoading: false,
+      isError: false,
+    });
+
+    const { container } = render(<UncategorizedTransactions />);
+    const text = container.textContent ?? "";
+
+    // No UAH glyph or alpha code in the rendered amount.
+    expect(text).not.toContain("₴");
+    // The only "UAH" substring should come from the raw-code badge (which is XYZ),
+    // not from formatCurrency's en-US output ("UAH 100.00").
+    expect(text).not.toContain("UAH");
+    // The raw-code badge is still rendered.
+    expect(screen.getByText("XYZ")).toBeTruthy();
+  });
+
+  it("still renders currency glyph/code when the reason is not currency_unknown", () => {
+    const txn: FlaggedTransaction = {
+      id: "txn-8",
+      uploadId: "upload-1",
+      date: "2026-02-15",
+      description: "Low Conf",
+      amount: -5000,
+      uncategorizedReason: "low_confidence",
+    };
+
+    vi.mocked(useFlaggedTransactions).mockReturnValue({
+      flaggedTransactions: [txn],
+      isLoading: false,
+      isError: false,
+    });
+
+    const { container } = render(<UncategorizedTransactions />);
+    const text = container.textContent ?? "";
+
+    // Intl output varies by locale: "₴50,00" (uk-UA) or "UAH 50.00" (en-US).
+    expect(text.includes("₴") || text.includes("UAH")).toBe(true);
+  });
 });
