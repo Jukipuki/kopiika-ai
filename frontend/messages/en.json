@@ -38,6 +38,33 @@
       "successTitle": "Email Verified",
       "successMessage": "Your account has been verified. Redirecting to login..."
     },
+    "forgotPassword": {
+      "title": "Reset your password",
+      "description": "Enter your email and we'll send you a reset code",
+      "emailLabel": "Email",
+      "emailPlaceholder": "you@example.com",
+      "submit": "Send reset code",
+      "submitting": "Sending...",
+      "confirmationTitle": "Check your email",
+      "confirmationMessage": "We've sent a password reset code to your email. It may take a few minutes.",
+      "enterCode": "Enter reset code",
+      "backToLogin": "Back to login",
+      "noCodeReceived": "Didn't receive a code?",
+      "tryAgain": "Try again"
+    },
+    "resetPassword": {
+      "title": "Set a new password",
+      "codeLabel": "Reset code",
+      "codePlaceholder": "6-digit code from email",
+      "newPasswordLabel": "New password",
+      "confirmPasswordLabel": "Confirm new password",
+      "submit": "Update password",
+      "submitting": "Updating...",
+      "successBanner": "Password updated — please log in",
+      "invalidCode": "Reset code is invalid or has expired. Please request a new one.",
+      "backToForgotPassword": "Request a new code",
+      "passwordMismatch": "Passwords do not match"
+    },
     "validation": {
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address",

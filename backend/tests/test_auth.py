@@ -514,3 +514,190 @@ async def test_signup_with_invalid_locale_returns_422(client, mock_cognito_servi
     )
 
     assert response.status_code == 422
+
+
+# ==================== Forgot Password Tests (Story 1.8) ====================
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_registered_email(client, mock_cognito_service):
+    """Forgot password for a registered email returns 200 with generic message."""
+    mock_cognito_service.initiate_forgot_password.return_value = None
+
+    response = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "known@example.com"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "If an account exists, a reset code has been sent"
+    mock_cognito_service.initiate_forgot_password.assert_called_once_with(
+        email="known@example.com"
+    )
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_unknown_email(client, mock_cognito_service):
+    """Unknown email returns the same generic 200 message (no enumeration)."""
+    # Service silently succeeds for UserNotFoundException — simulate by
+    # simply returning None; that's how the service handles unknown emails.
+    mock_cognito_service.initiate_forgot_password.return_value = None
+
+    response = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "nobody@example.com"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "If an account exists, a reset code has been sent"
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_unverified_email(client, mock_cognito_service):
+    """Unverified accounts return the same generic 200 response (no enumeration)."""
+    # Service silently swallows all Cognito errors (NotAuthorizedException for
+    # unverified, UserNotFoundException for unknown, etc.) so the API surface
+    # is indistinguishable across account states.
+    mock_cognito_service.initiate_forgot_password.return_value = None
+
+    response = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "unverified@example.com"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "If an account exists, a reset code has been sent"
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_invalid_email_format(client):
+    """Invalid email format returns 422 validation error."""
+    response = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "not-an-email"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reset_password_success(client, mock_cognito_service):
+    """Valid code + strong password resets successfully."""
+    mock_cognito_service.confirm_forgot_password.return_value = None
+
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "user@example.com",
+            "code": "123456",
+            "newPassword": "BrandNewPass1!",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "Password updated successfully"
+    mock_cognito_service.confirm_forgot_password.assert_called_once_with(
+        email="user@example.com",
+        code="123456",
+        new_password="BrandNewPass1!",
+    )
+
+
+@pytest.mark.asyncio
+async def test_reset_password_invalid_code(client, mock_cognito_service):
+    """Wrong code returns RESET_CODE_INVALID."""
+    mock_cognito_service.confirm_forgot_password.side_effect = AuthenticationError(
+        code="RESET_CODE_INVALID",
+        message="Reset code is invalid. Please request a new one",
+        status_code=400,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "user@example.com",
+            "code": "000000",
+            "newPassword": "BrandNewPass1!",
+        },
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"]["code"] == "RESET_CODE_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_reset_password_expired_code(client, mock_cognito_service):
+    """Expired code returns RESET_CODE_EXPIRED."""
+    mock_cognito_service.confirm_forgot_password.side_effect = AuthenticationError(
+        code="RESET_CODE_EXPIRED",
+        message="Reset code has expired. Please request a new one",
+        status_code=400,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "user@example.com",
+            "code": "654321",
+            "newPassword": "BrandNewPass1!",
+        },
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"]["code"] == "RESET_CODE_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_reset_password_weak_password(client, mock_cognito_service):
+    """Cognito-rejected weak password returns PASSWORD_TOO_WEAK."""
+    mock_cognito_service.confirm_forgot_password.side_effect = AuthenticationError(
+        code="PASSWORD_TOO_WEAK",
+        message="Password does not meet requirements",
+        status_code=422,
+    )
+
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "user@example.com",
+            "code": "123456",
+            "newPassword": "weakpass",
+        },
+    )
+
+    assert response.status_code == 422
+    data = response.json()
+    assert data["error"]["code"] == "PASSWORD_TOO_WEAK"
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_short_code(client):
+    """Codes shorter than 6 chars are rejected at validation layer."""
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "user@example.com",
+            "code": "123",
+            "newPassword": "BrandNewPass1!",
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_short_password(client):
+    """Passwords shorter than 8 chars are rejected at validation layer."""
+    response = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "user@example.com",
+            "code": "123456",
+            "newPassword": "short",
+        },
+    )
+    assert response.status_code == 422

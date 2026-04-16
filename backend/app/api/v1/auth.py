@@ -122,6 +122,20 @@ class UpdateProfileRequest(BaseModel):
         return v
 
 
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    email: EmailStr
+
+
+class ConfirmForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8)
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
     body: LoginRequest,
@@ -295,3 +309,45 @@ async def resend_verification(
 ) -> MessageResponse:
     cognito.resend_confirmation_code(email=body.email)
     return MessageResponse(message="Verification code sent")
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    if not domain:
+        return "***"
+    head = local[0] if local else "*"
+    return f"{head}***@{domain}"
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    cognito: Annotated[CognitoService, Depends(get_cognito_service)],
+) -> MessageResponse:
+    # Always return the same generic success message to prevent email
+    # enumeration. CognitoService silences ALL Cognito errors internally so
+    # registered, unverified, disabled, and unknown emails are indistinguishable
+    # in the response.
+    cognito.initiate_forgot_password(email=body.email)
+    logger.info(
+        "Forgot password requested",
+        extra={"email_masked": _mask_email(body.email), "action": "forgot_password_initiated"},
+    )
+    return MessageResponse(
+        message="If an account exists, a reset code has been sent"
+    )
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(
+    body: ConfirmForgotPasswordRequest,
+    cognito: Annotated[CognitoService, Depends(get_cognito_service)],
+) -> MessageResponse:
+    cognito.confirm_forgot_password(
+        email=body.email, code=body.code, new_password=body.new_password
+    )
+    logger.info(
+        "Password reset completed",
+        extra={"email_masked": _mask_email(body.email), "action": "password_reset_success"},
+    )
+    return MessageResponse(message="Password updated successfully")

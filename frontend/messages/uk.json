@@ -38,6 +38,33 @@
       "successTitle": "Пошту підтверджено",
       "successMessage": "Ваш обліковий запис підтверджено. Перенаправляємо на сторінку входу..."
     },
+    "forgotPassword": {
+      "title": "Відновлення паролю",
+      "description": "Введіть email і ми надішлемо код для відновлення",
+      "emailLabel": "Електронна пошта",
+      "emailPlaceholder": "ви@example.com",
+      "submit": "Надіслати код",
+      "submitting": "Надсилаємо...",
+      "confirmationTitle": "Перевірте пошту",
+      "confirmationMessage": "Ми надіслали код відновлення на вашу пошту. Це може зайняти кілька хвилин.",
+      "enterCode": "Ввести код",
+      "backToLogin": "Повернутись до входу",
+      "noCodeReceived": "Не отримали код?",
+      "tryAgain": "Спробувати знову"
+    },
+    "resetPassword": {
+      "title": "Встановіть новий пароль",
+      "codeLabel": "Код відновлення",
+      "codePlaceholder": "6-значний код з листа",
+      "newPasswordLabel": "Новий пароль",
+      "confirmPasswordLabel": "Підтвердіть новий пароль",
+      "submit": "Оновити пароль",
+      "submitting": "Оновлюємо...",
+      "successBanner": "Пароль оновлено — увійдіть",
+      "invalidCode": "Код недійсний або закінчився. Будь ласка, запитайте новий.",
+      "backToForgotPassword": "Запросити новий код",
+      "passwordMismatch": "Паролі не збігаються"
+    },
     "validation": {
       "emailRequired": "Електронна пошта обов'язкова",
       "emailInvalid": "Введіть дійсну адресу електронної пошти",

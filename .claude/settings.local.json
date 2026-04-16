@@ -307,7 +307,11 @@
       "Bash(sed -n '480,495p' /Users/ohumennyi/Personal/kopiika-ai/backend/app/tasks/processing_tasks.py)",
       "Bash(python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -q)",
       "Bash(backend/.venv/bin/python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -q)",
-      "Bash(backend/.venv/bin/python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -v)"
+      "Bash(backend/.venv/bin/python -m pytest backend/tests/core/ backend/tests/agents/test_categorization.py::test_categorization_node_logs_contain_job_id backend/tests/agents/test_categorization.py::test_categorization_node_logs_do_not_contain_financial_data --tb=short -v)",
+      "Bash(grep -E \"\\\\.\\(py|ts\\)$\")",
+      "Bash(.venv/bin/pytest tests/test_auth.py -x -q)",
+      "Bash(.venv/bin/pytest -x -q)",
+      "Bash(ls /Users/ohumennyi/Personal/kopiika-ai/frontend/next.config.*)"
     ]
   }
 }

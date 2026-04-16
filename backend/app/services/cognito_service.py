@@ -180,6 +180,83 @@ class CognitoService:
             error_code = e.response["Error"]["Code"]
             self._handle_cognito_error(error_code)
 
+    def initiate_forgot_password(self, email: str) -> None:
+        """Initiate a Cognito password reset for the given email.
+
+        Silences ALL Cognito errors (unknown user, unverified user, disabled,
+        etc.) so the caller cannot enumerate addresses or account states. The
+        caller always sees the same generic success response.
+        """
+        try:
+            self._client.forgot_password(
+                ClientId=self._client_id,
+                Username=email,
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+            logger.info(
+                "Cognito forgot_password silenced: %s - %s",
+                error_code,
+                error_message,
+            )
+
+    def confirm_forgot_password(
+        self, email: str, code: str, new_password: str
+    ) -> None:
+        try:
+            self._client.confirm_forgot_password(
+                ClientId=self._client_id,
+                Username=email,
+                ConfirmationCode=code,
+                Password=new_password,
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            self._handle_forgot_password_error(error_code)
+
+    def _handle_forgot_password_error(self, error_code: str) -> NoReturn:
+        error_map: dict[str, tuple[str, str, int]] = {
+            "CodeMismatchException": (
+                "RESET_CODE_INVALID",
+                "Reset code is invalid. Please request a new one",
+                400,
+            ),
+            "ExpiredCodeException": (
+                "RESET_CODE_EXPIRED",
+                "Reset code has expired. Please request a new one",
+                400,
+            ),
+            "InvalidPasswordException": (
+                "PASSWORD_TOO_WEAK",
+                "Password does not meet requirements",
+                422,
+            ),
+            "LimitExceededException": (
+                "RATE_LIMITED",
+                "Too many attempts. Please try again later",
+                429,
+            ),
+            "UserNotFoundException": (
+                "RESET_CODE_INVALID",
+                "Reset code is invalid. Please request a new one",
+                400,
+            ),
+        }
+
+        if error_code in error_map:
+            code, message, status_code = error_map[error_code]
+            raise AuthenticationError(
+                code=code, message=message, status_code=status_code
+            )
+
+        logger.error("Unhandled Cognito forgot-password error: %s", error_code)
+        raise AuthenticationError(
+            code="AUTH_ERROR",
+            message="An unexpected error occurred while resetting your password",
+            status_code=500,
+        )
+
     def _handle_cognito_error(self, error_code: str) -> NoReturn:
         error_map: dict[str, tuple[str, str, int]] = {
             "UsernameExistsException": (
