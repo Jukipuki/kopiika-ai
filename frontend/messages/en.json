@@ -177,25 +177,27 @@
     "processing": {
       "ariaLabel": "Processing your bank statement",
       "stages": {
-        "readingTransactions": "Reading your transactions...",
-        "categorizingSpending": "Categorizing your spending...",
-        "detectingPatterns": "Detecting patterns...",
-        "scoringHealth": "Scoring your financial health...",
-        "generatingInsights": "Generating personalized insights..."
+        "ingestion": "Reading your transactions...",
+        "categorization": "Categorizing your spending...",
+        "patternDetection": "Detecting patterns...",
+        "triage": "Prioritizing what matters...",
+        "education": "Generating personalized insights..."
       },
-      "education": {
-        "readingTransactions": "We're securely reading each transaction from your statement",
-        "categorizingSpending": "Organizing transactions into categories like food, transport, entertainment",
-        "detectingPatterns": "Looking for recurring charges and spending trends",
-        "scoringHealth": "Calculating your financial health based on spending habits",
-        "generatingInsights": "Creating personalized tips to help you save more"
-      },
+      "fallbackMessage": "Processing...",
       "errorMessage": "We couldn't process this file. Please try again.",
       "circuitBreakerMessage": "Processing is temporarily unavailable. Please try again in a few minutes.",
       "retryingMessage": "Retrying... attempt {retryCount} of {maxRetries}",
       "resumingMessage": "Resuming from last checkpoint...",
       "retry": "Try again",
       "complete": "Processing complete!"
+    },
+    "summary": {
+      "title": "Your statement is ready",
+      "bankDetected": "{bankName} statement detected",
+      "transactionCount": "{count, plural, one {# transaction} other {# transactions}} analyzed",
+      "dateRange": "{start} – {end}",
+      "insightCount": "{count, plural, one {# insight card} other {# insight cards}} generated",
+      "viewInsights": "View Insights"
     }
   },
   "settings": {

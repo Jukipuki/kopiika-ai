@@ -6,23 +6,26 @@ import { Button } from "@/components/ui/button";
 import type { JobStatusState } from "../types";
 
 const STAGES = [
-  "readingTransactions",
-  "categorizingSpending",
-  "detectingPatterns",
-  "scoringHealth",
-  "generatingInsights",
+  "ingestion",
+  "categorization",
+  "patternDetection",
+  "triage",
+  "education",
 ] as const;
 
-// Map backend step values to frontend stage indices
+// Map backend step values to frontend stage indices.
+// Pattern Detection (idx 2) and Triage (idx 3) are Phase-1.5 placeholders; the
+// backend currently jumps from `categorization` straight to `profile`/`health-score`.
+// We intentionally route those backend steps to the triage slot so the visual
+// advances past the placeholder stages and they render as "done".
 function getActiveStageIndex(step: string | null, progress: number): number {
   if (!step) return 0;
-  if (step === "ingestion" && progress <= 10) return 0;
-  if (step === "ingestion" && progress <= 30) return 0;
-  // Future Epic 3 stages
+  if (step === "ingestion") return 0;
   if (step === "categorization") return 1;
-  if (step === "patterns") return 2;
-  if (step === "scoring") return 3;
-  if (step === "insights") return 4;
+  if (step === "patterns" || step === "pattern_detection") return 2;
+  if (step === "triage") return 3;
+  if (step === "profile" || step === "health-score") return 3;
+  if (step === "education" || step === "insights") return 4;
   if (step === "done") return STAGES.length;
   // Default: map progress percentage to stages
   if (progress >= 100) return STAGES.length;
@@ -37,6 +40,7 @@ interface ProcessingPipelineProps {
   status: JobStatusState["status"];
   step: string | null;
   progress: number;
+  message: string | null;
   error: JobStatusState["error"];
   isRetryable?: boolean;
   retryCount?: number;
@@ -48,6 +52,7 @@ export default function ProcessingPipeline({
   status,
   step,
   progress,
+  message,
   error,
   isRetryable = true,
   retryCount = 0,
@@ -81,6 +86,7 @@ export default function ProcessingPipeline({
           const isActive = isProcessing && index === activeIndex;
           const isDone = isCompleted || index < activeIndex;
           const isPending = !isDone && !isActive;
+          const activeMessage = message ?? t("fallbackMessage");
 
           return (
             <li key={stageKey} className="flex items-start gap-3">
@@ -112,7 +118,7 @@ export default function ProcessingPipeline({
                 </span>
                 {isActive && (
                   <span className="mt-0.5 text-xs text-muted-foreground motion-safe:animate-pulse">
-                    {t(`education.${stageKey}`)}
+                    {activeMessage}
                   </span>
                 )}
               </div>

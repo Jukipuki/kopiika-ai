@@ -825,3 +825,136 @@ class TestProcessUploadPerformance:
 
         job = _get_job(sync_engine, job_id)
         assert job.status == "completed"
+
+
+# ──────── Story 2.8: Upload Completion UX & Summary ────────
+
+
+class TestProcessUploadSummaryPayload:
+    """Story 2.8 — job-complete payload and result_data include bank/summary fields."""
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_result_data_contains_summary_fields(
+        self, mock_get_session, mock_boto_client, mock_publish, sync_engine
+    ):
+        """After successful processing, job.result_data carries summary fields for fallback."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        job = _get_job(sync_engine, job_id)
+        assert job.status == "completed"
+        assert job.result_data is not None
+        assert job.result_data["bank_name"] == "Monobank"
+        assert job.result_data["date_range_start"] == "2024-01-01"
+        assert job.result_data["date_range_end"] == "2024-01-02"
+        assert "insight_count" in job.result_data
+        assert "new_transactions" in job.result_data
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_job_complete_payload_has_bank_name_and_date_range(
+        self, mock_get_session, mock_boto_client, mock_publish, sync_engine
+    ):
+        """Published job-complete SSE payload includes bankName, transactionCount, dateRange, totalInsights."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        complete_calls = [
+            c for c in mock_publish.call_args_list
+            if c.args[1].get("event") == "job-complete"
+        ]
+        assert len(complete_calls) == 1
+        payload = complete_calls[0].args[1]
+
+        assert payload["bankName"] == "Monobank"
+        assert payload["transactionCount"] == 2
+        assert payload["dateRange"] == {"start": "2024-01-01", "end": "2024-01-02"}
+        assert "totalInsights" in payload
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.sync_parse_and_store_transactions")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_job_complete_payload_has_null_date_range_when_no_transactions(
+        self, mock_get_session, mock_boto_client, mock_parse, mock_publish, sync_engine
+    ):
+        """When no transactions are persisted, dateRange is None and no crash occurs."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        # Simulate parser that persists nothing (e.g., all flagged/duplicates)
+        class _EmptyResult:
+            total_rows = 0
+            parsed_count = 0
+            flagged_count = 0
+            persisted_count = 0
+            duplicates_skipped = 0
+        mock_parse.return_value = _EmptyResult()
+
+        from app.tasks.processing_tasks import process_upload
+        process_upload(str(job_id))
+
+        complete_calls = [
+            c for c in mock_publish.call_args_list
+            if c.args[1].get("event") == "job-complete"
+        ]
+        assert len(complete_calls) == 1
+        payload = complete_calls[0].args[1]
+
+        assert payload["dateRange"] is None
+        # bankName still populated from detected_format
+        assert payload["bankName"] == "Monobank"
+
+    @patch("app.tasks.processing_tasks.publish_job_progress")
+    @patch("app.tasks.processing_tasks.boto3.client")
+    @patch("app.tasks.processing_tasks.get_sync_session")
+    def test_unknown_bank_format_emits_null_bank_name(
+        self, mock_get_session, mock_boto_client, mock_publish, sync_engine
+    ):
+        """When detected_format is outside BANK_DISPLAY_NAMES, bankName is None (frontend falls back)."""
+        user_id, upload_id, job_id = _seed_data(sync_engine)
+
+        # Change upload to a format not in BANK_DISPLAY_NAMES but still parseable as monobank CSV
+        with Session(sync_engine) as s:
+            upload = s.get(Upload, upload_id)
+            upload.detected_format = "some_new_bank"
+            s.add(upload)
+            s.commit()
+
+        mock_get_session.side_effect = _mock_sync_session_cm(sync_engine)
+
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": io.BytesIO(MONOBANK_CSV)}
+        mock_boto_client.return_value = mock_s3
+
+        from app.tasks.processing_tasks import process_upload
+        # format detector will still recognize monobank headers but we test summary uses stored detected_format
+        process_upload(str(job_id))
+
+        complete_calls = [
+            c for c in mock_publish.call_args_list
+            if c.args[1].get("event") == "job-complete"
+        ]
+        assert len(complete_calls) == 1
+        assert complete_calls[0].args[1]["bankName"] is None

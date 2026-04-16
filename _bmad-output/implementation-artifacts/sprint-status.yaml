@@ -62,7 +62,7 @@ development_status:
   2-5-async-pipeline-processing-with-celery: done
   2-6-real-time-processing-progress-via-sse: done
   2-7-multiple-statement-uploads-cumulative-history: done
-  2-8-upload-completion-ux-summary: backlog
+  2-8-upload-completion-ux-summary: done
   2-9-expand-currency-map: backlog
   epic-2-retrospective: optional
 

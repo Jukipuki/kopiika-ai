@@ -107,3 +107,35 @@ Frontend has to know both codes to render the same error message. Doubles the su
 **Fix shape:** Replace the `<div>{"\u2709\uFE0F"}</div>` with `<Mail className="h-10 w-10 ..." aria-hidden />` from `lucide-react`. Match sizing/color to the surrounding design.
 
 **Surfaced in:** Story 1.8 code review (2026-04-16)
+
+---
+
+### TD-007 — Resume path may double-count insight cards [LOW]
+
+**Where:** [backend/app/tasks/processing_tasks.py:629-643](backend/app/tasks/processing_tasks.py#L629-L643), [processing_tasks.py:680-681](backend/app/tasks/processing_tasks.py#L680-L681)
+
+**Problem:** When `resume_upload` re-runs the education agent for a previously-failed job, it appends every returned insight card to the DB without dedup, then sets `insight_count = prior_insight_count + len(insight_cards)`. If the original run had already persisted N insights and crashed, the resume path will produce another N (or more) duplicate Insight rows AND surface the inflated count in the user-facing summary card (Story 2.8 made this number user-visible — previously it was internal).
+
+**Why deferred:** Pre-existing behaviour from the resume design; fixing it requires either (a) clearing prior `Insight` rows for the upload before resume, or (b) deduping on `(upload_id, headline, key_metric)` in the loop. Either is a behavioural change to the resume contract that warrants its own story.
+
+**Fix shape:**
+1. Decide policy — wipe-and-replay vs. dedup-and-append.
+2. If wipe-and-replay: `session.exec(delete(Insight).where(Insight.upload_id == upload_id))` at the top of the resume insight loop, then count `len(insight_cards)` (no `prior_insight_count` arithmetic).
+3. If dedup-and-append: build a set of existing `(headline, key_metric)` tuples for this upload, skip cards whose key already exists, and recompute `insight_count` from the post-commit DB count.
+4. Either way, drop the `prior_insight_count + len(insight_cards)` shortcut in favor of `select(func.count()).where(Insight.upload_id == upload_id)`.
+
+**Surfaced in:** Story 2.8 code review (2026-04-16)
+
+---
+
+### TD-008 — UploadDropzone outer container keeps "selected" styling under the completion summary card [LOW]
+
+**Where:** [frontend/src/features/upload/components/UploadDropzone.tsx:188-194](frontend/src/features/upload/components/UploadDropzone.tsx#L188-L194)
+
+**Problem:** When `processingComplete === true`, `selectedFile` is still set so `getState()` returns `"selected"` and the dropzone container applies `border-primary/30 bg-primary/5` styling around the celebration UploadSummaryCard. Visually the celebration sits inside a "file is staged for upload" frame instead of a clean completion frame. Functional behaviour (clicks on the card stop-propagating, summary card renders correctly) is fine; this is purely a visual polish item.
+
+**Why deferred:** Touching the state machine inside `getState()` to add a `"completed"` state risks side effects on the file picker (cursor-pointer + onClick), drag/drop handlers, and aria styling — all out of scope for a visual polish.
+
+**Fix shape:** Either (a) add a `processingComplete` short-circuit in `getState()` that returns a new `"completed"` state with neutral styling, or (b) compute the className inline in JSX so `processingComplete` overrides the `"selected"` border class. Option (b) is the smaller change; option (a) is the cleaner long-term fix.
+
+**Surfaced in:** Story 2.8 code review (2026-04-16)

@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { Upload, FileUp, AlertCircle, CheckCircle2, History } from "lucide-react";
-import { toast } from "sonner";
+import { Upload, FileUp, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Link, useRouter } from "@/i18n/navigation";
 import { useUpload } from "../hooks/use-upload";
 import { useJobStatus } from "../hooks/use-job-status";
 import { useRetryJob } from "../hooks/use-retry-job";
 import UploadProgress from "./UploadProgress";
+import UploadSummaryCard from "./UploadSummaryCard";
 import FileFormatGuide from "./FileFormatGuide";
 import type { UploadState, UploadResponse } from "../types";
 
@@ -49,8 +48,7 @@ const FORMAT_LABEL_MAP: Record<string, string> = {
 
 export default function UploadDropzone() {
   const t = useTranslations("upload");
-  const router = useRouter();
-  const { upload, isUploading, error, clearError, formatResult } = useUpload();
+  const { upload, isUploading, error, clearError } = useUpload();
   const { retryJob, isRetrying } = useRetryJob();
   const [dragState, setDragState] = useState<UploadState>("idle");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -65,11 +63,12 @@ export default function UploadDropzone() {
   const processingComplete = jobStatus.status === "completed";
   const processingFailed = jobStatus.status === "failed";
 
-  useEffect(() => {
-    if (activeJobId && lastUploadResult) {
-      router.push(`/feed?jobId=${activeJobId}`);
-    }
-  }, [activeJobId, lastUploadResult, router]);
+  const handleUploadAnother = useCallback(() => {
+    setActiveJobId(null);
+    setSelectedFile(null);
+    setLastUploadResult(null);
+    clearError();
+  }, [clearError]);
 
   const getState = (): UploadState => {
     if (error) return "error";
@@ -167,10 +166,11 @@ export default function UploadDropzone() {
   // Use i18n keys for suggestions based on error code (not raw server strings)
   const suggestionKeys = error ? (ERROR_SUGGESTION_MAP[error.code] || []) : [];
 
-  // Format detection label
-  const formatLabelKey = lastUploadResult?.detectedFormat
-    ? FORMAT_LABEL_MAP[lastUploadResult.detectedFormat]
+  // Format detection fallback when backend doesn't supply bankName (unknown formats)
+  const formatFallbackKey = lastUploadResult?.detectedFormat
+    ? FORMAT_LABEL_MAP[lastUploadResult.detectedFormat] ?? null
     : null;
+  const formatFallbackLabel = formatFallbackKey ? t(formatFallbackKey) : null;
 
   return (
     <Card className="mx-auto w-full max-w-[600px]">
@@ -263,48 +263,23 @@ export default function UploadDropzone() {
             </div>
           )}
 
-          {processingComplete && (
-            <div className="flex flex-col items-center gap-3 text-center">
-              <CheckCircle2 className="h-10 w-10 text-green-500" />
-              <p className="text-sm font-medium text-foreground">{t("uploadSuccess")}</p>
-              {jobStatus.result && (
-                <p className="text-xs text-muted-foreground">
-                  {t("completionSummary", {
-                    newCount: jobStatus.result.newTransactions ?? 0,
-                    skippedCount: jobStatus.result.duplicatesSkipped ?? 0,
-                  })}
-                </p>
-              )}
-              {formatLabelKey && (
-                <p className="text-xs text-muted-foreground transition-opacity duration-250">
-                  <CheckCircle2 className="mr-1 inline h-3 w-3 text-green-500" />
-                  {t(formatLabelKey)}
-                </p>
-              )}
-              <div className="flex items-center gap-3 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveJobId(null);
-                    setSelectedFile(null);
-                    setLastUploadResult(null);
-                    clearError();
-                  }}
-                  className="min-h-[44px]"
-                >
-                  {t("uploadAnother")}
-                </Button>
-                <Link
-                  href="/history"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <History className="h-3.5 w-3.5" />
-                  {t("viewHistory")}
-                </Link>
-              </div>
+          {processingComplete && jobStatus.result && (
+            <div
+              className="w-full"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              role="presentation"
+            >
+              <UploadSummaryCard
+                bankName={jobStatus.result.bankName ?? null}
+                transactionCount={jobStatus.result.transactionCount ?? jobStatus.result.newTransactions ?? 0}
+                dateRange={jobStatus.result.dateRange ?? null}
+                totalInsights={jobStatus.result.totalInsights}
+                duplicatesSkipped={jobStatus.result.duplicatesSkipped ?? 0}
+                newTransactions={jobStatus.result.newTransactions ?? 0}
+                fallbackBankLabel={formatFallbackLabel}
+                onUploadAnother={handleUploadAnother}
+              />
             </div>
           )}
 

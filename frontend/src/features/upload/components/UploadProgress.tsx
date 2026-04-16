@@ -35,6 +35,7 @@ export default function UploadProgress({ jobStatus, onRetry, isRetryable, retryI
         status={jobStatus.status}
         step={jobStatus.step}
         progress={jobStatus.progress}
+        message={jobStatus.message}
         error={jobStatus.error}
         onRetry={onRetry}
         isRetryable={isRetryable ?? jobStatus.isRetryable}

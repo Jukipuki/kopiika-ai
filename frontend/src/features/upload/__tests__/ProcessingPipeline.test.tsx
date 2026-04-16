@@ -11,12 +11,13 @@ vi.mock("next-intl", () => ({
 }));
 
 describe("ProcessingPipeline", () => {
-  it("renders all 5 stages (8.3)", () => {
+  it("renders all 5 canonical stages (Story 2.8)", () => {
     render(
       <ProcessingPipeline
         status="processing"
         step="ingestion"
         progress={10}
+        message={null}
         error={null}
       />,
     );
@@ -24,24 +25,38 @@ describe("ProcessingPipeline", () => {
     expect(screen.getByText("Reading your transactions...")).toBeInTheDocument();
     expect(screen.getByText("Categorizing your spending...")).toBeInTheDocument();
     expect(screen.getByText("Detecting patterns...")).toBeInTheDocument();
-    expect(screen.getByText("Scoring your financial health...")).toBeInTheDocument();
+    expect(screen.getByText("Prioritizing what matters...")).toBeInTheDocument();
     expect(screen.getByText("Generating personalized insights...")).toBeInTheDocument();
   });
 
-  it("shows active stage with educational content", () => {
+  it("renders backend-driven message under the active stage (Story 2.8)", () => {
     render(
       <ProcessingPipeline
         status="processing"
         step="ingestion"
         progress={10}
+        message="Reading transactions..."
         error={null}
       />,
     );
 
-    // First stage active → shows educational content
     expect(
-      screen.getByText("We're securely reading each transaction from your statement"),
+      screen.getByText("Reading transactions..."),
     ).toBeInTheDocument();
+  });
+
+  it("falls back to localized fallbackMessage when message is null (Story 2.8)", () => {
+    render(
+      <ProcessingPipeline
+        status="processing"
+        step="ingestion"
+        progress={10}
+        message={null}
+        error={null}
+      />,
+    );
+
+    expect(screen.getByText("Processing...")).toBeInTheDocument();
   });
 
   it("shows completed state with checkmark", () => {
@@ -50,6 +65,7 @@ describe("ProcessingPipeline", () => {
         status="completed"
         step={null}
         progress={100}
+        message={null}
         error={null}
       />,
     );
@@ -64,6 +80,7 @@ describe("ProcessingPipeline", () => {
         status="failed"
         step={null}
         progress={0}
+        message={null}
         error={{ code: "LLM_ERROR", message: "Failed" }}
         onRetry={onRetry}
       />,
@@ -86,6 +103,7 @@ describe("ProcessingPipeline", () => {
         status="processing"
         step="ingestion"
         progress={10}
+        message={null}
         error={null}
       />,
     );
@@ -103,6 +121,7 @@ describe("ProcessingPipeline", () => {
         status="failed"
         step={null}
         progress={0}
+        message={null}
         error={{ code: "LLM_ERROR", message: "Failed" }}
         onRetry={onRetry}
         isRetryable={false}
@@ -118,6 +137,7 @@ describe("ProcessingPipeline", () => {
         status="failed"
         step={null}
         progress={0}
+        message={null}
         error={{ code: "SERVICE_UNAVAILABLE", message: "Circuit open" }}
       />,
     );
@@ -133,6 +153,7 @@ describe("ProcessingPipeline", () => {
         status="retrying"
         step="categorization"
         progress={40}
+        message={null}
         error={null}
         retryCount={2}
       />,
@@ -147,11 +168,30 @@ describe("ProcessingPipeline", () => {
         status="processing"
         step="ingestion"
         progress={10}
+        message={null}
         error={null}
       />,
     );
 
     const liveRegion = container.querySelector('[aria-live="polite"]');
     expect(liveRegion).toBeInTheDocument();
+  });
+
+  it("advances past pattern-detection/triage placeholders when backend skips them (Story 2.8 Phase 1.5)", () => {
+    // When backend jumps from `categorization` to `profile`/`health-score`,
+    // pattern-detection and triage should still render as done (checkmark).
+    render(
+      <ProcessingPipeline
+        status="processing"
+        step="profile"
+        progress={90}
+        message="Building your financial profile..."
+        error={null}
+      />,
+    );
+
+    // active index for "profile" is 3 (triage slot) → stages 0,1,2 are done
+    const progressbar = screen.getByRole("progressbar");
+    expect(progressbar).toHaveAttribute("aria-valuenow", "4");
   });
 });

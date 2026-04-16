@@ -370,6 +370,10 @@ class TestCeleryTaskPublishesProgress:
 
         assert complete_calls[0][0][1]["status"] == "completed"
         assert complete_calls[0][0][1]["totalInsights"] == len(insight_calls)
+        # Story 2.8: enriched job-complete payload
+        assert "bankName" in complete_calls[0][0][1]
+        assert "transactionCount" in complete_calls[0][0][1]
+        assert "dateRange" in complete_calls[0][0][1]
 
     @patch("app.tasks.processing_tasks.publish_job_progress")
     @patch("app.tasks.processing_tasks.boto3.client")
@@ -518,3 +522,121 @@ class TestSSEHeartbeat:
 
         body = response.text
         assert ": heartbeat" in body
+
+
+# ──────── Story 2.8: Synthetic job-complete fallback enrichment ────────
+
+
+class TestSSESyntheticCompleteFallback:
+    """Story 2.8 — synthetic job-complete fallback for already-completed jobs includes summary fields."""
+
+    @pytest.mark.asyncio
+    async def test_synthetic_job_complete_includes_summary_fields_from_result_data(
+        self, client, async_session, mock_rate_limiter
+    ):
+        """Reconnecting after job completion: synthetic event reads summary fields from result_data."""
+        user_id, job_id = await _create_user_job_async(async_session, status="completed")
+
+        # Hydrate the job with summary fields, as the live pipeline would have done
+        job = await async_session.get(ProcessingJob, job_id)
+        job.result_data = {
+            "bank_name": "Monobank",
+            "date_range_start": "2026-02-01",
+            "date_range_end": "2026-02-28",
+            "insight_count": 12,
+            "new_transactions": 245,
+            "duplicates_skipped": 0,
+        }
+        async_session.add(job)
+        await async_session.commit()
+
+        with patch("app.api.v1.jobs.verify_token", new_callable=AsyncMock) as mock_verify:
+            mock_verify.return_value = {"sub": "sse-sub"}
+            with patch("app.api.v1.jobs.get_job_state", new_callable=AsyncMock) as mock_state:
+                mock_state.return_value = None  # force the synthetic fallback path
+                response = await client.get(
+                    f"/api/v1/jobs/{job_id}/stream?token=fake"
+                )
+
+        body = response.text
+        assert "event: job-complete" in body
+        assert '"bankName": "Monobank"' in body
+        assert '"transactionCount": 245' in body
+        assert '"totalInsights": 12' in body
+        assert '"start": "2026-02-01"' in body
+        assert '"end": "2026-02-28"' in body
+
+    @pytest.mark.asyncio
+    async def test_synthetic_job_complete_handles_missing_result_data(
+        self, client, async_session, mock_rate_limiter
+    ):
+        """Synthetic fallback does not crash when result_data is missing or empty."""
+        user_id, job_id = await _create_user_job_async(async_session, status="completed")
+
+        # Leave result_data empty (None) — older completed jobs may not have summary keys
+        with patch("app.api.v1.jobs.verify_token", new_callable=AsyncMock) as mock_verify:
+            mock_verify.return_value = {"sub": "sse-sub"}
+            with patch("app.api.v1.jobs.get_job_state", new_callable=AsyncMock) as mock_state:
+                mock_state.return_value = None
+                response = await client.get(
+                    f"/api/v1/jobs/{job_id}/stream?token=fake"
+                )
+
+        body = response.text
+        assert "event: job-complete" in body
+        # dateRange is null when no start/end is present
+        assert '"dateRange": null' in body
+        # bankName is null when result_data has no bank_name
+        assert '"bankName": null' in body
+
+    @pytest.mark.asyncio
+    async def test_synthetic_terminal_payloads_include_event_field_in_json(
+        self, client, async_session, mock_rate_limiter
+    ):
+        """Frontend handler is gated on data.event; synthetic SSE data MUST carry it.
+
+        Without this field, EventSource fires the right listener but use-job-status's
+        `if (data.event === "job-complete")` guard rejects the payload silently.
+        """
+        # job-complete branch
+        _, complete_id = await _create_user_job_async(async_session, status="completed")
+        # job-failed branch (different cognito_sub to avoid unique constraint)
+        _, failed_id = await _create_user_job_async(
+            async_session, status="failed",
+            error_code="LLM_ERROR", error_message="bang",
+            cognito_sub="sse-sub-failed",
+        )
+
+        with patch("app.api.v1.jobs.verify_token", new_callable=AsyncMock) as mock_verify:
+            mock_verify.return_value = {"sub": "sse-sub"}
+            with patch("app.api.v1.jobs.get_job_state", new_callable=AsyncMock) as mock_state:
+                mock_state.return_value = None
+                complete_resp = await client.get(
+                    f"/api/v1/jobs/{complete_id}/stream?token=fake"
+                )
+
+            mock_verify.return_value = {"sub": "sse-sub-failed"}
+            with patch("app.api.v1.jobs.get_job_state", new_callable=AsyncMock) as mock_state:
+                mock_state.return_value = None
+                failed_resp = await client.get(
+                    f"/api/v1/jobs/{failed_id}/stream?token=fake"
+                )
+
+        # Parse the data: JSON line and verify the event field is present in the payload itself
+        complete_data = _extract_data_payload(complete_resp.text, "job-complete")
+        assert complete_data["event"] == "job-complete"
+
+        failed_data = _extract_data_payload(failed_resp.text, "job-failed")
+        assert failed_data["event"] == "job-failed"
+
+
+def _extract_data_payload(body: str, event_name: str) -> dict:
+    """Parse the `data: {...}` line that follows `event: <event_name>` in an SSE stream."""
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == f"event: {event_name}":
+            for follow in lines[i + 1:]:
+                stripped = follow.strip()
+                if stripped.startswith("data:"):
+                    return json.loads(stripped[len("data:"):].strip())
+    raise AssertionError(f"No data line found after event: {event_name} in body")

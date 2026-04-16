@@ -26,6 +26,11 @@ export interface PipelineProgressEvent {
   message: string;
 }
 
+export interface DateRange {
+  start: string;
+  end: string;
+}
+
 export interface JobCompleteEvent {
   event: "job-complete";
   jobId: string;
@@ -33,6 +38,9 @@ export interface JobCompleteEvent {
   totalInsights: number;
   duplicatesSkipped?: number;
   newTransactions?: number;
+  bankName?: string | null;
+  transactionCount?: number;
+  dateRange?: DateRange | null;
 }
 
 export interface JobFailedEvent {
@@ -58,12 +66,22 @@ export interface JobResumedEvent {
 
 export type SSEEvent = PipelineProgressEvent | JobCompleteEvent | JobFailedEvent | JobRetryingEvent | JobResumedEvent;
 
+export interface JobStatusResult {
+  totalInsights: number;
+  duplicatesSkipped?: number;
+  newTransactions?: number;
+  bankName?: string | null;
+  transactionCount?: number;
+  dateRange?: DateRange | null;
+}
+
 export interface JobStatusState {
   status: JobStatus | "retrying" | "connecting" | "idle";
   step: string | null;
   progress: number;
+  message: string | null;
   error: { code: string; message: string } | null;
-  result: { totalInsights: number; duplicatesSkipped?: number; newTransactions?: number } | null;
+  result: JobStatusResult | null;
   isConnected: boolean;
   isRetryable: boolean;
   retryCount: number;

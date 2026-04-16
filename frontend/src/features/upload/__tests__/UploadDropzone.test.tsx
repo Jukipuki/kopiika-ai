@@ -16,12 +16,13 @@ vi.mock("next-auth/react", () => ({
   useSession: () => mockUseSession(),
 }));
 
-// Mock @/i18n/navigation
+// Mock @/i18n/navigation — hoisted spy so tests can assert no auto-redirect (Story 2.8 AC #1)
+const mockRouterPush = vi.fn();
 vi.mock("@/i18n/navigation", () => ({
   Link: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => (
     <a href={href} {...props}>{children}</a>
   ),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockRouterPush }),
 }));
 
 // Mock sonner
@@ -33,17 +34,33 @@ vi.mock("sonner", () => ({
   },
 }));
 
-// Mock useJobStatus hook
+// Mock useJobStatus hook (overridable per-test via mockImplementation)
+type MockJobStatusReturn = {
+  status: "idle" | "connecting" | "processing" | "retrying" | "completed" | "failed";
+  step: string | null;
+  progress: number;
+  message: string | null;
+  error: { code: string; message: string } | null;
+  result: Record<string, unknown> | null;
+  isConnected: boolean;
+  isRetryable: boolean;
+  retryCount: number;
+  retry: () => void;
+};
+const mockUseJobStatus = vi.fn<() => MockJobStatusReturn>(() => ({
+  status: "idle",
+  step: null,
+  progress: 0,
+  message: null,
+  error: null,
+  result: null,
+  isConnected: false,
+  isRetryable: true,
+  retryCount: 0,
+  retry: vi.fn(),
+}));
 vi.mock("../hooks/use-job-status", () => ({
-  useJobStatus: () => ({
-    status: "idle",
-    step: null,
-    progress: 0,
-    error: null,
-    result: null,
-    isConnected: false,
-    retry: vi.fn(),
-  }),
+  useJobStatus: (...args: unknown[]) => mockUseJobStatus(...(args as [])),
 }));
 
 // Mock fetch
@@ -65,6 +82,18 @@ describe("UploadDropzone", () => {
     mockUseSession.mockReturnValue({
       data: { accessToken: "test-token" },
       status: "authenticated",
+    });
+    mockUseJobStatus.mockReturnValue({
+      status: "idle",
+      step: null,
+      progress: 0,
+      message: null,
+      error: null,
+      result: null,
+      isConnected: false,
+      isRetryable: true,
+      retryCount: 0,
+      retry: vi.fn(),
     });
   });
 
@@ -381,6 +410,98 @@ describe("UploadDropzone", () => {
     const suggestions = screen.getByRole("list", { name: "Suggestions" });
     expect(suggestions).toBeInTheDocument();
     expect(suggestions.querySelectorAll("li")).toHaveLength(2);
+  });
+
+  // ==================== Story 2.8: Upload Completion UX & Summary ====================
+
+  it("does not auto-redirect to /feed after a successful upload (Story 2.8)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          jobId: "job-789",
+          statusUrl: "/api/v1/jobs/job-789",
+          detectedFormat: "monobank",
+        }),
+    });
+
+    render(<UploadDropzone />);
+
+    const file = createFile("statement.csv", 1024, "text/csv");
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await userEvent.upload(input, file);
+
+    // After upload, the user stays on the upload page (no navigation).
+    // The mocked useJobStatus stays "idle", so we land in the "selected" branch:
+    // the selected file name is visible and the upload dropzone has not been replaced.
+    await waitFor(() => {
+      expect(screen.getByText("statement.csv")).toBeInTheDocument();
+    });
+    // Primary regression guard: router.push must NEVER be called for the
+    // pre-2.8 auto-redirect to `/feed?jobId=...`. Hoisted spy makes this
+    // assertable across renders.
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(window.location.pathname).not.toContain("/feed");
+    // The summary card (which would imply completion + the new flow) MUST NOT render
+    expect(screen.queryByText("Your statement is ready")).not.toBeInTheDocument();
+  });
+
+  it("renders UploadSummaryCard with View Insights when job completes (Story 2.8)", () => {
+    mockUseJobStatus.mockReturnValue({
+      status: "completed",
+      step: null,
+      progress: 100,
+      message: null,
+      error: null,
+      result: {
+        totalInsights: 12,
+        bankName: "Monobank",
+        transactionCount: 245,
+        dateRange: { start: "2026-02-01", end: "2026-02-28" },
+        duplicatesSkipped: 3,
+        newTransactions: 245,
+      },
+      isConnected: false,
+      isRetryable: false,
+      retryCount: 0,
+      retry: vi.fn(),
+    });
+
+    render(<UploadDropzone />);
+
+    expect(screen.getByText("Your statement is ready")).toBeInTheDocument();
+    expect(screen.getByText("Monobank statement detected")).toBeInTheDocument();
+
+    const viewInsights = screen.getByRole("link", { name: /View Insights/i });
+    expect(viewInsights).toHaveAttribute("href", "/feed");
+
+    // The legacy "File uploaded successfully!" copy should NOT render
+    expect(
+      screen.queryByText("File uploaded successfully!"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does NOT render the summary card when job has failed (Story 2.8 AC #6)", () => {
+    mockUseJobStatus.mockReturnValue({
+      status: "failed",
+      step: null,
+      progress: 0,
+      message: null,
+      error: { code: "LLM_ERROR", message: "Something failed" },
+      result: null,
+      isConnected: false,
+      isRetryable: true,
+      retryCount: 0,
+      retry: vi.fn(),
+    });
+
+    render(<UploadDropzone />);
+
+    expect(screen.queryByText("Your statement is ready")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("We couldn't process this file. Please try again."),
+    ).toBeInTheDocument();
   });
 
   it("shows invalid file type error with suggestion", async () => {

@@ -320,7 +320,13 @@
       "Bash(grep -l 'v1\\\\.2\\\\.0' .next/static/chunks/*.js)",
       "Bash(grep -oE 'v1\\\\.2\\\\.0' .next/static/chunks/*.js)",
       "Bash(grep -oE '.{0,40}\"1\\\\.2\\\\.0\".{0,20}' .next/static/chunks/0y~qxm1s2h3.0.js)",
-      "Bash(grep -l \"^export.*cn\\\\|^export function cn\\\\|^export const cn\" /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib/*.ts /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib/**/*.ts)"
+      "Bash(grep -l \"^export.*cn\\\\|^export function cn\\\\|^export const cn\" /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib/*.ts /Users/ohumennyi/Personal/kopiika-ai/frontend/src/lib/**/*.ts)",
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py tests/test_sse_streaming.py -x -q)",
+      "Bash(.venv/bin/python -m pytest -q --tb=line)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(.venv/bin/python -m pytest tests/test_processing_tasks.py::TestProcessUploadSummaryPayload tests/test_sse_streaming.py::TestSSESyntheticCompleteFallback -x --tb=short)",
+      "Bash(.venv/bin/python -m pytest tests/test_sse_streaming.py tests/test_processing_tasks.py -x --tb=short)"
     ]
   }
 }

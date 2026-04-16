@@ -21,7 +21,7 @@ from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
 from app.models.upload import Upload
 from app.models.user import User
-from app.services.format_detector import FormatDetectionResult
+from app.services.format_detector import FormatDetectionResult, get_bank_display_name
 from app.services.parser_service import (
     UnsupportedFormatError,
     sync_parse_and_store_transactions,
@@ -34,6 +34,24 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _get_upload_summary(session, upload_id: uuid.UUID) -> tuple[str | None, str | None]:
+    """Compute (date_range_start, date_range_end) ISO date strings for an upload's transactions.
+
+    Returns ISO 8601 date strings (YYYY-MM-DD) — the time component is dropped
+    even though Transaction.date is a datetime column, since the summary is
+    user-facing and only the calendar date matters.
+
+    Returns (None, None) when the upload has no persisted transactions.
+    """
+    min_date, max_date = session.exec(
+        select(func.min(Transaction.date), func.max(Transaction.date))
+        .where(Transaction.upload_id == upload_id)
+    ).one()
+    if min_date and max_date:
+        return min_date.date().isoformat(), max_date.date().isoformat()
+    return None, None
 
 
 @celery_app.task(bind=True, max_retries=3, acks_late=True, track_started=True)
@@ -335,7 +353,17 @@ def process_upload(self, job_id: str) -> dict:
                 "education_ms": education_ms,
             }
 
-            # 10. Update ProcessingJob to "completed"
+            # 10. Compute upload summary for completion payload
+            bank_name = get_bank_display_name(upload.detected_format)
+            date_range_start, date_range_end = _get_upload_summary(session, upload.id)
+            insight_count = len(insight_cards)
+            date_range = (
+                {"start": date_range_start, "end": date_range_end}
+                if date_range_start and date_range_end
+                else None
+            )
+
+            # 11. Update ProcessingJob to "completed"
             job.status = "completed"
             if job.step != "categorization_failed":
                 job.step = "done"
@@ -351,6 +379,11 @@ def process_upload(self, job_id: str) -> dict:
                 "total_tokens_used": total_tokens_used,
                 "agent_timings": agent_timings,
                 "total_ms": total_ms,
+                "bank_name": bank_name,
+                "date_range_start": date_range_start,
+                "date_range_end": date_range_end,
+                "insight_count": insight_count,
+                "new_transactions": new_transactions,
             }
             job.updated_at = _utcnow()
             session.add(job)
@@ -362,7 +395,10 @@ def process_upload(self, job_id: str) -> dict:
                 "status": "completed",
                 "duplicatesSkipped": result.duplicates_skipped,
                 "newTransactions": new_transactions,
-                "totalInsights": len(insight_cards),
+                "totalInsights": insight_count,
+                "bankName": bank_name,
+                "transactionCount": new_transactions,
+                "dateRange": date_range,
             })
 
             logger.info(
@@ -630,6 +666,25 @@ def resume_upload(self, job_id: str) -> dict:
                 "education_ms": education_ms,
             }
 
+            # Compute upload summary for resumed completion payload
+            upload_for_summary = session.get(Upload, upload_id)
+            bank_name = (
+                get_bank_display_name(upload_for_summary.detected_format)
+                if upload_for_summary
+                else None
+            )
+            date_range_start, date_range_end = _get_upload_summary(session, upload_id)
+            # On resume, education may add new insight cards; combine with prior count
+            prior_insight_count = (job.result_data or {}).get("insight_count", 0) if job.result_data else 0
+            insight_count = prior_insight_count + len(insight_cards)
+            new_transactions = (job.result_data or {}).get("new_transactions") if job.result_data else None
+            duplicates_skipped = (job.result_data or {}).get("duplicates_skipped") if job.result_data else None
+            date_range = (
+                {"start": date_range_start, "end": date_range_end}
+                if date_range_start and date_range_end
+                else None
+            )
+
             # Mark completed
             job.status = "completed"
             job.step = "done"
@@ -639,6 +694,10 @@ def resume_upload(self, job_id: str) -> dict:
                 **(job.result_data or {}),
                 "agent_timings": agent_timings,
                 "total_ms": total_ms,
+                "bank_name": bank_name,
+                "date_range_start": date_range_start,
+                "date_range_end": date_range_end,
+                "insight_count": insight_count,
             }
             job.updated_at = _utcnow()
             session.add(job)
@@ -648,7 +707,12 @@ def resume_upload(self, job_id: str) -> dict:
                 "event": "job-complete",
                 "jobId": job_id,
                 "status": "completed",
-                "totalInsights": len(insight_cards),
+                "totalInsights": insight_count,
+                "bankName": bank_name,
+                "transactionCount": new_transactions,
+                "dateRange": date_range,
+                "duplicatesSkipped": duplicates_skipped,
+                "newTransactions": new_transactions,
             })
 
             upload = session.get(Upload, job.upload_id)

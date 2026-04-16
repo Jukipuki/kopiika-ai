@@ -177,25 +177,27 @@
     "processing": {
       "ariaLabel": "Обробка вашої банківської виписки",
       "stages": {
-        "readingTransactions": "Читаємо ваші транзакції...",
-        "categorizingSpending": "Категоризуємо витрати...",
-        "detectingPatterns": "Виявляємо закономірності...",
-        "scoringHealth": "Оцінюємо фінансове здоров'я...",
-        "generatingInsights": "Генеруємо персональні поради..."
+        "ingestion": "Читаємо ваші транзакції...",
+        "categorization": "Категоризуємо витрати...",
+        "patternDetection": "Виявляємо закономірності...",
+        "triage": "Визначаємо, що найважливіше...",
+        "education": "Генеруємо персональні поради..."
       },
-      "education": {
-        "readingTransactions": "Ми безпечно зчитуємо кожну транзакцію з вашої виписки",
-        "categorizingSpending": "Розподіляємо транзакції за категоріями: їжа, транспорт, розваги",
-        "detectingPatterns": "Шукаємо регулярні платежі та тенденції витрат",
-        "scoringHealth": "Розраховуємо фінансове здоров'я на основі ваших витрат",
-        "generatingInsights": "Створюємо персональні поради, щоб допомогти вам заощаджувати"
-      },
+      "fallbackMessage": "Обробка...",
       "errorMessage": "Не вдалося обробити цей файл. Спробуйте ще раз.",
       "circuitBreakerMessage": "Обробка тимчасово недоступна. Будь ласка, спробуйте через кілька хвилин.",
       "retryingMessage": "Повторна спроба... {retryCount} з {maxRetries}",
       "resumingMessage": "Відновлення з останньої контрольної точки...",
       "retry": "Спробувати ще",
       "complete": "Обробку завершено!"
+    },
+    "summary": {
+      "title": "Ваша виписка готова",
+      "bankDetected": "Виявлено виписку {bankName}",
+      "transactionCount": "{count, plural, one {# транзакцію} few {# транзакції} many {# транзакцій} other {# транзакцій}} проаналізовано",
+      "dateRange": "{start} – {end}",
+      "insightCount": "{count, plural, one {# картку інсайтів} few {# картки інсайтів} many {# карток інсайтів} other {# карток інсайтів}} згенеровано",
+      "viewInsights": "Переглянути інсайти"
     }
   },
   "settings": {

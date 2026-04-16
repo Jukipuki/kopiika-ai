@@ -32,6 +32,22 @@ PRIVATBANK_REQUIRED_COLUMNS = {
     "Валюта",
 }
 
+BANK_DISPLAY_NAMES: dict[str, str] = {
+    "monobank": "Monobank",
+    "privatbank": "PrivatBank",
+}
+
+
+def get_bank_display_name(detected_format: str | None) -> str | None:
+    """Return a human-readable bank name for a detected format identifier.
+
+    Returns None for unknown / missing formats so the frontend can fall back
+    to its localized "Bank statement detected" copy.
+    """
+    if not detected_format:
+        return None
+    return BANK_DISPLAY_NAMES.get(detected_format)
+
 
 @dataclass
 class FormatDetectionResult:

@@ -214,21 +214,43 @@ async def stream_job_progress(
             # If the DB already shows a terminal status and no Redis state,
             # send a synthetic terminal event
             if job.status == "retrying":
-                yield (
-                    f"event: job-retrying\n"
-                    f"data: {json.dumps({'jobId': job_id_str, 'retryCount': job.retry_count, 'maxRetries': job.max_retries})}\n\n"
-                )
+                retrying_payload = {
+                    "event": "job-retrying",
+                    "jobId": job_id_str,
+                    "retryCount": job.retry_count,
+                    "maxRetries": job.max_retries,
+                }
+                yield f"event: job-retrying\ndata: {json.dumps(retrying_payload)}\n\n"
             if job.status == "completed":
-                yield (
-                    f"event: job-complete\n"
-                    f"data: {json.dumps({'jobId': job_id_str, 'status': 'completed', 'totalInsights': 0})}\n\n"
-                )
+                rd = job.result_data or {}
+                ds = rd.get("date_range_start")
+                de = rd.get("date_range_end")
+                synthetic_payload = {
+                    # Frontend handler is gated on data.event === "job-complete";
+                    # the SSE event header alone is not enough.
+                    "event": "job-complete",
+                    "jobId": job_id_str,
+                    "status": "completed",
+                    "totalInsights": rd.get("insight_count", 0),
+                    "bankName": rd.get("bank_name"),
+                    "transactionCount": rd.get("new_transactions"),
+                    "dateRange": {"start": ds, "end": de} if ds and de else None,
+                    "duplicatesSkipped": rd.get("duplicates_skipped"),
+                    "newTransactions": rd.get("new_transactions"),
+                }
+                yield f"event: job-complete\ndata: {json.dumps(synthetic_payload)}\n\n"
                 return
             if job.status == "failed":
-                yield (
-                    f"event: job-failed\n"
-                    f"data: {json.dumps({'jobId': job_id_str, 'status': 'failed', 'error': {'code': job.error_code or 'UNKNOWN_ERROR', 'message': job.error_message or 'Processing failed'}})}\n\n"
-                )
+                failed_payload = {
+                    "event": "job-failed",
+                    "jobId": job_id_str,
+                    "status": "failed",
+                    "error": {
+                        "code": job.error_code or "UNKNOWN_ERROR",
+                        "message": job.error_message or "Processing failed",
+                    },
+                }
+                yield f"event: job-failed\ndata: {json.dumps(failed_payload)}\n\n"
                 return
 
             # Stream live progress events

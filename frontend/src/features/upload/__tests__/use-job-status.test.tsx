@@ -113,6 +113,7 @@ describe("useJobStatus", () => {
     expect(result.current.status).toBe("processing");
     expect(result.current.step).toBe("ingestion");
     expect(result.current.progress).toBe(30);
+    expect(result.current.message).toBe("Parsing...");
   });
 
   it("handles job-complete event", async () => {
@@ -135,8 +136,75 @@ describe("useJobStatus", () => {
 
     expect(result.current.status).toBe("completed");
     expect(result.current.progress).toBe(100);
-    expect(result.current.result).toEqual({ totalInsights: 5 });
+    expect(result.current.result).toMatchObject({ totalInsights: 5 });
+    expect(result.current.message).toBeNull();
     expect(es.closed).toBe(true);
+  });
+
+  it("captures bankName, transactionCount, dateRange from job-complete (Story 2.8)", async () => {
+    const { result } = renderHook(() => useJobStatus("job-123"));
+
+    await waitFor(() => {
+      expect(MockEventSource.instances).toHaveLength(1);
+    });
+
+    const es = MockEventSource.instances[0];
+
+    act(() => {
+      es.simulateEvent("job-complete", {
+        event: "job-complete",
+        jobId: "job-123",
+        status: "completed",
+        totalInsights: 12,
+        bankName: "Monobank",
+        transactionCount: 245,
+        dateRange: { start: "2026-02-01", end: "2026-02-28" },
+        duplicatesSkipped: 3,
+        newTransactions: 245,
+      });
+    });
+
+    expect(result.current.result).toMatchObject({
+      totalInsights: 12,
+      bankName: "Monobank",
+      transactionCount: 245,
+      dateRange: { start: "2026-02-01", end: "2026-02-28" },
+      duplicatesSkipped: 3,
+      newTransactions: 245,
+    });
+  });
+
+  it("clears message on terminal events (Story 2.8)", async () => {
+    const { result } = renderHook(() => useJobStatus("job-123"));
+
+    await waitFor(() => {
+      expect(MockEventSource.instances).toHaveLength(1);
+    });
+
+    const es = MockEventSource.instances[0];
+
+    act(() => {
+      es.simulateEvent("pipeline-progress", {
+        event: "pipeline-progress",
+        jobId: "job-123",
+        step: "education",
+        progress: 80,
+        message: "Generated 12 financial insights",
+      });
+    });
+
+    expect(result.current.message).toBe("Generated 12 financial insights");
+
+    act(() => {
+      es.simulateEvent("job-complete", {
+        event: "job-complete",
+        jobId: "job-123",
+        status: "completed",
+        totalInsights: 12,
+      });
+    });
+
+    expect(result.current.message).toBeNull();
   });
 
   it("handles job-failed event", async () => {
