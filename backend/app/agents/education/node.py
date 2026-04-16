@@ -128,6 +128,18 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
 
         cards = _parse_insight_cards(response.content)
 
+        # Observability for Story 3.9: sample every key_metric > 30 chars so
+        # prompt drift toward compound/verbose metrics is visible without
+        # blocking LLM output. 30 is the prior constraint — anything longer
+        # is a candidate for future prompt tuning review.
+        for card in cards:
+            metric = card.get("key_metric", "")
+            if len(metric) > 30:
+                logger.info(
+                    "key_metric_length_over_30",
+                    extra={**log_ctx, "step": "education", "length": len(metric), "value": metric[:120]},
+                )
+
         logger.info(
             "education_completed",
             extra={**log_ctx, "step": "education", "cards_generated": len(cards), "locale": locale, "literacy_level": literacy_level},

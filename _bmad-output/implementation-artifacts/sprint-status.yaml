@@ -77,7 +77,7 @@ development_status:
   3-7-progressive-card-appearance-sse-integration: done
   3-8-adaptive-education-depth: done
   3-9-teaching-feed-infinite-pagination: done
-  3-9-key-metric-prompt-refinement: backlog
+  3-9-key-metric-prompt-refinement: done
   epic-3-retrospective: done
 
   # ── POST-EPIC 3 ACTION: Migrate LLM clients to AWS Bedrock ──────────────

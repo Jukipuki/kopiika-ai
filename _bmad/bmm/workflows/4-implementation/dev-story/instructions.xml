@@ -325,6 +325,20 @@
     <action>Run the full regression suite (do not skip)</action>
     <action>Confirm File List includes every changed file</action>
     <action>Execute enhanced definition-of-done validation</action>
+
+    <!-- VERSION BUMP (per docs/versioning.md policy: bump in same PR as story) -->
+    <action>Read docs/versioning.md to confirm bump rules</action>
+    <action>Read the current /VERSION file (repo root) to get the current version string</action>
+    <action>Determine bump type:
+      - PATCH if the story is a bug-fix or polish-only change with no new user-facing functionality
+      - MINOR if the story adds any new user-facing feature or behaviour
+      - MAJOR only on a phase boundary (extremely rare — check with user first)
+    </action>
+    <action>Calculate new version by incrementing the appropriate digit and zeroing subordinate digits</action>
+    <action>Write the new version to /VERSION — one line, no leading `v`, exactly one trailing newline</action>
+    <action>Add /VERSION to the File List section of the story file</action>
+    <action>Add a Change Log entry noting the version bump (e.g., "Version bumped from X to Y per story completion")</action>
+
     <action>Update the story Status to: "review"</action>
 
     <!-- Enhanced Definition of Done Validation -->

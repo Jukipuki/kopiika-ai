@@ -174,6 +174,27 @@ Frontend has to know both codes to render the same error message. Doubles the su
 
 ---
 
+### TD-012 — No offline eval harness for insight `key_metric` quality / length drift [MEDIUM]
+
+**Where:** [backend/app/agents/education/prompts.py](backend/app/agents/education/prompts.py), [backend/app/agents/education/node.py](backend/app/agents/education/node.py)
+
+**Problem:** AC #3 of Story 3.9 asserts that on a sample of 10 newly generated insight cards, ≥ 90% of `key_metric` values should be ≤ 60 characters with no more than one numeric figure. The story ships with no offline evaluation — only prompt-content unit tests (which verify the instruction text is present) and a runtime observability log `key_metric_length_over_30` (which only fires post-generation). If the LLM silently ignores the constraint in production — as it did with the previous 30-char rule, producing compound strings like `"₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"` — we discover the regression from user-visible UI noise or by combing logs, not from CI.
+
+Note: the team's **intentional stance** is that value quality outranks strict brevity; the original 30-char failure was primarily a visual-hierarchy bug (font larger than the headline), fixed via styling in Story 4.2. So this is a "nice to have guardrail," not "this story is broken."
+
+**Why deferred:** Building an eval harness (sample LLM runs against representative fixtures, score the outputs, assert percentile compliance) is meaningfully larger than the prompt tweak itself and would need its own eval corpus. Out of scope for a single-line prompt refinement story.
+
+**Fix shape:**
+1. Add a lightweight eval script under `backend/evals/` (new dir) that feeds a fixed set of 10 user-context + rag-context fixtures through `education_node` with a real LLM (or a higher-fidelity mock replaying recorded responses).
+2. Assert: (a) ≥ 90% of `key_metric` values ≤ 60 chars, (b) ≤ 1 numeric figure per value (regex: at most one contiguous digit run per string, allowing `%` and currency adjacency).
+3. Wire to CI as a manual / nightly job (not per-commit — LLM calls cost money and are flaky).
+4. When the eval surfaces drift, iterate on prompts (EN + UK) rather than hard-failing the build.
+5. Alternatively — aggregate the existing `key_metric_length_over_30` log into a weekly dashboard metric before building a full eval; real production data may be cheaper than synthetic fixtures.
+
+**Surfaced in:** Story 3.9 code review (2026-04-16)
+
+---
+
 ### TD-011 — `extract_raw_currency` hardcodes CSV header keys [LOW]
 
 **Where:** [backend/app/services/currency.py:54-65](backend/app/services/currency.py#L54-L65)

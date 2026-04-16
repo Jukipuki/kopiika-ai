@@ -155,6 +155,51 @@ def test_get_prompt_defaults_to_beginner():
 
 
 # ---------------------------------------------------------------------------
+# Prompt tests — key_metric constraint (Story 3.9)
+# ---------------------------------------------------------------------------
+
+def test_key_metric_constraint_english_contains_new_wording():
+    """Both English prompts contain the updated 60-char constraint text."""
+    for literacy in ("beginner", "intermediate"):
+        prompt = get_prompt("en", literacy)
+        assert "Max 60 chars" in prompt, (
+            f"English {literacy} prompt missing 60-char key_metric constraint"
+        )
+        assert "Do NOT combine multiple numeric figures" in prompt, (
+            f"English {literacy} prompt missing 'Do NOT combine' rule"
+        )
+
+
+def test_key_metric_constraint_ukrainian_contains_new_wording():
+    """Both Ukrainian prompts contain the updated 60-char constraint text."""
+    for literacy in ("beginner", "intermediate"):
+        prompt = get_prompt("uk", literacy)
+        assert "60 символів" in prompt, (
+            f"Ukrainian {literacy} prompt missing 60-символів key_metric constraint"
+        )
+        assert "НЕ поєднуй" in prompt, (
+            f"Ukrainian {literacy} prompt missing 'НЕ поєднуй' rule"
+        )
+
+
+def test_key_metric_old_constraint_not_present_in_any_prompt():
+    """Regression guard: the old 30-char constraint must not appear in EN or UK prompts."""
+    all_prompts = [
+        get_prompt("en", "beginner"),
+        get_prompt("en", "intermediate"),
+        get_prompt("uk", "beginner"),
+        get_prompt("uk", "intermediate"),
+    ]
+    for prompt in all_prompts:
+        assert "max 30" not in prompt.lower(), (
+            "Old English 30-char key_metric constraint still present — update prompts.py"
+        )
+        assert "макс 30" not in prompt.lower(), (
+            "Old Ukrainian 30-char key_metric constraint still present — update prompts.py"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Spending summary tests
 # ---------------------------------------------------------------------------
 
@@ -393,6 +438,41 @@ def test_education_node_intermediate_prompt_end_to_end():
         assert "50/30/20" in actual_prompt
 
     assert len(result["insight_cards"]) == 2
+
+
+def test_education_node_logs_long_key_metrics_for_tuning():
+    """Story 3.9: cards whose key_metric exceeds 30 chars are logged for prompt-tuning review."""
+    long_metric = "₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"  # 62 chars
+    short_metric = "₴1,200/month"  # 12 chars
+    cards_with_mixed_lengths = [
+        {**MOCK_INSIGHT_CARDS[0], "key_metric": long_metric},
+        {**MOCK_INSIGHT_CARDS[1], "key_metric": short_metric},
+    ]
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(cards_with_mixed_lengths)
+
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="en",
+    )
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+        patch("app.agents.education.node.logger") as mock_logger,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        education_node(state)
+
+    info_calls = mock_logger.info.call_args_list
+    long_metric_logs = [c for c in info_calls if c.args and c.args[0] == "key_metric_length_over_30"]
+    assert len(long_metric_logs) == 1, (
+        f"Expected exactly one key_metric_length_over_30 log (for the 62-char metric); got {len(long_metric_logs)}"
+    )
+    logged_extra = long_metric_logs[0].kwargs["extra"]
+    assert logged_extra["length"] == len(long_metric)
+    assert logged_extra["value"].startswith("₴87,582.04")
 
 
 def test_education_node_logs_literacy_level():
