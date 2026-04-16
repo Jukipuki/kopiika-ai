@@ -1,7 +1,11 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { InsightCard } from "../components/InsightCard";
 import type { InsightCard as InsightCardType } from "../types";
+
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
 
 const mockInsight: InsightCardType = {
   id: "uuid-1",

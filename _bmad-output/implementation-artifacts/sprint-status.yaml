@@ -156,8 +156,8 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: User Feedback System
-  epic-7: backlog
-  7-1-implicit-card-interaction-tracking-engagement-score: backlog
+  epic-7: in-progress
+  7-1-implicit-card-interaction-tracking-engagement-score: done
   7-2-thumbs-up-down-on-teaching-feed-cards: backlog
   7-3-issue-reporting-on-teaching-feed-cards: backlog
   7-4-feedback-data-privacy-integration: backlog

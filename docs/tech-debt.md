@@ -257,3 +257,21 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 **Fix shape:** Add an opt-in `audit_real_client` fixture in `conftest.py` that wires `AuditMiddleware` against the real `app` with a per-test SQLite. Migrate one or two representative tests (`test_get_transactions_creates_read_record`, `test_no_bearer_token_no_audit_record`) to use it. Keep the stub-based tests for fast iteration on middleware internals.
 
 **Surfaced in:** Story 5.6 code review (2026-04-16)
+
+---
+
+### TD-016 — `DateTime()` (naive) used across migrations instead of `DateTime(timezone=True)` [MEDIUM]
+
+**Where:** [backend/alembic/versions/o1p2q3r4s5t6_add_audit_logs_table.py:42](backend/alembic/versions/o1p2q3r4s5t6_add_audit_logs_table.py#L42), and likely other timestamp columns across older tables
+
+**Problem:** Multiple migrations use `sa.DateTime()` which maps to Postgres `TIMESTAMP WITHOUT TIME ZONE`. Models strip tzinfo via `.replace(tzinfo=None)`. This works while the app runs in a single UTC timezone, but will silently produce ambiguous timestamps if the Postgres `timezone` server setting ever changes, if a direct SQL consumer connects with a non-UTC session timezone, or if timestamps are correlated across services that do use `timestamptz`. Story 7.1's `card_interactions.created_at` was fixed to `DateTime(timezone=True)` during code review, but the pattern persists in older tables.
+
+**Why deferred:** Fixing existing tables requires ALTER COLUMN migrations for each affected table, plus a codebase-wide audit of every `_utcnow()` / `datetime.utcnow()` call to ensure they produce timezone-aware values. Safe to do but high blast radius for a single story.
+
+**Fix shape:**
+1. Audit all Alembic migrations for `sa.DateTime()` without `timezone=True` — list every affected table/column.
+2. Create one migration per table (or a single multi-table migration) that ALTERs each column to `TIMESTAMPTZ`. Postgres does this in-place with no rewrite for `TIMESTAMP → TIMESTAMPTZ` when the server timezone is UTC.
+3. Update all model `_utcnow()` helpers to return `datetime.now(UTC)` (keep tzinfo).
+4. Grep for `datetime.utcnow()` (deprecated in Python 3.12) and replace.
+
+**Surfaced in:** Story 7.1 code review (2026-04-17)

@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InsightCard } from "./InsightCard";
 import { SkeletonCard } from "./SkeletonCard";
+import { setPendingSwipeDirection } from "../hooks/use-card-interactions";
 import type { InsightCard as InsightCardType } from "../types";
 
 interface CardStackNavigatorProps {
@@ -42,6 +43,7 @@ export function CardStackNavigator({
 
   function goNext() {
     if (currentIndex < cards.length - 1) {
+      setPendingSwipeDirection(cards[currentIndex].id, "right");
       setDirection(1);
       setCurrentIndex((i) => i + 1);
     }
@@ -53,6 +55,7 @@ export function CardStackNavigator({
 
   function goPrev() {
     if (currentIndex > 0) {
+      setPendingSwipeDirection(cards[currentIndex].id, "left");
       setDirection(-1);
       setCurrentIndex((i) => i - 1);
     }
@@ -126,7 +129,10 @@ export function CardStackNavigator({
             if (info.offset.x > 80) goPrev();
           }}
         >
-          <InsightCard insight={cards[currentIndex]} />
+          <InsightCard
+            insight={cards[currentIndex]}
+            cardPositionInFeed={currentIndex}
+          />
         </motion.div>
       </AnimatePresence>
 

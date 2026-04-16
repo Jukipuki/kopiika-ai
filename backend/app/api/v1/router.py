@@ -4,6 +4,7 @@ from app.api.v1.account import router as account_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.consent import router as consent_router
 from app.api.v1.data_summary import router as data_summary_router
+from app.api.v1.feedback import router as feedback_router
 from app.api.v1.health_score import router as health_score_router
 from app.api.v1.insights import router as insights_router
 from app.api.v1.jobs import router as jobs_router
@@ -16,6 +17,7 @@ v1_router.include_router(account_router)
 v1_router.include_router(auth_router)
 v1_router.include_router(consent_router)
 v1_router.include_router(data_summary_router)
+v1_router.include_router(feedback_router)
 v1_router.include_router(health_score_router)
 v1_router.include_router(insights_router)
 v1_router.include_router(jobs_router)

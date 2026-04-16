@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TriageBadge } from "./TriageBadge";
 import { EducationLayer } from "./EducationLayer";
+import { useCardInteractions } from "../hooks/use-card-interactions";
 import type { InsightCard as InsightCardType } from "../types";
 
 interface InsightCardProps {
   insight: InsightCardType;
+  cardPositionInFeed?: number;
 }
 
 const BUTTON_LABELS: Record<0 | 1 | 2, string> = {
@@ -17,13 +19,20 @@ const BUTTON_LABELS: Record<0 | 1 | 2, string> = {
   2: "← Collapse",
 };
 
-export function InsightCard({ insight }: InsightCardProps) {
+export function InsightCard({ insight, cardPositionInFeed = 0 }: InsightCardProps) {
   const [expandLevel, setExpandLevel] = useState<0 | 1 | 2>(0);
+  const { onEducationExpanded } = useCardInteractions(insight.id, cardPositionInFeed);
 
   function handleExpandToggle() {
-    if (expandLevel === 0) setExpandLevel(1);
-    else if (expandLevel === 1) setExpandLevel(2);
-    else setExpandLevel(0);
+    if (expandLevel === 0) {
+      setExpandLevel(1);
+      onEducationExpanded(1);
+    } else if (expandLevel === 1) {
+      setExpandLevel(2);
+      onEducationExpanded(2);
+    } else {
+      setExpandLevel(0);
+    }
   }
 
   const isExpanded = expandLevel > 0;

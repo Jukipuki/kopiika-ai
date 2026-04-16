@@ -4,6 +4,10 @@ import React from "react";
 import { CardStackNavigator } from "../components/CardStackNavigator";
 import type { InsightCard } from "../types";
 
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
+
 // HTML-safe attributes to forward to the rendered div
 const HTML_PROPS = new Set([
   "children",
