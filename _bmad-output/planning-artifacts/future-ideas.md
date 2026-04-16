@@ -19,7 +19,7 @@
 See [prd.md](./prd.md) — sections **Growth Features (Post-MVP Fast Follow)**, **Vision (V2/V3)**, **Explicitly Deferred from MVP**, and **Post-MVP Features** (Phase 1.5 / 2 / 3).
 
 High-level shape (do not edit here — edit in PRD):
-- **Phase 1.5** — Pattern Detection Agent, Triage Agent, Subscription Detection, Email notifications, Feedback Layer 2
+- **Phase 1.5** — Pattern Detection Agent ✅ Epic 8, Triage Agent ✅ Epic 8, Subscription Detection ✅ Epic 8, Email notifications (→ Phase 2), Feedback Layer 2 ✅ Epic 7 (Stories 7.5/7.6)
 - **Phase 2** — Freemium payments, forecasts, chat interface, correction feedback loop, developer feedback dashboard, RAG corpus auto-flagging
 - **Phase 3** — Savings/passive-income education, receipt scanning, family mode, gamification, bank API partnerships, EE expansion, mobile native
 
@@ -84,9 +84,9 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 
 ### 4.2 Auth & account
 
-**Forgot-password flow**
+**Forgot-password flow** ✅ _Promoted to Story 1.8 (2026-04-15)_
 - **Source:** [1-4-user-login-logout-session-management.md](../implementation-artifacts/1-4-user-login-logout-session-management.md) line 100
-- **Status:** Out of scope for 1.4. Architecture references `/forgot-password/page.tsx` but it has not been created. Login page links to it as a placeholder.
+- **Status:** Promoted to epics.md → Story 1.8. See FR61.
 - **Scope:** Cognito `ForgotPassword` / `ConfirmForgotPassword` wiring + page + tests.
 
 **Privacy explanation copy — legal review before launch**
@@ -98,10 +98,10 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 
 ### 4.3 Parsing
 
-**Expand CURRENCY_MAP in Monobank / PrivatBank / Generic parsers**
+**Expand CURRENCY_MAP in Monobank / PrivatBank / Generic parsers** ✅ _Promoted to Story 2.9 (2026-04-15)_
 - **Source:** [2-4-additional-bank-format-parser.md](../implementation-artifacts/2-4-additional-bank-format-parser.md) line 75 (`[AI-Review][FUTURE]`)
-- **Current state:** Only UAH, USD, EUR, GBP, PLN mapped. Unknown currencies default to UAH with a warning log.
-- **Scope:** Add CHF, JPY, CZK, TRY and other common currencies users are likely to see. Decide whether "default to UAH" is still the right fallback or should become an explicit parse error.
+- **Status:** Promoted to epics.md → Story 2.9. See FR62. Decision: unknown currencies flagged as warnings + stored with raw code, not silently defaulted to UAH.
+- **Scope:** Add CHF, JPY, CZK, TRY and other common currencies users are likely to see.
 
 ### 4.4 AI pipeline quality
 
@@ -116,15 +116,17 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 
 ### 4.5 Card / UX content
 
-**Key metric prompt refinement (conciseness)**
+**Key metric prompt refinement (conciseness)** ✅ _Promoted to Story 3.9 (2026-04-15)_
 - **Source:** Epic 3 retro Challenge #7
-- **Context:** Some generated key metric values are too dense (e.g., `"₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"`). Partially addressed by Story 4.2 visual-hierarchy fix, but the *content* density is an Education Agent prompt concern that likely deserves its own pass — probably folded into DS-3 quality-control work.
+- **Status:** Promoted to epics.md → Story 3.9. Prompt constraint: key_metric max 60 chars, single numeric figure, no compound expressions.
+- **Context:** Some generated key metric values are too dense (e.g., `"₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"`). Partially addressed by Story 4.2 visual-hierarchy fix, but the *content* density is an Education Agent prompt concern.
 
 **Knowledge card decline mechanism**
 - **Context** At the moments, cards stays after each upload. We need add a possibility to mark them as put to archive. This can be done based on uploads: on new upload - move old cards to archive, to focus on a fresh data results. Also, this can be tied to thumbs signals (4.4 AI pipeline quality, mentio0ned above): user press thumb up/down and we move this cards to archive. UX note: it must be clearly visible and intuitive where cards have been moved and how to access the archived card for re-review
 
-**Redirect to cards after upload**
-- **Context** Still, after upload, I got redirected to cards instantly. I want to see the full flow of agents processing, then - redirrect to cards. Also, I want to see info about upload: number of transactions, discivered bank name etc. Currently this is not visible because of the instant redirrect to cards
+**Redirect to cards after upload** ✅ _Promoted to Story 2.8 (2026-04-15)_
+- **Status:** Promoted to epics.md → Story 2.8. See FR63. Full SSE progress view before redirect + upload summary card (tx count, bank name, date range, insight count) → user-triggered navigation to Teaching Feed.
+- **Context** Still, after upload, I got redirected to cards instantly. I want to see the full flow of agents processing, then - redirrect to cards. Also, I want to see info about upload: number of transactions, discovered bank name etc. Currently this is not visible because of the instant redirrect to cards
 
 **Relative cards (should work on naming:))**
 - **Context** On a new upload, we can check with a previous sugestion

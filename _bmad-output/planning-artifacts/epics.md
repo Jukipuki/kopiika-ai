@@ -4,8 +4,10 @@ stepsCompleted:
   - step-02-design-epics
   - step-03-create-stories
   - step-04-final-validation
+  - phase-1.5-epics-and-stories
 status: complete
 completedAt: '2026-04-05'
+lastExtended: '2026-04-15'
 inputDocuments:
   - prd.md
   - architecture.md
@@ -78,6 +80,17 @@ FR52: System can display milestone feedback cards at the end of the Teaching Fee
 FR53: Milestone feedback cards use the same card component and gestures as education cards — swipeable, skippable, no new UI pattern
 FR54: System can enforce feedback card frequency caps: max 1 feedback card per session, max 1 per month, milestone cards never repeat once dismissed
 FR55: System can auto-flag RAG topic clusters with >30% thumbs-down rate when a minimum of 10 votes has been reached on the cluster
+
+### Phase 1.5 Requirements (Pipeline Completion)
+
+FR56: System can detect recurring charges from transaction history and identify subscription services based on billing cadence (monthly ± 3 days, annual ± 7 days) and amount consistency (within 5% tolerance)
+FR57: System can identify month-over-month spending trends and anomalies per category (% delta and UAH delta) when two or more months of data are available
+FR58: System can score each insight or pattern finding by financial severity (critical / warning / info) based on UAH impact relative to the user's monthly income
+FR59: Teaching Feed displays insight cards sorted by triage severity (critical first, then warning, then info); each card carries a severity badge with colour, icon, and text label
+FR60: System can generate subscription alert cards showing service name, monthly cost, billing frequency, and inactivity status
+FR61: Users can reset their password via a forgot-password email flow (Cognito ForgotPassword / ConfirmForgotPassword)
+FR62: Statement parsers support expanded currency codes (CHF, JPY, CZK, TRY) with unknown currencies flagged as warnings rather than silently defaulted to UAH
+FR63: After pipeline completion, system returns an upload summary payload (detected bank name, transaction count, date range, total insights) displayed to the user before they navigate to the Teaching Feed
 
 ### NonFunctional Requirements
 
@@ -268,16 +281,24 @@ NFR31: Monobank CSV parsing graceful degradation on format changes; partial pars
 | FR53 | Epic 7 | Milestone cards use same card component/gestures |
 | FR54 | Epic 7 | Feedback card frequency caps |
 | FR55 | Epic 7 | Auto-flag RAG topic clusters with high thumbs-down rate |
+| FR56 | Epic 8 | Detect recurring charges and classify subscription services |
+| FR57 | Epic 8 | Identify month-over-month spending trends and anomalies |
+| FR58 | Epic 8 | Score insights by financial severity (critical/warning/info) |
+| FR59 | Epic 8 | Teaching Feed sorted by triage severity with severity badges |
+| FR60 | Epic 8 | Generate subscription alert cards with cost and inactivity status |
+| FR61 | Epic 1 | Forgot-password flow via Cognito email reset |
+| FR62 | Epic 2 | Expanded CURRENCY_MAP (CHF, JPY, CZK, TRY) with unknown-currency flagging |
+| FR63 | Epic 2 | Upload summary payload (bank, tx count, date range) shown before Teaching Feed redirect |
 
 ## Epic List
 
 ### Epic 1: Project Foundation & User Authentication
-Users can register, log in, manage their account settings, select language, and securely access the application. This is the foundational epic — everything else builds on it. Includes project scaffolding, infrastructure setup, and the complete auth flow.
-**FRs covered:** FR25, FR26, FR27, FR28, FR29, FR30
+Users can register, log in, reset their password, manage their account settings, select language, and securely access the application. This is the foundational epic — everything else builds on it. Includes project scaffolding, infrastructure setup, and the complete auth flow.
+**FRs covered:** FR25, FR26, FR27, FR28, FR29, FR30, FR61
 
 ### Epic 2: Statement Upload & Data Ingestion
-Users can upload bank statements and have them validated, parsed, and structured — with real-time progress feedback. After this epic, users can upload CSV/PDF files and see that they were successfully processed.
-**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR12, FR13
+Users can upload bank statements and have them validated, parsed, and structured — with real-time progress feedback and an upload summary before entering the Teaching Feed.
+**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR12, FR13, FR62, FR63
 
 ### Epic 3: AI-Powered Financial Insights & Teaching Feed
 Users can view a card-based Teaching Feed with AI-generated, education-first financial insights. This epic builds the categorization agent, education agent (RAG), and the full Teaching Feed UI with progressive disclosure and progressive card appearance.
@@ -300,9 +321,14 @@ Users can provide feedback on Teaching Feed content through implicit behavioral 
 **FRs covered:** FR45, FR46, FR47, FR48, FR49, FR50, FR51, FR52, FR53, FR54, FR55
 **Dependencies:** Epic 3 (Teaching Feed cards), Epic 4 (Health Score for FR52), Epic 5 (data export/deletion for FR49)
 
+### Epic 8: Pattern Detection, Triage & Subscription Detection
+The 5-agent pipeline is complete. Users see insights ranked by financial severity (red/yellow/green), active subscriptions are surfaced with inactivity alerts, and month-over-month spending trends and anomalies are detected automatically.
+**FRs covered:** FR56, FR57, FR58, FR59, FR60
+**Dependencies:** Epic 2 (Ingestion Agent output), Epic 3 (Education Agent, Teaching Feed cards, insight severity field)
+
 ## Epic 1: Project Foundation & User Authentication
 
-Users can register, log in, manage their account settings, select language, and securely access the application. This is the foundational epic — everything else builds on it. Includes project scaffolding, infrastructure setup, and the complete auth flow.
+Users can register, log in, reset their password, manage their account settings, select language, and securely access the application. This is the foundational epic — everything else builds on it. Includes project scaffolding, infrastructure setup, and the complete auth flow.
 
 ### Story 1.1: Monorepo Scaffolding & Local Development Environment
 
@@ -472,9 +498,41 @@ So that I can control my profile and preferences.
 **When** I inspect the UI
 **Then** all components use shadcn/ui primitives with proper WCAG 2.1 AA compliance (contrast, focus indicators, keyboard navigation)
 
+### Story 1.8: Forgot-Password Flow
+
+As a **user**,
+I want to reset my password via email when I've forgotten it,
+So that I can regain access to my account without contacting support.
+
+**Acceptance Criteria:**
+
+**Given** I am on the login page
+**When** I click the "Forgot password?" link
+**Then** I am taken to `/forgot-password` which has an email input field; the link is already wired in the login page markup (the missing page referenced in Story 1.4)
+
+**Given** I am on the `/forgot-password` page and enter my registered email
+**When** I submit the form
+**Then** Cognito `InitiateForgotPassword` is called, a password reset email with a verification code is sent, and I see a confirmation message: "Check your email for a reset code"
+
+**Given** I enter an email that is not registered
+**When** I submit the forgot-password form
+**Then** I see the same confirmation message (no email enumeration — the response never reveals whether the address exists)
+
+**Given** I have received the reset email with a verification code
+**When** I visit `/forgot-password/confirm`, enter the verification code, and provide a new password meeting Cognito complexity requirements
+**Then** Cognito `ConfirmForgotPassword` is called, my password is updated, and I am redirected to `/login` with a success banner "Password updated — please log in"
+
+**Given** I submit the confirmation form with an expired or invalid reset code
+**When** Cognito returns an error
+**Then** I see a user-friendly message: "Reset code is invalid or has expired. Please request a new one." with a link back to `/forgot-password`
+
+**Given** the `/forgot-password` and `/forgot-password/confirm` pages
+**When** rendered on mobile
+**Then** all inputs and buttons are touch-optimized and thumb-reachable with visible focus indicators (WCAG 2.1 AA)
+
 ## Epic 2: Statement Upload & Data Ingestion
 
-Users can upload bank statements and have them validated, parsed, and structured — with real-time progress feedback. After this epic, users can upload CSV/PDF files and see that they were successfully processed.
+Users can upload bank statements and have them validated, parsed, and structured — with real-time progress feedback and an upload summary before entering the Teaching Feed.
 
 ### Story 2.1: File Upload UI & S3 Storage
 
@@ -643,6 +701,66 @@ So that I can build a richer picture of my finances over time.
 **Given** I have uploaded multiple statements
 **When** I view my data
 **Then** all transactions from all uploads are available in a unified dataset linked to my user account
+
+### Story 2.8: Upload Completion UX & Summary
+
+As a **user**,
+I want to see the full pipeline processing progress and an upload summary before being taken to the Teaching Feed,
+So that I know what was processed and feel confident in the results before viewing insights.
+
+**Acceptance Criteria:**
+
+**Given** I have uploaded a statement file and received a `jobId`
+**When** the frontend opens the SSE stream
+**Then** I see a pipeline progress view (not the Teaching Feed) showing each agent step completing in sequence — the frontend does NOT automatically redirect to the Teaching Feed on upload
+
+**Given** the pipeline is running and SSE `pipeline-progress` events arrive
+**When** each agent step completes
+**Then** the progress view shows step name, a human-readable message (from Story 4.1 `message` field), and a visual progress indicator; steps shown include Ingestion, Categorization, Pattern Detection (Phase 1.5 placeholder: skipped gracefully if not yet active), Triage, Education
+
+**Given** the pipeline completes and a `job-complete` SSE event is received
+**When** the completion payload is processed
+**Then** the frontend displays an upload summary card showing: detected bank name (`bankName`), total transactions parsed (`transactionCount`), statement date range (`dateRange`), and total insight cards generated (`totalInsights`), with a "View Insights" call-to-action button
+
+**Given** the `job-complete` SSE payload
+**When** it is returned from the backend
+**Then** it includes the fields: `bankName` (string, bank detected by format parser), `transactionCount` (integer), `dateRange` (object with ISO date `start` and `end`), `totalInsights` (integer) — the backend populates these from the completed pipeline state
+
+**Given** the user reads the upload summary
+**When** they click "View Insights"
+**Then** they are navigated to the Teaching Feed (`/cards` or equivalent route)
+
+**Given** the pipeline fails before completion
+**When** the `job-failed` SSE event fires
+**Then** the progress view shows a user-friendly error message with a retry option (existing behaviour from Story 2.6) — the summary card is not shown
+
+### Story 2.9: Expand CURRENCY_MAP
+
+As a **developer**,
+I want all bank statement parsers to support a wider range of currencies,
+So that users with multi-currency accounts don't silently lose or miscategorize transaction data.
+
+**Acceptance Criteria:**
+
+**Given** a Monobank CSV containing transactions in CHF, JPY, CZK, or TRY
+**When** the Monobank parser processes it
+**Then** the currency is correctly identified, stored with the transaction record using the ISO 4217 currency code, and displayed with the correct symbol
+
+**Given** a PrivatBank or generic bank CSV with CHF, JPY, CZK, or TRY transactions
+**When** the respective parser processes it
+**Then** the currency is correctly identified and stored (not defaulted to UAH)
+
+**Given** a transaction in a currency not present in the updated CURRENCY_MAP
+**When** the parser encounters it
+**Then** the transaction is stored with the raw currency code preserved, flagged with a `currency_unknown` warning log, and included in the uncategorized transaction report (FR38) — it is never silently converted to UAH
+
+**Given** the updated CURRENCY_MAP
+**When** it is reviewed
+**Then** it includes at minimum: UAH, USD, EUR, GBP, PLN, CHF, JPY, CZK, TRY — each mapped to its ISO 4217 code and display symbol
+
+**Given** existing stored transactions that previously used the "default to UAH" fallback
+**When** this change is deployed
+**Then** no existing transaction records are modified — the new behaviour applies only to future uploads
 
 ## Epic 3: AI-Powered Financial Insights & Teaching Feed
 
@@ -855,6 +973,34 @@ So that I get content that's challenging but not overwhelming.
 **Given** the cursor-based pagination
 **When** I scroll through the Teaching Feed
 **Then** additional pages of insights load seamlessly without full page refresh
+
+### Story 3.9: Key Metric Prompt Refinement
+
+As a **user**,
+I want insight card key metrics to be concise and immediately readable,
+So that I can grasp the key number at a glance without parsing a dense compound string.
+
+**Acceptance Criteria:**
+
+**Given** the Education Agent LLM prompt for insight generation
+**When** it is updated
+**Then** it contains an explicit constraint on the `key_metric` field: "key_metric must be a single, human-readable value — a formatted number with currency/unit and at most one short comparator. Maximum 60 characters. Do not combine multiple numeric figures or percentages and absolutes in the same value."
+
+**Given** the Education Agent generates an insight card
+**When** it produces the `key_metric` field
+**Then** the value is a single, readable figure such as "₴1,200/month", "34% more than last month", or "+2,100 UAH vs. October" — not a compound expression like "₴87,582.04 (25.9% of total) vs. ₴213,238.50 finance allocation"
+
+**Given** a sample of 10 newly generated insight cards (from test data or staging)
+**When** evaluated against the constraint
+**Then** ≥ 90% of `key_metric` values are ≤ 60 characters and contain no more than one numeric figure
+
+**Given** existing insight cards already stored in the database
+**When** this change is deployed
+**Then** existing cards are not retroactively regenerated — the refinement applies only to insights generated from future uploads
+
+**Given** the updated prompts are applied
+**When** a Ukrainian-language user uploads a statement
+**Then** Ukrainian-language `key_metric` values are equally concise (the constraint applies to both languages)
 
 ## Epic 4: Cumulative Financial Profile & Health Score
 
@@ -1562,6 +1708,136 @@ So that I can prioritize corpus quality improvements without manually reviewing 
 **Given** the minimum sample size of 10 votes
 **When** a cluster has fewer than 10 votes
 **Then** it is never flagged regardless of thumbs-down rate, preventing false positives from small samples
+
+---
+
+## Epic 8: Pattern Detection, Triage & Subscription Detection
+
+The 5-agent pipeline is complete. Users see insights ranked by financial severity (red/yellow/green), active subscriptions are surfaced with inactivity alerts, and month-over-month spending trends and anomalies are detected automatically.
+
+### Story 8.1: Pattern Detection Agent
+
+As a **user**,
+I want the system to automatically detect spending patterns, trends, and anomalies in my transactions,
+So that I receive insights about financial patterns I would never have spotted manually.
+
+**Acceptance Criteria:**
+
+**Given** the Categorization Agent has completed and persisted categorized transactions for a processing job
+**When** the Pattern Detection Agent (LangGraph node at `agents/pattern_detection/node.py`) runs
+**Then** it analyzes the transaction set for: month-over-month category spending changes, anomalously large single transactions (outliers by amount within category), and intra-period spending distribution across categories
+
+**Given** two or more months of transaction data are available for the user
+**When** the Pattern Detection Agent runs `detectors/trends.py`
+**Then** category-level spending changes (% delta and UAH delta) are computed and persisted to a `pattern_findings` table created via Alembic migration (fields: id UUID, user_id FK, upload_id FK, pattern_type ENUM, category, period_start, period_end, baseline_amount_kopiykas, current_amount_kopiykas, change_percent, finding_json JSONB)
+
+**Given** only a single upload's worth of data is available
+**When** the Pattern Detection Agent runs
+**Then** it generates intra-period findings only (spending distribution, top categories, high single transactions); `change_percent`, `baseline_amount_kopiykas` are null; no month-over-month fields are emitted
+
+**Given** the Pattern Detection Agent is integrated into the 5-agent pipeline
+**When** the Celery worker executes the LangGraph pipeline
+**Then** the flow is: Ingestion → Categorization → Pattern Detection → Triage → Education; SSE progress emits a `"pattern-detection"` step with its own human-readable message (e.g., "Detecting spending patterns..."); the full pipeline still completes within 60 seconds for 200-500 transactions (NFR4)
+
+**Given** the Pattern Detection Agent throws an unhandled exception
+**When** the error handler activates
+**Then** the pipeline continues to the Triage and Education steps with whatever findings were produced before the failure — partial findings are acceptable; the job does not fail entirely
+
+### Story 8.2: Subscription Detection
+
+As a **user**,
+I want active subscriptions and recurring charges automatically identified from my transactions,
+So that I can see exactly what I'm paying for every month and spot any I've forgotten about.
+
+**Acceptance Criteria:**
+
+**Given** the Pattern Detection Agent runs and `detectors/recurring.py` analyzes the transaction set
+**When** it identifies subscription candidates
+**Then** it groups charges from the same merchant occurring on a regular cadence (monthly ± 3 days, or annual ± 7 days) with consistent amounts (within 5% tolerance for price changes) and flags them as recurring subscriptions
+
+**Given** a detected subscription
+**When** it is persisted
+**Then** it is stored in a `detected_subscriptions` table created via Alembic migration (fields: id UUID, user_id FK, upload_id FK, merchant_name, estimated_monthly_cost_kopiykas INT, billing_frequency ENUM('monthly','annual'), last_charge_date DATE, is_active BOOL, months_with_no_activity INT)
+
+**Given** a detected subscription has had no matching transaction in the last 35 days (for monthly) or 375 days (for annual)
+**When** it is persisted
+**Then** `is_active = false` and `months_with_no_activity` is set to the integer number of missed billing cycles
+
+**Given** the Education Agent receives subscription findings from the triage output
+**When** it generates insight cards for subscription findings
+**Then** it creates cards with `card_type = "subscriptionAlert"` containing: subscription service name, monthly cost, billing frequency, inactivity status; stored in the `insights` table alongside other card types
+
+**Given** the Teaching Feed API `GET /api/v1/insights` serializes cards
+**When** a card has `card_type = "subscriptionAlert"`
+**Then** the response JSON includes a `subscription` object with fields: `merchantName` (string), `monthlyCostUah` (number), `billingFrequency` ("monthly" | "annual"), `isActive` (boolean), `monthsWithNoActivity` (integer | null)
+
+**Given** a `subscriptionAlert` card is rendered in the Teaching Feed
+**When** the user views it
+**Then** `SubscriptionAlertCard.tsx` displays: service name as headline, monthly cost as key metric, billing frequency as a label, and — if `isActive = false` — an inactivity badge showing "Inactive X month(s)"
+
+### Story 8.3: Triage Agent & Severity Scoring
+
+As a **user**,
+I want my financial insights ranked by severity so I know which ones demand my attention first,
+So that I'm not overwhelmed and can focus on what matters most.
+
+**Acceptance Criteria:**
+
+**Given** the Pattern Detection Agent has produced its findings
+**When** the Triage Agent (LangGraph node at `agents/triage/node.py`) runs
+**Then** it assigns a `severity` level to each finding using scoring logic in `severity.py` based on UAH impact: `critical` — finding affects > 20% of the user's estimated monthly income, or an inactive subscription costs > 500 UAH/month; `warning` — finding affects 5–20% of monthly income, or a spending category increased > 25% month-over-month; `info` — finding affects < 5% of monthly income or is informational
+
+**Given** severity is assigned to all findings
+**When** the Education Agent generates insight cards from those findings
+**Then** each `insights` record is stored with the `severity` field set to the triage output value (`critical`, `warning`, `info`), filling the field that was already in the schema from Story 3.4
+
+**Given** the user's monthly income estimate is unavailable (first upload, no income transactions detected)
+**When** the severity scoring runs
+**Then** severity falls back to absolute UAH thresholds: `critical` > 2,000 UAH impact, `warning` 500–2,000 UAH, `info` < 500 UAH
+
+**Given** the Triage Agent fails or produces no output
+**When** insights are stored
+**Then** all `severity` fields default to `info` — the pipeline never fails or produces null severity values
+
+**Given** the Teaching Feed API `GET /api/v1/insights`
+**When** it queries the insights table
+**Then** results are sorted server-side by severity: `critical` first, `warning` second, `info` third (replacing the previous sort order which had no severity ranking)
+
+### Story 8.4: Teaching Feed Triage UX
+
+As a **user**,
+I want insight cards to display a clear visual severity indicator,
+So that I can immediately understand the urgency of each insight without reading its full content.
+
+**Acceptance Criteria:**
+
+**Given** an insight card with `severity = "critical"`
+**When** it renders in the Teaching Feed
+**Then** a `TriageBadge.tsx` component displays a red badge with a warning icon and "Critical" text label; the card also has a subtle red left-border accent to reinforce urgency at a glance
+
+**Given** an insight card with `severity = "warning"`
+**When** it renders
+**Then** the `TriageBadge` displays an amber/yellow badge with a caution icon and "Warning" text label
+
+**Given** an insight card with `severity = "info"`
+**When** it renders
+**Then** the `TriageBadge` displays a teal/green badge with an info icon and "Info" text label (or the badge is omitted entirely to reduce visual noise for low-severity cards — implementation decision)
+
+**Given** a user who cannot distinguish red, yellow, and green by colour
+**When** they view the Teaching Feed
+**Then** severity is conveyed through both the icon shape AND the text label ("Critical", "Warning", "Info") — not colour alone (NFR21 colour independence compliance)
+
+**Given** a screen reader user navigating the Teaching Feed
+**When** their focus enters a severity badge
+**Then** it announces as "Severity: Critical", "Severity: Warning", or "Severity: Informational" via `aria-label` on the badge element (NFR20 screen reader compatibility)
+
+**Given** the Teaching Feed is loaded after a completed pipeline
+**When** the card list renders
+**Then** critical-severity cards appear at the top, followed by warning, followed by info — consistent with the server-side sort order introduced in Story 8.3
+
+**Given** a user with `prefers-reduced-motion` enabled
+**When** the Teaching Feed renders
+**Then** the severity badges display as static elements — no pulse, glow, or attention animation is applied even if one is added for critical emphasis
 
 ---
 

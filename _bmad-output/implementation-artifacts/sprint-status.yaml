@@ -1,8 +1,8 @@
-# generated: 2026-03-21
+# generated: 2026-04-15
 # project: kopiika-ai
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: /Users/ohumennyi/Projects/kopiika-ai/_bmad-output/implementation-artifacts
+# story_location: /Users/ohumennyi/Personal/kopiika-ai/_bmad-output/implementation-artifacts
 
 # STATUS DEFINITIONS:
 # ==================
@@ -33,11 +33,11 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-03-21 # refreshed
+generated: 2026-04-15
 project: kopiika-ai
 project_key: NOKEY
 tracking_system: file-system
-story_location: /Users/ohumennyi/Projects/kopiika-ai/_bmad-output/implementation-artifacts
+story_location: /Users/ohumennyi/Personal/kopiika-ai/_bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Project Foundation & User Authentication
@@ -49,6 +49,7 @@ development_status:
   1-5-protected-routes-tenant-isolation: done
   1-6-language-selection-ukrainian-english: done
   1-7-account-settings-page: done
+  1-8-forgot-password-flow: backlog
   epic-1-retrospective: optional
 
   # Epic 2: Statement Upload & Data Ingestion
@@ -60,6 +61,8 @@ development_status:
   2-5-async-pipeline-processing-with-celery: done
   2-6-real-time-processing-progress-via-sse: done
   2-7-multiple-statement-uploads-cumulative-history: done
+  2-8-upload-completion-ux-summary: backlog
+  2-9-expand-currency-map: backlog
   epic-2-retrospective: optional
 
   # Epic 3: AI-Powered Financial Insights & Teaching Feed
@@ -73,6 +76,7 @@ development_status:
   3-7-progressive-card-appearance-sse-integration: done
   3-8-adaptive-education-depth: done
   3-9-teaching-feed-infinite-pagination: done
+  3-9-key-metric-prompt-refinement: backlog
   epic-3-retrospective: done
 
   # ── POST-EPIC 3 ACTION: Migrate LLM clients to AWS Bedrock ──────────────
@@ -137,6 +141,7 @@ development_status:
   5-4-view-my-stored-data: done
   5-5-delete-all-my-data: done
   5-6-privacy-consent-bugfix-postmortem: done
+  5-6-compliance-audit-trail: backlog
   epic-5-retrospective: optional
 
   # Epic 6: Error Handling, Recovery & Operational Monitoring
@@ -148,3 +153,23 @@ development_status:
   6-5-pipeline-performance-upload-metrics-tracking: done
   6-6-operator-job-status-health-queries: done
   epic-6-retrospective: optional
+
+  # Epic 7: User Feedback System
+  epic-7: backlog
+  7-1-implicit-card-interaction-tracking-engagement-score: backlog
+  7-2-thumbs-up-down-on-teaching-feed-cards: backlog
+  7-3-issue-reporting-on-teaching-feed-cards: backlog
+  7-4-feedback-data-privacy-integration: backlog
+  7-5-thumbs-down-follow-up-panel-with-reason-chips: backlog
+  7-6-occasional-thumbs-up-follow-up: backlog
+  7-7-milestone-feedback-cards-in-the-teaching-feed: backlog
+  7-8-rag-topic-cluster-auto-flagging: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Pattern Detection, Triage & Subscription Detection
+  epic-8: backlog
+  8-1-pattern-detection-agent: backlog
+  8-2-subscription-detection: backlog
+  8-3-triage-agent-severity-scoring: backlog
+  8-4-teaching-feed-triage-ux: backlog
+  epic-8-retrospective: optional
