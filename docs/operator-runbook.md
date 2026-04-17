@@ -307,32 +307,89 @@ ORDER BY events DESC;
 
 Periodic jobs are registered in
 [`backend/app/tasks/celery_app.py`](../backend/app/tasks/celery_app.py) via
-`celery_app.conf.beat_schedule`.
+`celery_app.conf.beat_schedule`. They are published by a dedicated **Celery
+beat** process (Story 7.9) running as ECS service `kopiika-${env}-beat` and
+consumed by the existing worker service.
 
 | Task | Schedule (UTC) | Source |
 |------|----------------|--------|
 | `app.tasks.cluster_flagging_tasks.flag_low_quality_clusters` | Daily 02:00 | Story 7.8 |
 
-### ⚠️ Deployment gap (TD-026)
+### Scheduler store
 
-These schedules require a running **Celery beat** scheduler process to publish
-the tasks to the queue. As of Story 7.8 the production deployment runs only the
-Celery worker (`backend/Dockerfile.worker`) — there is no beat service in ECS,
-Docker Compose, or CI. **Scheduled tasks therefore never fire automatically.**
-Until TD-026 is resolved, operators who want to run a scheduled task manually
-can enqueue it on demand with:
+Beat uses Celery's default file-based schedule store (`celerybeat-schedule`)
+written inside the Fargate task's ephemeral filesystem. Two implications:
+
+- **Single-replica by design.** The beat ECS service is hardcoded to
+  `desired_count = 1`. Two beat replicas connected to the same broker would
+  each fire every scheduled task at every cadence. If high-availability beat
+  becomes necessary, switch to [`celery-redbeat`](https://github.com/sibson/redbeat)
+  (Redis-backed store with leader election) before scaling past one replica.
+- **Restarts may re-fire a window.** If the beat container restarts across a
+  scheduled instant, the file-based store does not remember "02:00 UTC already
+  ran" — the next start can re-publish that cadence. Acceptable for today's
+  single daily idempotent job; revisit when a schedule entry becomes expensive
+  or non-idempotent.
+
+### Verifying beat is running
+
+- **ECS console:** find the service `kopiika-${env}-beat` in cluster
+  `kopiika-${env}-cluster`. Desired and running counts must both be `1`.
+- **CloudWatch logs:** log group `/ecs/kopiika-${env}-beat`, stream prefix
+  `beat/`. Within ~30s of task start expect the banner `beat: Starting...`,
+  followed by one `Scheduler: Sending due task
+  flag-low-quality-rag-clusters-daily` line per UTC day at 02:00.
+- **Container liveness:** ECS task definition includes a container-level
+  healthcheck that asserts the Celery app still imports
+  (`python -c 'from app.tasks.celery_app import celery_app'`, interval 60s,
+  retries 3). A failing healthcheck stops the task and ECS replaces it; watch
+  for restart churn in the service events tab if the signal escalates.
+
+  **Limits of this healthcheck:** it only catches the "app broken" failure
+  class. A beat container whose import succeeds but whose main loop is
+  wedged, whose `beat_schedule` is empty, or whose system clock has drifted
+  will pass the healthcheck while quietly failing to schedule. The 24-hour
+  end-to-end canary (CloudWatch log metric filter + alarm on
+  `"Scheduler: Sending due task"` lines) is tracked as **TD-028** in
+  `docs/tech-debt.md` and should be added before anything in `beat_schedule`
+  becomes business-critical.
+- **Ad-hoc manual enqueue (kept for incident re-runs, not routine use):**
+
+  ```bash
+  docker compose exec worker \
+    celery -A app.tasks.celery_app call app.tasks.cluster_flagging_tasks.flag_low_quality_clusters
+  ```
+
+  or from a Python shell against the DB-connected worker image:
+
+  ```python
+  from app.tasks.cluster_flagging_tasks import flag_low_quality_clusters
+  flag_low_quality_clusters.delay()
+  ```
+
+### First-time beat deployment to a fresh environment
+
+The ECS beat task definition pins `image = "${ecr_repository_url}:beat-latest"`.
+If the `beat-latest` tag does not yet exist in ECR when Terraform runs,
+`aws_ecs_task_definition.beat` creates cleanly but `aws_ecs_service.beat`
+fails to start tasks (image pull error), and the `wait-for-service-stability`
+step in the deploy workflow will time out.
+
+One-time seeding for a new environment (only needed on the *first* deploy to
+an env where no `beat-latest` tag has ever been pushed):
 
 ```bash
-docker compose exec worker \
-  celery -A app.tasks.celery_app call app.tasks.cluster_flagging_tasks.flag_low_quality_clusters
+# From a workstation with AWS creds + ECR push permissions for the target env
+aws ecr get-login-password --region eu-central-1 \
+  | docker login --username AWS --password-stdin <account>.dkr.ecr.eu-central-1.amazonaws.com
+docker build -t <account>.dkr.ecr.eu-central-1.amazonaws.com/kopiika-backend:beat-latest \
+  -f backend/Dockerfile.beat backend/
+docker push <account>.dkr.ecr.eu-central-1.amazonaws.com/kopiika-backend:beat-latest
+# Then run `terraform apply` for the env. Subsequent deploys work via the normal CI pipeline.
 ```
 
-Or directly from a Python shell against the DB-connected worker image:
-
-```python
-from app.tasks.cluster_flagging_tasks import flag_low_quality_clusters
-flag_low_quality_clusters.delay()
-```
+From the second deploy onward, the GitHub Actions workflow keeps `beat-latest`
+current — no manual step needed.
 
 ### Inspecting flagged clusters
 

@@ -143,3 +143,105 @@ resource "aws_ecs_service" "worker" {
     Name = "${local.name_prefix}-worker"
   }
 }
+
+# -----------------------------------------------------------------------------
+# Celery beat scheduler (Story 7.9 / TD-026)
+#
+# Runs a separate ECS service whose container is commanded `celery ... beat`.
+# Beat publishes scheduled messages (see backend/app/tasks/celery_app.py
+# `beat_schedule`); the worker consumes them. They MUST be separate processes.
+#
+# desired_count is hardcoded to 1 — two beat replicas connected to the same
+# broker will each fire every scheduled task at every cadence, multiplying every
+# job. If HA beat ever becomes necessary, switch the scheduler store to
+# `celery-redbeat` (Redis-backed, leader election) first.
+# -----------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "beat" {
+  name              = "/ecs/${local.name_prefix}-beat"
+  retention_in_days = 30
+
+  tags = {
+    Name = "${local.name_prefix}-beat-logs"
+  }
+}
+
+resource "aws_ecs_task_definition" "beat" {
+  family                   = "${local.name_prefix}-beat"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.cpu
+  memory                   = var.memory
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name = "beat"
+      # Bootstrap tag only — the deploy workflow renders a task-def revision
+      # pinned to :beat-${sha} on every push, so the effective running image
+      # is the most recent build, not :beat-latest. See
+      # .github/workflows/deploy-backend.yml → "Render beat task definition".
+      image     = "${var.ecr_repository_url}:beat-latest"
+      essential = true
+
+      command = [
+        "celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"
+      ]
+
+      environment = [
+        {
+          name  = "ENVIRONMENT"
+          value = var.environment
+        },
+        {
+          name  = "AWS_SECRETS_PREFIX"
+          value = "${var.project_name}/${var.environment}"
+        },
+      ]
+
+      # Liveness: verifies the celery app still imports. Catches the
+      # "container is there but broken" class of failure; does NOT prove beat
+      # is actually publishing scheduled messages (see operator-runbook.md
+      # "Verifying beat is running" for the end-to-end check).
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c 'from app.tasks.celery_app import celery_app'"]
+        interval    = 60
+        timeout     = 10
+        retries     = 3
+        startPeriod = 30
+      }
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.beat.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "beat"
+        }
+      }
+    }
+  ])
+
+  tags = {
+    Name = "${local.name_prefix}-beat"
+  }
+}
+
+resource "aws_ecs_service" "beat" {
+  name            = "${local.name_prefix}-beat"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.beat.arn
+  desired_count   = 1 # MUST stay 1 — duplicate beat replicas multi-fire every scheduled task
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = var.private_subnet_ids
+    security_groups  = [var.ecs_security_group_id]
+    assign_public_ip = false
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-beat"
+  }
+}

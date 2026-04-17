@@ -424,24 +424,21 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 
 ---
 
-### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]
+### TD-028 — No end-to-end canary that beat actually publishes scheduled messages [MEDIUM]
 
-**Where:** [backend/app/tasks/celery_app.py:31-36](backend/app/tasks/celery_app.py#L31-L36), [backend/Dockerfile.worker:33](backend/Dockerfile.worker#L33), [.github/workflows/deploy-backend.yml](.github/workflows/deploy-backend.yml), [docker-compose.yml](docker-compose.yml)
+**Where:** [infra/terraform/modules/ecs/main.tf:199-209](infra/terraform/modules/ecs/main.tf#L199-L209), [docs/operator-runbook.md#Verifying-beat-is-running](docs/operator-runbook.md)
 
-**Problem:** Story 7.8 registered `beat_schedule` to run `flag_low_quality_clusters` daily at 02:00 UTC, satisfying AC #3 at the code level. At the deployment level, there is no beat process anywhere: `Dockerfile.worker` only runs `celery ... worker`, the ECS deploy workflow only builds/pushes the worker image, and `docker-compose.yml` has no beat service. Celery beat is a separate scheduler process — without it, nothing publishes the scheduled task to the queue, so the worker never receives it and the cluster-flagging job never runs in production. The same gap would block any future `beat_schedule` entry (e.g. the `audit_logs` retention job hinted at in TD-014).
+**Problem:** Story 7.9 shipped a container-level healthcheck (`python -c 'from app.tasks.celery_app import celery_app'`) that proves the Celery app still imports, but does NOT detect silent scheduler failures where beat is up yet not publishing — e.g. an empty `beat_schedule`, a wedged mainloop, clock drift that skips a cadence, or a corrupted `celerybeat-schedule` file. Story 7.9's original AC #7 called for a smoke check that asserts "the `celery` queue has seen a message matching a known scheduled task name within the last 24 h, and fails loudly when it has not"; the shipped implementation intentionally does not cover that.
 
-**Why deferred:** Fixing this is an infra/IaC change (new Dockerfile, new ECS service or compose entry, new CI build+push, singleton desired-count guarantee) that extends beyond the cluster-flagging story's code-review scope. Story 7.8 code review chose "runbook note + TD entry" over bundling deployment into the review fix.
+**Why deferred:** Building a real canary requires either a CloudWatch log metric filter + alarm on `"Scheduler: Sending due task"` lines in `/ecs/${env}-beat`, or a weekly cron that inspects the broker queue / `flagged_topic_clusters` freshness. Both are additive work beyond the "make beat run at all" scope of Story 7.9. The import-only healthcheck was a conscious downgrade documented in the story's AC #7 narrowing.
 
 **Fix shape:**
-1. Add `backend/Dockerfile.beat` (or parameterise `Dockerfile.worker` with a build arg) whose `CMD` is `["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]`.
-2. Extend `.github/workflows/deploy-backend.yml` to build and push a `beat-$SHA` / `beat-latest` image alongside the worker image.
-3. Provision a dedicated ECS service (or equivalent) for the beat container with `desired_count=1` — multiple beat replicas would multi-fire every scheduled job.
-4. Add the beat service to `docker-compose.yml` for local parity, commanded `celery -A app.tasks.celery_app beat --loglevel=info`, dependent on `redis`.
-5. Pick a scheduler store — default file-based `celerybeat-schedule` works for a single-task schedule but won't survive container restarts cleanly; evaluate `django-celery-beat`/`celery-redbeat` if the schedule grows.
-6. Update `docs/operator-runbook.md` with a "Scheduled tasks" section listing each entry in `beat_schedule`, expected cadence, and how to verify it last fired.
-7. Add a smoke test in CI or a weekly canary that asserts the beat process produced a recent queue entry.
+1. Add an `aws_cloudwatch_log_metric_filter` on `/ecs/${env}-beat` matching the `"Scheduler: Sending due task"` substring.
+2. Add an `aws_cloudwatch_metric_alarm` in the same Terraform module that fires when the metric sum over 25h is `< 1`, wired to the existing alerting SNS topic.
+3. As a cheaper alternative: weekly Celery beat-schedule canary task that checks `flagged_topic_clusters` for freshness and pages if the last `last_evaluated_at` is older than 26h.
+4. Remove or tighten the runbook's "Container liveness" bullet once the real canary is live, so operators don't confuse the two.
 
-**Surfaced in:** Story 7.8 code review (2026-04-17)
+**Surfaced in:** Story 7.9 code review (2026-04-17)
 
 ---
 
@@ -462,3 +459,11 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 3. Add an ESLint rule or CI check that fails if a module-level mutable object is read inside a hook body without being either a ref or a subscribed store.
 
 **Surfaced in:** Story 7.6 code review (2026-04-17)
+
+---
+
+## Resolved
+
+### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]
+
+Resolved by Story 7.9 (2026-04-17) — `backend/Dockerfile.beat`, CI build+push+deploy in `.github/workflows/deploy-backend.yml`, dedicated `aws_ecs_service.beat` (`desired_count = 1`) in `infra/terraform/modules/ecs/main.tf`, and a `beat` service in `docker-compose.yml`. Operator runbook now documents how to verify beat is running and the file-based scheduler-store trade-off. Verification of the first production 02:00 UTC firing happens post-deploy (watch `/ecs/kopiika-prod-beat` CloudWatch logs and the `flagged_topic_clusters` table).

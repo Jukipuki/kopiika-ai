@@ -1709,6 +1709,46 @@ So that I can prioritize corpus quality improvements without manually reviewing 
 **When** a cluster has fewer than 10 votes
 **Then** it is never flagged regardless of thumbs-down rate, preventing false positives from small samples
 
+### Story 7.9: Celery Beat Scheduler Deployment
+
+As a **developer**,
+I want the Celery beat scheduler to run in every environment (local, CI, production),
+So that tasks registered in `beat_schedule` (starting with Story 7.8's daily RAG cluster flagging) actually fire on their cadence instead of sitting dormant.
+
+**Acceptance Criteria:**
+
+**Given** the beat scheduler needs its own long-running process
+**When** the backend is built for deployment
+**Then** a dedicated beat container image is produced whose `CMD` is `celery -A app.tasks.celery_app beat --loglevel=info`, built either from a new `backend/Dockerfile.beat` or from `backend/Dockerfile.worker` parameterised with a build arg
+
+**Given** the GitHub Actions deploy pipeline currently builds only `worker-$SHA` / `worker-latest` images
+**When** `.github/workflows/deploy-backend.yml` runs on `main`
+**Then** it also builds and pushes a beat image (`beat-$SHA` / `beat-latest`) to the same ECR repository in the same run, gated on the same migration step as the worker
+
+**Given** the ECS cluster provisioned in `infra/terraform/modules/ecs/`
+**When** the beat container is deployed
+**Then** a separate ECS service (`${project}-${env}-beat`) runs the beat image with `desired_count = 1` (never 2+, as duplicate beat replicas multi-fire every scheduled job), using the existing task/execution IAM roles, private subnets, security group, and CloudWatch log group pattern that the worker uses
+
+**Given** local development parity with production
+**When** a developer runs `docker compose up`
+**Then** a `beat` service starts alongside `redis` / `postgres` / `worker`, commanded `celery -A app.tasks.celery_app beat --loglevel=info`, depending on `redis`, so scheduled tasks fire locally exactly as they will in prod
+
+**Given** Celery beat needs to persist its last-run state to avoid duplicate firings after restart
+**When** the scheduler store is chosen
+**Then** the default file-based `celerybeat-schedule` is used on an ephemeral path with an explicit note in `docs/operator-runbook.md` that a single-replica service is required for correctness; if the schedule grows beyond two entries, `celery-redbeat` (Redis-backed) is evaluated as follow-up tech-debt
+
+**Given** the "Scheduled Tasks" section already exists in `docs/operator-runbook.md`
+**When** the beat deployment lands
+**Then** the **"⚠️ Deployment gap (TD-026)"** subsection is removed/replaced with a "Verifying beat is running" subsection documenting: how to find the beat service in ECS, the CloudWatch log stream to tail, the expected `"Scheduler: Sending due task"` log line cadence, and the manual `celery -A app.tasks.celery_app call …` fallback (kept for ad-hoc re-runs, not routine use)
+
+**Given** the beat container can silently break (bad import, missing module, corrupted venv) without any obvious external signal
+**When** the deployment is in place
+**Then** the ECS task definition runs a container-level healthcheck that at minimum verifies the Celery app imports cleanly, so ECS replaces a wedged beat container automatically *(narrowed during Story 7.9 code review: the original 24-hour end-to-end broker canary was split out to **TD-028**, which captures the CloudWatch metric-filter + alarm fix shape for the "app up but silently not scheduling" failure class)*
+
+**Given** TD-026 is tracked in `docs/tech-debt.md`
+**When** the beat deployment implementation lands on `main`
+**Then** the TD-026 entry is moved to a `## Resolved` section with a link to this story, AND the production firing verification (first scheduled `flag_low_quality_clusters` run at 02:00 UTC observed in CloudWatch logs) is explicitly tracked inline in the Resolved entry as a post-deploy follow-up *(narrowed during Story 7.9 code review: the original AC required verification before the move; narrowing allows the register to reflect "implementation complete" at merge time without stalling on post-deploy verification)*
+
 ---
 
 ## Epic 8: Pattern Detection, Triage & Subscription Detection

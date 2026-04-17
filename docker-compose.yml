@@ -27,6 +27,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # Celery worker — consumes messages from the Redis broker. Added alongside
+  # `beat` so `docker compose up` mirrors the full prod pipeline (beat publishes,
+  # worker executes). Without the worker running locally, scheduled messages
+  # published by beat pile up in the queue and are never processed.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/kopiika_db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Celery beat — publishes scheduled messages to the Redis broker per
+  # `beat_schedule` in backend/app/tasks/celery_app.py. MUST run as a single
+  # replica; duplicate beat processes multi-fire every scheduled task.
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.beat
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/kopiika_db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

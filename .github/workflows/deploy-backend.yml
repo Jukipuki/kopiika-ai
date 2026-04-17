@@ -93,3 +93,28 @@ jobs:
           service: kopiika-${{ vars.ENVIRONMENT }}-worker
           cluster: kopiika-${{ vars.ENVIRONMENT }}-cluster
           wait-for-service-stability: true
+
+      - name: Build and push beat image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:beat-$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:beat-latest -f backend/Dockerfile.beat backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:beat-$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:beat-latest
+
+      - name: Render beat task definition
+        id: render-beat
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: kopiika-${{ vars.ENVIRONMENT }}-beat
+          container-name: beat
+          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:beat-${{ github.sha }}
+
+      - name: Deploy beat to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-beat.outputs.task-definition }}
+          service: kopiika-${{ vars.ENVIRONMENT }}-beat
+          cluster: kopiika-${{ vars.ENVIRONMENT }}-cluster
+          wait-for-service-stability: true
