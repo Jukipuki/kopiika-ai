@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -20,4 +21,16 @@ celery_app.conf.update(
     # Worker concurrency: default prefork pool, concurrency=2 for dev
 )
 
-celery_app.conf.update(include=["app.tasks.processing_tasks"])
+celery_app.conf.update(
+    include=[
+        "app.tasks.processing_tasks",
+        "app.tasks.cluster_flagging_tasks",
+    ]
+)
+
+celery_app.conf.beat_schedule = {
+    "flag-low-quality-rag-clusters-daily": {
+        "task": "app.tasks.cluster_flagging_tasks.flag_low_quality_clusters",
+        "schedule": crontab(hour=2, minute=0),
+    },
+}

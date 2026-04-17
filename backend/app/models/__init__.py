@@ -6,6 +6,7 @@ from app.models.feedback_response import FeedbackResponse
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
 from app.models.flagged_import_row import FlaggedImportRow
+from app.models.flagged_topic_cluster import FlaggedTopicCluster
 from app.models.insight import Insight
 from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
@@ -21,6 +22,7 @@ __all__ = [
     "FinancialHealthScore",
     "FinancialProfile",
     "FlaggedImportRow",
+    "FlaggedTopicCluster",
     "Insight",
     "ProcessingJob",
     "Transaction",

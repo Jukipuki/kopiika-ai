@@ -300,3 +300,48 @@ ORDER BY events DESC;
   retention enforcement is tracked in TD-014.
 - Anonymized rows (post-deletion) keep all columns except `user_id`, which becomes
   the SHA-256 hex of the original Cognito `sub`.
+
+---
+
+## Scheduled Tasks (Celery beat)
+
+Periodic jobs are registered in
+[`backend/app/tasks/celery_app.py`](../backend/app/tasks/celery_app.py) via
+`celery_app.conf.beat_schedule`.
+
+| Task | Schedule (UTC) | Source |
+|------|----------------|--------|
+| `app.tasks.cluster_flagging_tasks.flag_low_quality_clusters` | Daily 02:00 | Story 7.8 |
+
+### ⚠️ Deployment gap (TD-026)
+
+These schedules require a running **Celery beat** scheduler process to publish
+the tasks to the queue. As of Story 7.8 the production deployment runs only the
+Celery worker (`backend/Dockerfile.worker`) — there is no beat service in ECS,
+Docker Compose, or CI. **Scheduled tasks therefore never fire automatically.**
+Until TD-026 is resolved, operators who want to run a scheduled task manually
+can enqueue it on demand with:
+
+```bash
+docker compose exec worker \
+  celery -A app.tasks.celery_app call app.tasks.cluster_flagging_tasks.flag_low_quality_clusters
+```
+
+Or directly from a Python shell against the DB-connected worker image:
+
+```python
+from app.tasks.cluster_flagging_tasks import flag_low_quality_clusters
+flag_low_quality_clusters.delay()
+```
+
+### Inspecting flagged clusters
+
+```sql
+SELECT cluster_id, thumbs_down_rate, total_votes, total_down_votes, flagged_at
+FROM flagged_topic_clusters
+ORDER BY thumbs_down_rate DESC;
+
+SELECT cluster_id, top_reason_chips, sample_card_ids
+FROM flagged_topic_clusters
+WHERE cluster_id = :category;
+```

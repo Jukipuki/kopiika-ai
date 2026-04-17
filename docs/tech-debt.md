@@ -407,6 +407,44 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 
 ---
 
+### TD-027 — `insights.category` is not indexed; cluster-flagging `GROUP BY` full-scans insights [LOW]
+
+**Where:** [backend/app/models/insight.py:23](backend/app/models/insight.py#L23), [backend/app/tasks/cluster_flagging_tasks.py:47-62](backend/app/tasks/cluster_flagging_tasks.py#L47-L62)
+
+**Problem:** The cluster-flagging Celery task runs a `GROUP BY i.category` across the whole `card_feedback` ⋈ `insights` join on every daily execution. `insights` has an index on `user_id` but none on `category`, so the group-by forces a full scan + hash aggregate. Fine while `insights` is small; becomes measurable drag once the table grows to tens of millions of rows, especially given the task runs unthrottled in a single session.
+
+**Why deferred:** No current pain — dev/staging tables are small, and the batch runs at 02:00 UTC once per day (and even that depends on TD-026 being resolved first). Low value until there is evidence of real query time or the row count crosses a threshold.
+
+**Fix shape:**
+1. Add an Alembic migration creating `ix_insights_category` on `insights(category)`.
+2. Confirm the Postgres planner now uses an index scan / sort for the Phase 1 query in the flagging task (`EXPLAIN ANALYZE`).
+3. Consider a composite `(category, user_id)` instead if analytics queries also filter by owner; plain `(category)` is sufficient for the current batch query.
+
+**Surfaced in:** Story 7.8 code review (2026-04-17)
+
+---
+
+### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]
+
+**Where:** [backend/app/tasks/celery_app.py:31-36](backend/app/tasks/celery_app.py#L31-L36), [backend/Dockerfile.worker:33](backend/Dockerfile.worker#L33), [.github/workflows/deploy-backend.yml](.github/workflows/deploy-backend.yml), [docker-compose.yml](docker-compose.yml)
+
+**Problem:** Story 7.8 registered `beat_schedule` to run `flag_low_quality_clusters` daily at 02:00 UTC, satisfying AC #3 at the code level. At the deployment level, there is no beat process anywhere: `Dockerfile.worker` only runs `celery ... worker`, the ECS deploy workflow only builds/pushes the worker image, and `docker-compose.yml` has no beat service. Celery beat is a separate scheduler process — without it, nothing publishes the scheduled task to the queue, so the worker never receives it and the cluster-flagging job never runs in production. The same gap would block any future `beat_schedule` entry (e.g. the `audit_logs` retention job hinted at in TD-014).
+
+**Why deferred:** Fixing this is an infra/IaC change (new Dockerfile, new ECS service or compose entry, new CI build+push, singleton desired-count guarantee) that extends beyond the cluster-flagging story's code-review scope. Story 7.8 code review chose "runbook note + TD entry" over bundling deployment into the review fix.
+
+**Fix shape:**
+1. Add `backend/Dockerfile.beat` (or parameterise `Dockerfile.worker` with a build arg) whose `CMD` is `["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]`.
+2. Extend `.github/workflows/deploy-backend.yml` to build and push a `beat-$SHA` / `beat-latest` image alongside the worker image.
+3. Provision a dedicated ECS service (or equivalent) for the beat container with `desired_count=1` — multiple beat replicas would multi-fire every scheduled job.
+4. Add the beat service to `docker-compose.yml` for local parity, commanded `celery -A app.tasks.celery_app beat --loglevel=info`, dependent on `redis`.
+5. Pick a scheduler store — default file-based `celerybeat-schedule` works for a single-task schedule but won't survive container restarts cleanly; evaluate `django-celery-beat`/`celery-redbeat` if the schedule grows.
+6. Update `docs/operator-runbook.md` with a "Scheduled tasks" section listing each entry in `beat_schedule`, expected cadence, and how to verify it last fired.
+7. Add a smoke test in CI or a weekly canary that asserts the beat process produced a recent queue entry.
+
+**Surfaced in:** Story 7.8 code review (2026-04-17)
+
+---
+
 ### TD-025 — `_sessionFlags` module-level object read inside useEffect without being in deps [LOW]
 
 **Where:** [frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx:24](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L24), [CardFeedbackBar.tsx:59-71](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L59-L71), [CardFeedbackBar.tsx:86](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L86)
