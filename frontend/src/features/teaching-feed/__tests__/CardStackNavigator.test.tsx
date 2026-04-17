@@ -8,8 +8,21 @@ vi.mock("next-auth/react", () => ({
   useSession: () => ({ data: null, status: "unauthenticated" }),
 }));
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+}));
+
 vi.mock("../hooks/use-card-feedback", () => ({
   useCardFeedback: () => ({ vote: null, submitVote: vi.fn(), isPending: false }),
+}));
+
+vi.mock("../hooks/use-issue-report", () => ({
+  useIssueReport: () => ({
+    submitReport: vi.fn(),
+    isPending: false,
+    isAlreadyReported: false,
+    confirmationShown: false,
+  }),
 }));
 
 // HTML-safe attributes to forward to the rendered div

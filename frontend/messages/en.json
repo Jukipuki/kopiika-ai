@@ -333,6 +333,27 @@
       "short": "Educational insights only — not financial advice",
       "full": "kōpiika provides financial insights and education, not professional financial advice. Consult a qualified advisor for financial decisions.",
       "toggleLabel": "Toggle disclaimer details"
+    },
+    "reportIssue": {
+      "openMenu": "Card options",
+      "trigger": "Report an issue",
+      "title": "Report an issue",
+      "category": {
+        "label": "What's the issue?",
+        "bug": "Bug",
+        "incorrectInfo": "Incorrect info",
+        "confusing": "Confusing",
+        "other": "Other"
+      },
+      "freeText": {
+        "toggle": "Add details (optional)",
+        "placeholder": "Describe the issue...",
+        "counter": "{count}/500"
+      },
+      "submit": "Submit report",
+      "cancel": "Cancel",
+      "success": "Thanks for reporting — we'll look into it",
+      "alreadyReported": "You've already reported this card"
     }
   },
   "onboarding": {

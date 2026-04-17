@@ -8,6 +8,7 @@ from app.services.feedback_service import (
     get_card_feedback,
     store_card_interactions,
     submit_card_vote,
+    submit_issue_report,
 )
 
 
@@ -320,3 +321,130 @@ async def test_get_card_feedback_not_found(async_session):
         session=async_session,
     )
     assert result is None
+
+
+# ==================== Issue Report Service Tests (Story 7.3) ====================
+
+
+@pytest.mark.asyncio
+async def test_submit_issue_report_creates_new_record(async_session):
+    """AC #3: first report → created=True, row persisted with vote=None."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    snapshot, created = await submit_issue_report(
+        card_id=card_id,
+        user_id=user_id,
+        issue_category="incorrect_info",
+        free_text="Amount looks wrong",
+        card_type="food",
+        session=async_session,
+    )
+    assert created is True
+    assert snapshot.issue_category == "incorrect_info"
+    assert snapshot.free_text == "Amount looks wrong"
+    assert snapshot.feedback_source == "issue_report"
+    assert snapshot.vote is None
+    assert snapshot.card_id == card_id
+    assert snapshot.user_id == user_id
+
+
+@pytest.mark.asyncio
+async def test_submit_issue_report_duplicate_returns_created_false(async_session):
+    """AC #4: second report by same user+card → created=False, no error, no extra row."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    first_snap, first_created = await submit_issue_report(
+        card_id=card_id,
+        user_id=user_id,
+        issue_category="bug",
+        free_text=None,
+        card_type="food",
+        session=async_session,
+    )
+    assert first_created is True
+
+    second_snap, second_created = await submit_issue_report(
+        card_id=card_id,
+        user_id=user_id,
+        issue_category="confusing",
+        free_text="different text",
+        card_type="food",
+        session=async_session,
+    )
+    assert second_created is False
+    # Returned snapshot reflects the EXISTING row (original category), not the new one
+    assert second_snap.issue_category == "bug"
+    assert second_snap.id == first_snap.id
+
+    # Only a single row persisted
+    from sqlmodel import func, select
+    from app.models.feedback import CardFeedback
+
+    count = (
+        await async_session.exec(
+            select(func.count()).select_from(CardFeedback).where(
+                CardFeedback.user_id == user_id,
+                CardFeedback.card_id == card_id,
+                CardFeedback.feedback_source == "issue_report",
+            )
+        )
+    ).one()
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_submit_issue_report_vote_and_report_coexist(async_session):
+    """A user can both vote AND report the same card (different feedback_source values)."""
+    from sqlmodel import func, select
+    from app.models.feedback import CardFeedback
+
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    await submit_card_vote(
+        card_id=card_id,
+        user_id=user_id,
+        vote="up",
+        card_type="food",
+        session=async_session,
+    )
+    _, created = await submit_issue_report(
+        card_id=card_id,
+        user_id=user_id,
+        issue_category="other",
+        free_text=None,
+        card_type="food",
+        session=async_session,
+    )
+    assert created is True
+
+    count = (
+        await async_session.exec(
+            select(func.count()).select_from(CardFeedback).where(
+                CardFeedback.user_id == user_id,
+                CardFeedback.card_id == card_id,
+            )
+        )
+    ).one()
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_submit_issue_report_snapshot_detached_after_commit(async_session):
+    """Snapshot must expose fields even after session.commit() (no MissingGreenlet)."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    snapshot, created = await submit_issue_report(
+        card_id=card_id,
+        user_id=user_id,
+        issue_category="other",
+        free_text=None,
+        card_type="food",
+        session=async_session,
+    )
+    assert created is True
+    # These attribute accesses must not hit the DB (session is already committed)
+    assert snapshot.id is not None
+    assert snapshot.card_id == card_id
+    assert snapshot.feedback_source == "issue_report"
+    assert snapshot.issue_category == "other"
+    assert snapshot.free_text is None

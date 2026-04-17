@@ -306,6 +306,22 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 
 **Surfaced in:** Story 7.2 code review (2026-04-17)
 
+### TD-020 — `ReportIssueForm` free-text `sr-only` label duplicates the placeholder text [LOW]
+
+**Where:** [frontend/src/features/teaching-feed/components/ReportIssueForm.tsx:99-110](frontend/src/features/teaching-feed/components/ReportIssueForm.tsx#L99-L110)
+
+**Problem:** The free-text textarea's `<label className="sr-only">` reuses `t("freeText.placeholder")` ("Describe the issue...") as both the accessible label and the placeholder. Screen readers announce the same string twice — once as the label, once as the placeholder hint — and the label doesn't describe the field's purpose (optional details about the reported issue), only restates the prompt. Not WCAG-failing, but sub-par for SR users.
+
+**Why deferred:** Purely cosmetic a11y polish; behaviour is correct and the form already has a visible category label, a dialog `aria-label`, and `aria-live` states. Outside the scope of Story 7.3's functional fixes.
+
+**Fix shape:**
+1. Either (a) reuse the existing `t("freeText.toggle")` key ("Add details (optional)") for the `sr-only` label — it already describes the field's purpose — or (b) add a new `feed.reportIssue.freeText.label` key and mirror it in `uk.json`.
+2. Update the `<label>` text accordingly; keep the `htmlFor` → `id` association.
+
+**Surfaced in:** Story 7.3 code review (2026-04-17)
+
+---
+
 ### TD-019 — GET `/api/v1/feedback/cards/{cardId}` is not rate-limited [LOW]
 
 **Where:** [backend/app/api/v1/feedback.py:111-132](backend/app/api/v1/feedback.py#L111-L132)

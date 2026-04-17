@@ -258,3 +258,204 @@ class TestGetCardFeedbackEndpoint:
     async def test_get_feedback_requires_auth(self, vote_client):
         resp = await vote_client.get(f"/api/v1/feedback/cards/{uuid.uuid4()}")
         assert resp.status_code in (401, 403)
+
+
+# ==================== Issue Report Endpoint Tests (Story 7.3) ====================
+
+
+class TestSubmitIssueReportEndpoint:
+    """Tests for POST /api/v1/feedback/cards/{cardId}/report."""
+
+    @pytest.mark.asyncio
+    async def test_submit_report_returns_201(self, vote_client, vote_session):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-201-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "r201@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/report",
+                json={
+                    "issueCategory": "incorrect_info",
+                    "freeText": "Amount seems wrong",
+                },
+            )
+            assert resp.status_code == 201
+            data = resp.json()
+            assert data["issueCategory"] == "incorrect_info"
+            assert data["cardId"] == str(card_id)
+            assert "id" in data
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_accepts_without_free_text(
+        self, vote_client, vote_session
+    ):
+        """freeText is optional — category alone is sufficient."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-nofree-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "rnofree@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/report",
+                json={"issueCategory": "bug"},
+            )
+            assert resp.status_code == 201
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_duplicate_returns_409(
+        self, vote_client, vote_session
+    ):
+        """AC #4: second report on the same card returns 409 already_reported."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-409-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "r409@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            first = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/report",
+                json={"issueCategory": "bug"},
+            )
+            assert first.status_code == 201
+
+            second = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/report",
+                json={"issueCategory": "other"},
+            )
+            assert second.status_code == 409
+            assert second.json()["detail"] == "already_reported"
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_requires_auth(self, vote_client):
+        resp = await vote_client.post(
+            f"/api/v1/feedback/cards/{uuid.uuid4()}/report",
+            json={"issueCategory": "bug"},
+        )
+        assert resp.status_code in (401, 403)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_unknown_card_returns_404(
+        self, vote_client, vote_session
+    ):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-404-sub"
+        await _create_user(vote_session, cognito_sub, "r404@test.com")
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{uuid.uuid4()}/report",
+                json={"issueCategory": "bug"},
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_rejects_invalid_category(
+        self, vote_client, vote_session
+    ):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-422-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "r422@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/report",
+                json={"issueCategory": "spam"},
+            )
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_rejects_oversized_free_text(
+        self, vote_client, vote_session
+    ):
+        """freeText capped at 500 chars → 422."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-long-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "rlong@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/report",
+                json={"issueCategory": "bug", "freeText": "x" * 501},
+            )
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_submit_report_rate_limited(self, vote_engine, vote_session):
+        from app.api.deps import get_cognito_service, get_db, get_rate_limiter
+        from app.core.exceptions import ValidationError
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "report-429-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "r429@test.com")
+        await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        async def override_get_db():
+            async with SQLModelAsyncSession(vote_engine) as session:
+                yield session
+
+        mock_rate = AsyncMock()
+        mock_rate.check_feedback_rate_limit.side_effect = ValidationError(
+            code="RATE_LIMITED",
+            message="Too many.",
+            status_code=429,
+        )
+
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[get_cognito_service] = lambda: MagicMock()
+        app.dependency_overrides[get_rate_limiter] = lambda: mock_rate
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    f"/api/v1/feedback/cards/{uuid.uuid4()}/report",
+                    json={"issueCategory": "bug"},
+                )
+            assert resp.status_code == 429
+            mock_rate.check_feedback_rate_limit.assert_awaited_once_with(str(user_id))
+        finally:
+            app.dependency_overrides.clear()

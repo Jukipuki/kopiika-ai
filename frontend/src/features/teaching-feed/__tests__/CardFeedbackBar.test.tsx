@@ -9,9 +9,64 @@ vi.mock("next-auth/react", () => ({
   useSession: () => ({ data: { accessToken: "test-token" }, status: "authenticated" }),
 }));
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+}));
+
 vi.mock("../hooks/use-card-feedback", () => ({
   useCardFeedback: (...args: unknown[]) => mockUseCardFeedback(...args),
 }));
+
+vi.mock("../components/ReportIssueForm", () => ({
+  ReportIssueForm: ({ onClose }: { cardId: string; onClose: () => void }) => (
+    <div data-testid="report-issue-form">
+      <button type="button" onClick={onClose}>
+        close-form
+      </button>
+    </div>
+  ),
+}));
+
+// Mock DropdownMenu (base-ui portals are awkward in jsdom). Render the menu
+// inline so tests can click the trigger and the item without portals.
+vi.mock("@/components/ui/dropdown-menu", () => {
+  const DropdownMenu = ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dropdown-menu">{children}</div>
+  );
+  const DropdownMenuTrigger = ({
+    children,
+    render: _render,
+    ...rest
+  }: {
+    render?: React.ReactElement;
+    children?: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <button type="button" {...rest}>
+      {children}
+    </button>
+  );
+  const DropdownMenuContent = ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dropdown-menu-content">{children}</div>
+  );
+  const DropdownMenuItem = ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
+  );
+  return {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+  };
+});
 
 describe("CardFeedbackBar", () => {
   beforeEach(() => {
@@ -117,5 +172,45 @@ describe("CardFeedbackBar", () => {
     });
     expect(screen.getByLabelText("Rate this insight helpful")).toBeDisabled();
     expect(screen.getByLabelText("Rate this insight not helpful")).toBeDisabled();
+  });
+
+  it("renders the overflow menu trigger", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByLabelText("openMenu")).toBeInTheDocument();
+  });
+
+  it("does not render ReportIssueForm by default", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.queryByTestId("report-issue-form")).not.toBeInTheDocument();
+  });
+
+  it("opens ReportIssueForm when 'Report an issue' menu item is clicked (AC #1)", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.queryByTestId("report-issue-form")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("trigger"));
+    expect(screen.getByTestId("report-issue-form")).toBeInTheDocument();
+  });
+
+  it("closes ReportIssueForm when its onClose is invoked", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByText("trigger"));
+    expect(screen.getByTestId("report-issue-form")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("close-form"));
+    expect(screen.queryByTestId("report-issue-form")).not.toBeInTheDocument();
   });
 });

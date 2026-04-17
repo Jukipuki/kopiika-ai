@@ -166,6 +166,97 @@ async def submit_card_vote(
     return snapshot
 
 
+_MAX_FREE_TEXT_LEN = 500
+
+
+async def submit_issue_report(
+    card_id: uuid.UUID,
+    user_id: uuid.UUID,
+    issue_category: str,
+    free_text: Optional[str],
+    card_type: str,
+    session: SQLModelAsyncSession,
+) -> tuple[CardFeedback, bool]:
+    """Insert a one-time issue report. Returns (snapshot, created).
+
+    created=False means the user already reported this card — caller returns 409.
+    Does NOT update an existing report (unlike vote upsert).
+    """
+    if free_text is not None and len(free_text) > _MAX_FREE_TEXT_LEN:
+        raise ValueError(
+            f"free_text exceeds {_MAX_FREE_TEXT_LEN} characters"
+        )
+
+    existing_stmt = select(CardFeedback).where(
+        CardFeedback.user_id == user_id,
+        CardFeedback.card_id == card_id,
+        CardFeedback.feedback_source == "issue_report",
+    )
+
+    existing = (await session.exec(existing_stmt)).one_or_none()
+    if existing is not None:
+        snapshot = CardFeedback(
+            id=existing.id,
+            user_id=existing.user_id,
+            card_id=existing.card_id,
+            card_type=existing.card_type,
+            vote=existing.vote,
+            reason_chip=existing.reason_chip,
+            free_text=existing.free_text,
+            feedback_source=existing.feedback_source,
+            issue_category=existing.issue_category,
+            created_at=existing.created_at,
+        )
+        await session.commit()
+        return snapshot, False
+
+    record = CardFeedback(
+        user_id=user_id,
+        card_id=card_id,
+        card_type=card_type,
+        vote=None,
+        issue_category=issue_category,
+        free_text=free_text,
+        feedback_source="issue_report",
+    )
+    session.add(record)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        winner = (await session.exec(existing_stmt)).one_or_none()
+        if winner is None:
+            raise
+        snapshot = CardFeedback(
+            id=winner.id,
+            user_id=winner.user_id,
+            card_id=winner.card_id,
+            card_type=winner.card_type,
+            vote=winner.vote,
+            reason_chip=winner.reason_chip,
+            free_text=winner.free_text,
+            feedback_source=winner.feedback_source,
+            issue_category=winner.issue_category,
+            created_at=winner.created_at,
+        )
+        return snapshot, False
+
+    snapshot = CardFeedback(
+        id=record.id,
+        user_id=record.user_id,
+        card_id=record.card_id,
+        card_type=record.card_type,
+        vote=record.vote,
+        reason_chip=record.reason_chip,
+        free_text=record.free_text,
+        feedback_source=record.feedback_source,
+        issue_category=record.issue_category,
+        created_at=record.created_at,
+    )
+    await session.commit()
+    return snapshot, True
+
+
 async def get_card_feedback(
     card_id: uuid.UUID,
     user_id: uuid.UUID,
