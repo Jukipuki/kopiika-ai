@@ -360,6 +360,15 @@
       "cancel": "Cancel",
       "success": "Thanks for reporting — we'll look into it",
       "alreadyReported": "You've already reported this card"
+    },
+    "followUpPanel": {
+      "title": "Why wasn't this helpful?",
+      "chip": {
+        "notRelevant": "Not relevant to me",
+        "alreadyKnew": "Already knew this",
+        "seemsIncorrect": "Seems incorrect",
+        "hardToUnderstand": "Hard to understand"
+      }
     }
   },
   "onboarding": {

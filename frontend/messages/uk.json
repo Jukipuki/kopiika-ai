@@ -360,6 +360,15 @@
       "cancel": "Скасувати",
       "success": "Дякуємо за повідомлення — ми розглянемо це",
       "alreadyReported": "Ви вже повідомили про проблему з цією карткою"
+    },
+    "followUpPanel": {
+      "title": "Чому це не було корисним?",
+      "chip": {
+        "notRelevant": "Не актуально для мене",
+        "alreadyKnew": "Я це вже знав",
+        "seemsIncorrect": "Здається некоректним",
+        "hardToUnderstand": "Важко зрозуміти"
+      }
     }
   },
   "onboarding": {

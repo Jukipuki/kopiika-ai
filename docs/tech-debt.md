@@ -370,3 +370,20 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 3. Audit POST endpoint validators (`submit_card_vote`, `submit_issue_report`, any future Layer-3 feedback_responses submission) to ensure they reject >500-char input with a 400, rather than relying on the DB to truncate.
 
 **Surfaced in:** Story 7.4 code review (2026-04-17)
+
+---
+
+### TD-023 — `FollowUpPanel` is missing swipe-down dismissal [LOW]
+
+**Where:** [frontend/src/features/teaching-feed/components/FollowUpPanel.tsx](frontend/src/features/teaching-feed/components/FollowUpPanel.tsx)
+
+**Problem:** Story 7.5 AC #3 lists two dismissal paths: "tap outside the panel **or swipe it down**". The panel now supports tap-outside (document-level `pointerdown` listener) and Escape-key dismiss, but swipe-down is not implemented. Mobile users — the primary audience for the Teaching Feed — have no gesture affordance matching the slide-up visual.
+
+**Why deferred:** Touch-gesture handling isn't shipped by shadcn/Button; adding it needs a small pointer-tracking hook (`pointerdown` → `pointermove` → measure `deltaY` + threshold) with cleanup, plus tests that simulate pointer events under fake timers. The other AC #3 dismissal paths are functional, and the current taps-outside behaviour arguably covers most intents.
+
+**Fix shape:**
+1. Add a `usePointerSwipe` custom hook (or inline effect) in `FollowUpPanel.tsx` that listens for `pointerdown` on the panel, tracks `pointermove` deltaY, applies a live `translateY` on the panel element, and fires `onDismiss()` when `deltaY > 80px` on `pointerup` (otherwise springs back with a CSS transition).
+2. Ensure the pointer handlers don't conflict with the document-level outside-tap listener (use `pointerdown`'s `stopPropagation` or check `event.target` vs panel ref).
+3. Add a Vitest test that fires `pointerdown` on the panel, `pointermove` with `clientY` delta > 80, `pointerup`, and asserts `onDismiss` was called.
+
+**Surfaced in:** Story 7.5 code review (2026-04-17)

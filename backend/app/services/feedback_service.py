@@ -257,6 +257,45 @@ async def submit_issue_report(
     return snapshot, True
 
 
+async def update_reason_chip(
+    feedback_id: uuid.UUID,
+    user_id: uuid.UUID,
+    reason_chip: str,
+    session: SQLModelAsyncSession,
+) -> Optional[CardFeedback]:
+    """Set reason_chip on an existing feedback row owned by user_id.
+
+    Filters by both id and user_id to avoid leaking the existence of other
+    users' feedback IDs. Returns None if no such row exists (caller → 404).
+    """
+    existing = (
+        await session.exec(
+            select(CardFeedback).where(
+                CardFeedback.id == feedback_id,
+                CardFeedback.user_id == user_id,
+            )
+        )
+    ).one_or_none()
+    if existing is None:
+        return None
+    existing.reason_chip = reason_chip
+    await session.flush()
+    snapshot = CardFeedback(
+        id=existing.id,
+        user_id=existing.user_id,
+        card_id=existing.card_id,
+        card_type=existing.card_type,
+        vote=existing.vote,
+        reason_chip=existing.reason_chip,
+        free_text=existing.free_text,
+        feedback_source=existing.feedback_source,
+        issue_category=existing.issue_category,
+        created_at=existing.created_at,
+    )
+    await session.commit()
+    return snapshot
+
+
 async def get_card_feedback(
     card_id: uuid.UUID,
     user_id: uuid.UUID,

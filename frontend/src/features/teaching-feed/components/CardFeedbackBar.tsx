@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Flag, MoreHorizontal, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -12,22 +12,59 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useCardFeedback } from "../hooks/use-card-feedback";
+import { FollowUpPanel } from "./FollowUpPanel";
 import { ReportIssueForm } from "./ReportIssueForm";
 
 interface CardFeedbackBarProps {
   cardId: string;
 }
 
+// Module-level flag so all card instances share it; resets on page reload.
+// Exposed as an object so tests can reset it via `_sessionFlags.hasShownFollowUp = false`.
+export const _sessionFlags = { hasShownFollowUp: false };
+
 export function CardFeedbackBar({ cardId }: CardFeedbackBarProps) {
   const t = useTranslations("feed.reportIssue");
   const [visible, setVisible] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  const { vote, submitVote, isPending } = useCardFeedback(cardId);
+  const [showFollowUp, setShowFollowUp] = useState(false);
+  const [followUpPending, setFollowUpPending] = useState(false);
+  const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    vote,
+    submitVote,
+    isPending,
+    feedbackId,
+    submitReasonChip,
+  } = useCardFeedback(cardId);
 
   useEffect(() => {
     const timer = setTimeout(() => setVisible(true), 2000);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (followUpTimerRef.current !== null) {
+        clearTimeout(followUpTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Panel shows only once the 300ms delay AND the feedbackId are both ready.
+  // Setting the session flag here (not in handleVote) prevents a slow-POST
+  // race where the flag consumed but the panel never rendered.
+  useEffect(() => {
+    if (!followUpPending) return;
+    if (!feedbackId) return;
+    if (_sessionFlags.hasShownFollowUp) {
+      setFollowUpPending(false);
+      return;
+    }
+    _sessionFlags.hasShownFollowUp = true;
+    setShowFollowUp(true);
+    setFollowUpPending(false);
+  }, [followUpPending, feedbackId]);
 
   if (!visible) return null;
 
@@ -37,6 +74,12 @@ export function CardFeedbackBar({ cardId }: CardFeedbackBarProps) {
       navigator.vibrate(10);
     }
     submitVote(value);
+    if (value === "down" && !_sessionFlags.hasShownFollowUp) {
+      followUpTimerRef.current = setTimeout(
+        () => setFollowUpPending(true),
+        300,
+      );
+    }
   };
 
   return (
@@ -97,6 +140,12 @@ export function CardFeedbackBar({ cardId }: CardFeedbackBarProps) {
         <ReportIssueForm
           cardId={cardId}
           onClose={() => setIsReportOpen(false)}
+        />
+      )}
+      {showFollowUp && feedbackId && (
+        <FollowUpPanel
+          onDismiss={() => setShowFollowUp(false)}
+          onChipSelect={submitReasonChip}
         />
       )}
     </div>

@@ -1,8 +1,12 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { CardFeedbackBar } from "../components/CardFeedbackBar";
+import {
+  CardFeedbackBar,
+  _sessionFlags,
+} from "../components/CardFeedbackBar";
 
 const mockSubmitVote = vi.fn();
+const mockSubmitReasonChip = vi.fn();
 const mockUseCardFeedback = vi.fn();
 
 vi.mock("next-auth/react", () => ({
@@ -22,6 +26,25 @@ vi.mock("../components/ReportIssueForm", () => ({
     <div data-testid="report-issue-form">
       <button type="button" onClick={onClose}>
         close-form
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("../components/FollowUpPanel", () => ({
+  FollowUpPanel: ({
+    onDismiss,
+    onChipSelect,
+  }: {
+    onDismiss: () => void;
+    onChipSelect?: (chip: string) => void;
+  }) => (
+    <div data-testid="follow-up-panel">
+      <button type="button" onClick={onDismiss}>
+        dismiss-panel
+      </button>
+      <button type="button" onClick={() => onChipSelect?.("not_relevant")}>
+        pick-chip
       </button>
     </div>
   ),
@@ -75,6 +98,9 @@ describe("CardFeedbackBar", () => {
       vote: null,
       submitVote: mockSubmitVote,
       isPending: false,
+      feedbackId: "feedback-uuid-123",
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
     });
   });
 
@@ -82,7 +108,9 @@ describe("CardFeedbackBar", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     mockSubmitVote.mockReset();
+    mockSubmitReasonChip.mockReset();
     mockUseCardFeedback.mockReset();
+    _sessionFlags.hasShownFollowUp = false;
   });
 
   it("does not render icons before 2 seconds", () => {
@@ -123,6 +151,9 @@ describe("CardFeedbackBar", () => {
       vote: "up",
       submitVote: mockSubmitVote,
       isPending: false,
+      feedbackId: "feedback-uuid-123",
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
     });
     render(<CardFeedbackBar cardId="card-1" />);
     act(() => {
@@ -137,6 +168,9 @@ describe("CardFeedbackBar", () => {
       vote: "up",
       submitVote: mockSubmitVote,
       isPending: false,
+      feedbackId: "feedback-uuid-123",
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
     });
     render(<CardFeedbackBar cardId="card-1" />);
     act(() => {
@@ -151,6 +185,9 @@ describe("CardFeedbackBar", () => {
       vote: "up",
       submitVote: mockSubmitVote,
       isPending: false,
+      feedbackId: "feedback-uuid-123",
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
     });
     render(<CardFeedbackBar cardId="card-1" />);
     act(() => {
@@ -165,6 +202,9 @@ describe("CardFeedbackBar", () => {
       vote: null,
       submitVote: mockSubmitVote,
       isPending: true,
+      feedbackId: "feedback-uuid-123",
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
     });
     render(<CardFeedbackBar cardId="card-1" />);
     act(() => {
@@ -212,5 +252,168 @@ describe("CardFeedbackBar", () => {
 
     fireEvent.click(screen.getByText("close-form"));
     expect(screen.queryByTestId("report-issue-form")).not.toBeInTheDocument();
+  });
+
+  // ── Follow-up panel (Story 7.5) ──────────────────────────────────────
+
+  it("does not render FollowUpPanel immediately after thumbs-down (AC #1: 300ms delay)", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+  });
+
+  it("renders FollowUpPanel 300ms after thumbs-down (AC #1)", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+  });
+
+  it("does NOT render FollowUpPanel on thumbs-up", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+  });
+
+  it("only shows FollowUpPanel on the first thumbs-down of the session (AC #4)", () => {
+    const { unmount } = render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+    unmount();
+
+    // Fresh instance, another thumbs-down — panel should NOT appear again.
+    render(<CardFeedbackBar cardId="card-2" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+  });
+
+  it("hides FollowUpPanel when its onDismiss is invoked (AC #3)", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("dismiss-panel"));
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+  });
+
+  it("forwards chip selection to submitReasonChip (AC #2)", () => {
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    fireEvent.click(screen.getByText("pick-chip"));
+    expect(mockSubmitReasonChip).toHaveBeenCalledWith("not_relevant");
+  });
+
+  it("does not render FollowUpPanel when feedbackId is not yet known", () => {
+    mockUseCardFeedback.mockReturnValue({
+      vote: null,
+      submitVote: mockSubmitVote,
+      isPending: false,
+      feedbackId: null,
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
+    });
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+  });
+
+  it("defers session flag until feedbackId is known (H1 race fix)", () => {
+    // Round 1: vote POST is slow — feedbackId not available at 300ms.
+    mockUseCardFeedback.mockReturnValue({
+      vote: null,
+      submitVote: mockSubmitVote,
+      isPending: false,
+      feedbackId: null,
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
+    });
+    const { unmount } = render(<CardFeedbackBar cardId="card-1" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    // feedbackId was null: panel not shown AND flag NOT consumed.
+    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(_sessionFlags.hasShownFollowUp).toBe(false);
+    unmount();
+
+    // Round 2: fresh card with feedbackId available → panel SHOULD show
+    // (flag was not consumed in round 1).
+    mockUseCardFeedback.mockReturnValue({
+      vote: null,
+      submitVote: mockSubmitVote,
+      isPending: false,
+      feedbackId: "feedback-uuid-123",
+      submitReasonChip: mockSubmitReasonChip,
+      isReasonChipPending: false,
+    });
+    render(<CardFeedbackBar cardId="card-2" />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
   });
 });

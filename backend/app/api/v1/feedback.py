@@ -75,6 +75,7 @@ class CardVoteOut(BaseModel):
 class CardFeedbackResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
+    id: uuid.UUID
     vote: str | None
     reason_chip: str | None
     created_at: datetime
@@ -114,6 +115,42 @@ async def submit_vote(
         vote=record.vote,
         created_at=record.created_at,
     )
+
+
+class ReasonChipIn(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    reason_chip: Literal[
+        "not_relevant", "already_knew", "seems_incorrect", "hard_to_understand"
+    ]
+
+
+class ReasonChipOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: uuid.UUID
+    reason_chip: str
+
+
+@feedback_vote_router.patch("/{feedback_id}", response_model=ReasonChipOut)
+async def update_reason_chip(
+    feedback_id: uuid.UUID,
+    body: ReasonChipIn,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    session: Annotated[SQLModelAsyncSession, Depends(get_db)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+) -> ReasonChipOut:
+    """Attach a reason chip to an existing feedback record (Story 7.5 Layer 2)."""
+    await rate_limiter.check_feedback_rate_limit(str(user_id))
+    record = await feedback_service.update_reason_chip(
+        feedback_id=feedback_id,
+        user_id=user_id,
+        reason_chip=body.reason_chip,
+        session=session,
+    )
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return ReasonChipOut(id=record.id, reason_chip=record.reason_chip)
 
 
 class IssueReportIn(BaseModel):
@@ -189,6 +226,7 @@ async def get_card_feedback(
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return CardFeedbackResponse(
+        id=record.id,
         vote=record.vote,
         reason_chip=record.reason_chip,
         created_at=record.created_at,

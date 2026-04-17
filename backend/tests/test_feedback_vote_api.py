@@ -224,16 +224,18 @@ class TestGetCardFeedbackEndpoint:
         app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
         try:
             # First submit a vote
-            await vote_client.post(
+            post_resp = await vote_client.post(
                 f"/api/v1/feedback/cards/{card_id}/vote",
                 json={"vote": "down"},
             )
+            feedback_id = post_resp.json()["id"]
             # Then retrieve it
             resp = await vote_client.get(f"/api/v1/feedback/cards/{card_id}")
             assert resp.status_code == 200
             data = resp.json()
             assert data["vote"] == "down"
             assert data["reasonChip"] is None
+            assert data["id"] == feedback_id
             assert "createdAt" in data
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
@@ -454,6 +456,175 @@ class TestSubmitIssueReportEndpoint:
                 resp = await ac.post(
                     f"/api/v1/feedback/cards/{uuid.uuid4()}/report",
                     json={"issueCategory": "bug"},
+                )
+            assert resp.status_code == 429
+            mock_rate.check_feedback_rate_limit.assert_awaited_once_with(str(user_id))
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ==================== Reason Chip PATCH Endpoint Tests (Story 7.5) ====================
+
+
+class TestPatchReasonChipEndpoint:
+    """Tests for PATCH /api/v1/feedback/{feedbackId}."""
+
+    @pytest.mark.asyncio
+    async def test_patch_reason_chip_returns_200(self, vote_client, vote_session):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-200-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "chip200@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            vote_resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/vote",
+                json={"vote": "down"},
+            )
+            assert vote_resp.status_code == 201
+            feedback_id = vote_resp.json()["id"]
+
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{feedback_id}",
+                json={"reasonChip": "not_relevant"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["reasonChip"] == "not_relevant"
+            assert data["id"] == feedback_id
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_patch_reason_chip_returns_404_when_absent(
+        self, vote_client, vote_session
+    ):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-404-sub"
+        await _create_user(vote_session, cognito_sub, "chip404@test.com")
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{uuid.uuid4()}",
+                json={"reasonChip": "not_relevant"},
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_patch_reason_chip_rejects_invalid_chip(
+        self, vote_client, vote_session
+    ):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-422-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "chip422@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            vote_resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/vote",
+                json={"vote": "down"},
+            )
+            feedback_id = vote_resp.json()["id"]
+
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{feedback_id}",
+                json={"reasonChip": "wrong_chip"},
+            )
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_patch_reason_chip_requires_auth(self, vote_client):
+        resp = await vote_client.patch(
+            f"/api/v1/feedback/{uuid.uuid4()}",
+            json={"reasonChip": "not_relevant"},
+        )
+        assert resp.status_code in (401, 403)
+
+    @pytest.mark.asyncio
+    async def test_patch_reason_chip_cannot_access_other_users_record(
+        self, vote_client, vote_session
+    ):
+        """Ownership check: user B PATCHing user A's feedback_id → 404."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        sub_a = "chip-owner-a"
+        sub_b = "chip-owner-b"
+        user_a_id = await _create_user(vote_session, sub_a, "chipa@test.com")
+        await _create_user(vote_session, sub_b, "chipb@test.com")
+        card_id = await _create_insight(vote_session, user_a_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(sub_a)
+        try:
+            vote_resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/vote",
+                json={"vote": "down"},
+            )
+            feedback_id = vote_resp.json()["id"]
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(sub_b)
+        try:
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{feedback_id}",
+                json={"reasonChip": "already_knew"},
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_patch_reason_chip_rate_limited(self, vote_engine, vote_session):
+        """Rate-limited PATCH returns 429 and invokes check_feedback_rate_limit."""
+        from app.api.deps import get_cognito_service, get_db, get_rate_limiter
+        from app.core.exceptions import ValidationError
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-429-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "chip429@test.com")
+        await vote_session.commit()
+
+        async def override_get_db():
+            async with SQLModelAsyncSession(vote_engine) as session:
+                yield session
+
+        mock_rate = AsyncMock()
+        mock_rate.check_feedback_rate_limit.side_effect = ValidationError(
+            code="RATE_LIMITED",
+            message="Too many.",
+            status_code=429,
+        )
+
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[get_cognito_service] = lambda: MagicMock()
+        app.dependency_overrides[get_rate_limiter] = lambda: mock_rate
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.patch(
+                    f"/api/v1/feedback/{uuid.uuid4()}",
+                    json={"reasonChip": "not_relevant"},
                 )
             assert resp.status_code == 429
             mock_rate.check_feedback_rate_limit.assert_awaited_once_with(str(user_id))
