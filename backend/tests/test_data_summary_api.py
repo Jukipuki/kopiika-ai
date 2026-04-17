@@ -13,6 +13,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.models.consent import UserConsent
+from app.models.feedback import CardFeedback
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
 from app.models.insight import Insight
@@ -114,11 +115,36 @@ class TestDataSummaryEndpoint:
             description="Transport", amount=-2000, dedup_hash="h2", category="transport",
         ))
 
-        # Create insight
-        ds_api_session.add(Insight(
+        # Create two insights — capture ids before commit (post-commit attribute expiry).
+        # Two cards needed because card_feedback has UNIQUE (user_id, card_id, feedback_source).
+        insight_a = Insight(
             user_id=user_id, upload_id=upload_id, headline="Save more",
             key_metric="50%", why_it_matters="Important", deep_dive="Details",
             category="spending",
+        )
+        insight_b = Insight(
+            user_id=user_id, upload_id=upload_id, headline="Review subscriptions",
+            key_metric="10%", why_it_matters="Hidden cost", deep_dive="Details",
+            category="spending",
+        )
+        ds_api_session.add(insight_a)
+        ds_api_session.add(insight_b)
+        await ds_api_session.flush()
+        insight_a_id = insight_a.id
+        insight_b_id = insight_b.id
+
+        # Feedback rows: one up vote, one down vote with free_text, one issue report
+        ds_api_session.add(CardFeedback(
+            user_id=user_id, card_id=insight_a_id, card_type="spending",
+            vote="up", feedback_source="card_vote",
+        ))
+        ds_api_session.add(CardFeedback(
+            user_id=user_id, card_id=insight_b_id, card_type="spending",
+            vote="down", free_text="Too complex", feedback_source="card_vote",
+        ))
+        ds_api_session.add(CardFeedback(
+            user_id=user_id, card_id=insight_a_id, card_type="spending",
+            feedback_source="issue_report", issue_category="confusing",
         ))
 
         # Create financial profile
@@ -156,7 +182,7 @@ class TestDataSummaryEndpoint:
             assert data["transactionDateRange"]["earliest"] == "2026-01-15T00:00:00"
             assert data["transactionDateRange"]["latest"] == "2026-03-20T00:00:00"
             assert sorted(data["categoriesDetected"]) == ["groceries", "transport"]
-            assert data["insightCount"] == 1
+            assert data["insightCount"] == 2
             assert data["financialProfile"]["totalIncome"] == 100000
             assert data["financialProfile"]["totalExpenses"] == 70000
             assert len(data["healthScoreHistory"]) == 2
@@ -164,6 +190,16 @@ class TestDataSummaryEndpoint:
             assert data["healthScoreHistory"][1]["score"] == 78
             assert len(data["consentRecords"]) == 1
             assert data["consentRecords"][0]["consentType"] == "ai_processing"
+
+            # Feedback summary assertions (Story 7.4)
+            assert data["feedbackSummary"]["voteCounts"]["up"] == 1
+            assert data["feedbackSummary"]["voteCounts"]["down"] == 1
+            assert data["feedbackSummary"]["issueReportCount"] == 1
+            assert len(data["feedbackSummary"]["freeTextEntries"]) == 1
+            assert data["feedbackSummary"]["freeTextEntries"][0]["freeText"] == "Too complex"
+            assert data["feedbackSummary"]["freeTextEntries"][0]["feedbackSource"] == "card_vote"
+            # AC #4: feedback_responses placeholder (table arrives in Story 7.7)
+            assert data["feedbackSummary"]["feedbackResponses"] == []
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
 
@@ -191,6 +227,11 @@ class TestDataSummaryEndpoint:
             assert data["financialProfile"] is None
             assert data["healthScoreHistory"] == []
             assert data["consentRecords"] == []
+            assert data["feedbackSummary"]["voteCounts"]["up"] == 0
+            assert data["feedbackSummary"]["voteCounts"]["down"] == 0
+            assert data["feedbackSummary"]["issueReportCount"] == 0
+            assert data["feedbackSummary"]["freeTextEntries"] == []
+            assert data["feedbackSummary"]["feedbackResponses"] == []
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
 
@@ -264,10 +305,16 @@ class TestDataSummaryEndpoint:
             assert "financialProfile" in data
             assert "healthScoreHistory" in data
             assert "consentRecords" in data
+            assert "feedbackSummary" in data
+            assert "voteCounts" in data["feedbackSummary"]
+            assert "issueReportCount" in data["feedbackSummary"]
+            assert "freeTextEntries" in data["feedbackSummary"]
+            assert "feedbackResponses" in data["feedbackSummary"]
 
             # No snake_case keys
             assert "upload_count" not in data
             assert "transaction_count" not in data
             assert "insight_count" not in data
+            assert "feedback_summary" not in data
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)

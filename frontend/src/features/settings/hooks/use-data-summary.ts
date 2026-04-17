@@ -26,6 +26,25 @@ export interface ConsentRecord {
   grantedAt: string;
 }
 
+export interface FeedbackVoteCounts {
+  up: number;
+  down: number;
+}
+
+export interface FreeTextFeedbackEntry {
+  cardId: string;
+  freeText: string;
+  feedbackSource: string;
+  createdAt: string;
+}
+
+export interface FeedbackSummary {
+  voteCounts: FeedbackVoteCounts;
+  issueReportCount: number;
+  freeTextEntries: FreeTextFeedbackEntry[];
+  feedbackResponses: Array<Record<string, unknown>>;
+}
+
 export interface DataSummary {
   uploadCount: number;
   transactionCount: number;
@@ -35,6 +54,7 @@ export interface DataSummary {
   financialProfile: FinancialProfileSummary | null;
   healthScoreHistory: HealthScoreEntry[];
   consentRecords: ConsentRecord[];
+  feedbackSummary: FeedbackSummary;
 }
 
 interface UseDataSummaryReturn {

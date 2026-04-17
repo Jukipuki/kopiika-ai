@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 from app.core.audit import anonymize_user_audit_records
 from app.core.config import settings
 from app.models.consent import UserConsent
+from app.models.feedback import CardFeedback, CardInteraction
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
 from app.models.flagged_import_row import FlaggedImportRow
@@ -67,10 +68,23 @@ async def delete_all_user_data(
     import asyncio
 
     # 1. Explicitly delete child records, then user row
-    # CASCADE exists in production, but explicit deletion is more defensive
+    # CASCADE exists in production, but explicit deletion is more defensive.
+    # CardFeedback / CardInteraction are listed BEFORE Insight so rows are
+    # removed by this explicit DELETE rather than relying on the
+    # card_id -> insights.id ON DELETE CASCADE path (which would fire if we
+    # deleted Insight first). Net effect is the same; ordering here makes the
+    # deletion chain readable without depending on DB-level cascades.
     child_tables = [
-        FlaggedImportRow, Transaction, Insight, ProcessingJob,
-        FinancialHealthScore, FinancialProfile, UserConsent, Upload,
+        FlaggedImportRow,
+        CardFeedback,
+        CardInteraction,
+        Transaction,
+        Insight,
+        ProcessingJob,
+        FinancialHealthScore,
+        FinancialProfile,
+        UserConsent,
+        Upload,
     ]
     for model in child_tables:
         await session.exec(sa_delete(model).where(model.user_id == user_id))

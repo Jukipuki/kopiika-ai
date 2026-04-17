@@ -150,6 +150,48 @@ export default function MyDataSection() {
             </>
           )}
 
+          {(data.feedbackSummary.voteCounts.up > 0 ||
+            data.feedbackSummary.voteCounts.down > 0 ||
+            data.feedbackSummary.issueReportCount > 0 ||
+            data.feedbackSummary.freeTextEntries.length > 0) && (
+            <>
+              <Separator />
+              <div className="flex flex-col gap-2">
+                <span className="text-sm text-muted-foreground">{t("feedbackData")}</span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-xs text-muted-foreground">{t("feedbackVotesUp")}</span>
+                    <p className="text-sm font-medium">{data.feedbackSummary.voteCounts.up}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">{t("feedbackVotesDown")}</span>
+                    <p className="text-sm font-medium">{data.feedbackSummary.voteCounts.down}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">{t("feedbackIssueReports")}</span>
+                    <p className="text-sm font-medium">{data.feedbackSummary.issueReportCount}</p>
+                  </div>
+                </div>
+                {data.feedbackSummary.freeTextEntries.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">{t("feedbackFreeText")}</span>
+                    <ul className="space-y-1">
+                      {data.feedbackSummary.freeTextEntries.map((entry, i) => (
+                        <li key={i} className="text-sm">
+                          {t("feedbackFreeTextEntry", {
+                            date: formatDateLong(entry.createdAt, locale),
+                            cardRef: entry.cardId.slice(0, 8),
+                            text: entry.freeText,
+                          })}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {data.uploadCount === 0 && (
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           )}

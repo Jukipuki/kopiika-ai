@@ -42,6 +42,31 @@ const mockDataSummary = {
   consentRecords: [
     { consentType: "ai_processing", grantedAt: "2026-01-01T00:00:00" },
   ],
+  feedbackSummary: {
+    voteCounts: { up: 3, down: 1 },
+    issueReportCount: 2,
+    freeTextEntries: [
+      {
+        cardId: "abc12345-aaaa-bbbb-cccc-ddddeeeeffff",
+        freeText: "Too complex",
+        feedbackSource: "card_vote",
+        createdAt: "2026-04-01T10:00:00",
+      },
+    ],
+    feedbackResponses: [] as Array<Record<string, unknown>>,
+  },
+};
+
+const emptyFeedbackSummary = {
+  voteCounts: { up: 0, down: 0 },
+  issueReportCount: 0,
+  freeTextEntries: [] as Array<{
+    cardId: string;
+    freeText: string;
+    feedbackSource: string;
+    createdAt: string;
+  }>,
+  feedbackResponses: [] as Array<Record<string, unknown>>,
 };
 
 function renderWithQuery(ui: React.ReactElement) {
@@ -80,9 +105,10 @@ describe("MyDataSection", () => {
 
     // Wait for data to load (not just the heading which appears in skeleton too)
     await waitFor(() => {
-      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("125")).toBeInTheDocument();
     });
-    expect(screen.getByText("125")).toBeInTheDocument();
+    // "3" now appears in both uploadCount and feedbackSummary.voteCounts.up
+    expect(screen.getAllByText("3").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("8")).toBeInTheDocument();
 
     // Categories
@@ -114,6 +140,7 @@ describe("MyDataSection", () => {
         financialProfile: null,
         healthScoreHistory: [],
         consentRecords: [],
+        feedbackSummary: emptyFeedbackSummary,
       }),
     });
 
@@ -125,6 +152,48 @@ describe("MyDataSection", () => {
 
     const zeros = screen.getAllByText("0");
     expect(zeros.length).toBe(3); // uploads, transactions, insights all zero
+    // Feedback section hidden when all feedback counts are zero
+    expect(screen.queryByText("Feedback Data")).not.toBeInTheDocument();
+  });
+
+  it("renders feedback summary when feedback exists", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockDataSummary),
+    });
+
+    renderWithQuery(<MyDataSection />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Feedback Data")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Helpful votes")).toBeInTheDocument();
+    expect(screen.getByText("Not helpful votes")).toBeInTheDocument();
+    expect(screen.getByText("Issue reports")).toBeInTheDocument();
+    expect(screen.getByText("Your written feedback")).toBeInTheDocument();
+    // Free-text entry line should include the truncated card_id (first 8 chars)
+    // and the text. Use a regex to avoid brittleness on surrounding date format.
+    expect(screen.getByText(/Card abc12345.*Too complex/)).toBeInTheDocument();
+  });
+
+  it("hides feedback section when all feedback counts are zero", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ...mockDataSummary,
+        feedbackSummary: emptyFeedbackSummary,
+      }),
+    });
+
+    renderWithQuery(<MyDataSection />);
+
+    await waitFor(() => {
+      expect(screen.getByText("My Data")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Feedback Data")).not.toBeInTheDocument();
+    expect(screen.queryByText("Helpful votes")).not.toBeInTheDocument();
   });
 
   it("renders error state with retry", async () => {
@@ -158,7 +227,7 @@ describe("MyDataSection", () => {
 
     await waitFor(() => {
       expect(screen.getByText("My Data")).toBeInTheDocument();
-      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("125")).toBeInTheDocument();
     });
   });
 });

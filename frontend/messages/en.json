@@ -227,6 +227,12 @@
       "healthScores": "Health Score History",
       "healthScoreCount": "{count, plural, one {# score recorded} other {# scores recorded}}",
       "consents": "Consent Records",
+      "feedbackData": "Feedback Data",
+      "feedbackVotesUp": "Helpful votes",
+      "feedbackVotesDown": "Not helpful votes",
+      "feedbackIssueReports": "Issue reports",
+      "feedbackFreeText": "Your written feedback",
+      "feedbackFreeTextEntry": "{date} · Card {cardRef} — {text}",
       "empty": "No data yet. Upload a bank statement to get started."
     },
     "deleteData": {

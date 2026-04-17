@@ -16,6 +16,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.models.audit_log import AuditLog
 from app.models.consent import UserConsent
+from app.models.feedback import CardFeedback, CardInteraction
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
 from app.models.flagged_import_row import FlaggedImportRow
@@ -391,5 +392,68 @@ class TestAccountDeletion:
                     select(UserModel).where(UserModel.id == user_id)
                 )).first()
                 assert u is None
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    @patch("app.services.account_deletion_service.delete_s3_objects")
+    async def test_feedback_deleted_on_account_deletion(
+        self, mock_s3_delete, del_client, del_api_session
+    ):
+        """Story 7.4: CardFeedback and CardInteraction rows are deleted explicitly
+        by delete_all_user_data (defensive deletion before Insight to avoid relying
+        on the card_id → insights.id cascade)."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        client, _ = del_client
+
+        cognito_sub = "del-feedback-sub"
+        user_id = await _create_user(del_api_session, cognito_sub, "fb@test.com")
+        upload_id = uuid.uuid4()
+        del_api_session.add(Upload(
+            id=upload_id, user_id=user_id, file_name="fb.csv",
+            s3_key=f"{user_id}/fb.csv", file_size=128, mime_type="text/csv",
+        ))
+        await del_api_session.flush()
+        insight = Insight(
+            user_id=user_id, upload_id=upload_id, headline="Headline",
+            key_metric="1%", why_it_matters="Why", deep_dive="Deep",
+            category="spending",
+        )
+        del_api_session.add(insight)
+        await del_api_session.flush()
+        insight_id = insight.id
+
+        del_api_session.add(CardFeedback(
+            user_id=user_id, card_id=insight_id, card_type="spending",
+            vote="up", feedback_source="card_vote",
+        ))
+        del_api_session.add(CardFeedback(
+            user_id=user_id, card_id=insight_id, card_type="spending",
+            feedback_source="issue_report", issue_category="bug",
+            free_text="Something was off",
+        ))
+        del_api_session.add(CardInteraction(
+            user_id=user_id, card_id=insight_id, time_on_card_ms=4200,
+            engagement_score=60,
+        ))
+        await del_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await client.delete("/api/v1/users/me")
+            assert response.status_code == 204
+
+            async with SQLModelAsyncSession(del_api_session.bind) as verify_session:
+                feedback_rows = (await verify_session.exec(
+                    select(CardFeedback).where(CardFeedback.user_id == user_id)
+                )).all()
+                assert len(feedback_rows) == 0
+
+                interaction_rows = (await verify_session.exec(
+                    select(CardInteraction).where(CardInteraction.user_id == user_id)
+                )).all()
+                assert len(interaction_rows) == 0
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)

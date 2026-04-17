@@ -336,3 +336,37 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 3. Add a 429 test mirroring `test_submit_vote_rate_limited`.
 
 **Surfaced in:** Story 7.2 code review (2026-04-17)
+
+---
+
+### TD-021 — `FreeTextFeedbackEntry.feedbackSource` is returned by the API but never rendered [LOW]
+
+**Where:** [backend/app/api/v1/data_summary.py:61-67](backend/app/api/v1/data_summary.py#L61-L67), [frontend/src/features/settings/hooks/use-data-summary.ts:34-39](frontend/src/features/settings/hooks/use-data-summary.ts#L34-L39), [frontend/src/features/settings/components/MyDataSection.tsx:175-189](frontend/src/features/settings/components/MyDataSection.tsx#L175-L189)
+
+**Problem:** Each `FreeTextFeedbackEntry` in the data summary response includes `feedbackSource` (`"card_vote"` vs `"issue_report"`), and the TS interface mirrors the field. `MyDataSection` never reads it, so a user browsing their "My Data" list cannot tell whether a given free-text line is a vote follow-up comment or the body of an issue report. Dead field on the wire = YAGNI surface.
+
+**Why deferred:** Not a functional defect — the data is still accurate and the free-text itself is shown. Calling the right UX treatment (small badge? grouped sections? drop from the DTO?) needs a product call that was out of scope for Story 7.4.
+
+**Fix shape:** Pick one of:
+1. Render a small translated label/badge next to each entry (`Vote comment` / `Issue report`), adding `feedbackSourceVote` / `feedbackSourceIssue` keys to `en.json` / `uk.json`.
+2. Group the free-text list into two subsections by source.
+3. Remove `feedbackSource` from `FreeTextFeedbackEntry` (both backend Pydantic model and frontend interface) if the UI never needs it.
+
+**Surfaced in:** Story 7.4 code review (2026-04-17)
+
+---
+
+### TD-022 — `CardFeedback.free_text` has no `max_length=500` on the model [LOW]
+
+**Where:** [backend/app/models/feedback.py:50](backend/app/models/feedback.py#L50)
+
+**Problem:** Architecture spec says `free_text` is capped at 500 chars (`_bmad-output/planning-artifacts/architecture.md#Feedback Data Model`), but the SQLModel field is `free_text: Optional[str] = Field(default=None)` — no `max_length`, no DB-level `String(500)`. Submission endpoints (`submit_card_vote`, `submit_issue_report`) may validate via Pydantic schemas, but the model itself accepts arbitrarily long strings, so a direct insert or a schema regression would silently store unbounded text. The data-summary endpoint then serves whatever is there (now capped to 100 rows by Story 7.4 review, but each row is still unbounded).
+
+**Why deferred:** Discovered during Story 7.4 review while adding the query `.limit(100)` cap. Fixing this cleanly likely needs an Alembic migration to alter the column type to `VARCHAR(500)` and a cross-check of the POST endpoint validators. Out of scope for the 7.4 privacy-integration story.
+
+**Fix shape:**
+1. Add `max_length=500` to the SQLModel field: `free_text: Optional[str] = Field(default=None, max_length=500)`.
+2. Write an Alembic migration to alter the column to `VARCHAR(500)` (truncate strategy TBD — probably fail-fast if any existing row exceeds 500).
+3. Audit POST endpoint validators (`submit_card_vote`, `submit_issue_report`, any future Layer-3 feedback_responses submission) to ensure they reject >500-char input with a 400, rather than relying on the DB to truncate.
+
+**Surfaced in:** Story 7.4 code review (2026-04-17)

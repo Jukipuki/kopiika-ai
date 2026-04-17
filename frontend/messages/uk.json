@@ -227,6 +227,12 @@
       "healthScores": "Історія оцінок здоров'я",
       "healthScoreCount": "{count, plural, one {# оцінка записана} few {# оцінки записані} many {# оцінок записано} other {# оцінок записано}}",
       "consents": "Записи згоди",
+      "feedbackData": "Зворотний зв'язок",
+      "feedbackVotesUp": "Корисні оцінки",
+      "feedbackVotesDown": "Некорисні оцінки",
+      "feedbackIssueReports": "Звіти про проблеми",
+      "feedbackFreeText": "Ваші текстові відгуки",
+      "feedbackFreeTextEntry": "{date} · Картка {cardRef} — {text}",
       "empty": "Даних ще немає. Завантажте банківську виписку, щоб почати."
     },
     "deleteData": {

@@ -5,13 +5,14 @@ from typing import Annotated, Any, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy import select as sa_select
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
 from app.models.consent import UserConsent
+from app.models.feedback import CardFeedback
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
 from app.models.insight import Insight
@@ -50,6 +51,34 @@ class ConsentRecord(BaseModel):
     granted_at: datetime
 
 
+class FeedbackVoteCounts(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    up: int
+    down: int
+
+
+class FreeTextFeedbackEntry(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    card_id: uuid.UUID
+    free_text: str
+    feedback_source: str
+    created_at: datetime
+
+
+class FeedbackSummary(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    vote_counts: FeedbackVoteCounts
+    issue_report_count: int
+    free_text_entries: list[FreeTextFeedbackEntry]
+    # feedback_responses table is introduced by Story 7.7 (Layer 3 milestone cards).
+    # Until it exists, we return an empty list so AC #4 ("graceful empty list if
+    # table/rows absent") holds and the API contract stays stable.
+    feedback_responses: list[dict[str, Any]] = []
+
+
 class DataSummaryResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -61,6 +90,7 @@ class DataSummaryResponse(BaseModel):
     financial_profile: Optional[FinancialProfileSummary]
     health_score_history: list[HealthScoreEntry]
     consent_records: list[ConsentRecord]
+    feedback_summary: FeedbackSummary
 
 
 @router.get("/data-summary", response_model=DataSummaryResponse)
@@ -142,6 +172,58 @@ async def get_data_summary(
         for c in consent_result.all()
     ]
 
+    # Feedback vote counts (card_vote source only, up/down in one query)
+    vote_result = await session.exec(
+        sa_select(
+            func.sum(case((CardFeedback.vote == "up", 1), else_=0)),
+            func.sum(case((CardFeedback.vote == "down", 1), else_=0)),
+        ).where(
+            CardFeedback.user_id == user_id,
+            CardFeedback.feedback_source == "card_vote",
+        )
+    )
+    vote_row = vote_result.one()
+    vote_counts = FeedbackVoteCounts(
+        up=vote_row[0] or 0,
+        down=vote_row[1] or 0,
+    )
+
+    # Issue report count
+    issue_result = await session.exec(
+        sa_select(func.count()).select_from(CardFeedback).where(
+            CardFeedback.user_id == user_id,
+            CardFeedback.feedback_source == "issue_report",
+        )
+    )
+    issue_report_count = issue_result.scalar_one()
+
+    # Free-text entries — capped at most recent 100 to bound response size
+    # (CardFeedback.free_text has no max_length enforced on the model; see TD entry).
+    ft_result = await session.exec(
+        select(CardFeedback)
+        .where(
+            CardFeedback.user_id == user_id,
+            CardFeedback.free_text.is_not(None),
+        )
+        .order_by(CardFeedback.created_at.desc())
+        .limit(100)
+    )
+    free_text_entries = [
+        FreeTextFeedbackEntry(
+            card_id=row.card_id,
+            free_text=row.free_text,
+            feedback_source=row.feedback_source,
+            created_at=row.created_at,
+        )
+        for row in ft_result.all()
+    ]
+
+    feedback_summary = FeedbackSummary(
+        vote_counts=vote_counts,
+        issue_report_count=issue_report_count,
+        free_text_entries=free_text_entries,
+    )
+
     return DataSummaryResponse(
         upload_count=upload_count,
         transaction_count=transaction_count,
@@ -151,4 +233,5 @@ async def get_data_summary(
         financial_profile=financial_profile,
         health_score_history=health_score_history,
         consent_records=consent_records,
+        feedback_summary=feedback_summary,
     )
