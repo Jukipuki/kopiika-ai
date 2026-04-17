@@ -26,7 +26,9 @@ class CardInteraction(SQLModel, table=True):
         default=None, sa_type=SmallInteger
     )
     engagement_score: Optional[int] = Field(default=None, sa_type=SmallInteger)
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=DateTime(timezone=True)
+    )
 
 
 class CardFeedback(SQLModel, table=True):

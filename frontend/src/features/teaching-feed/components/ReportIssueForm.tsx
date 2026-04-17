@@ -78,8 +78,14 @@ export function ReportIssueForm({ cardId, onClose }: ReportIssueFormProps) {
         {t("category.label")}
       </label>
       <Select
-        value={category ?? undefined}
+        value={category}
         onValueChange={(v) => setCategory(v as IssueCategory)}
+        items={[
+          { value: "bug", label: t("category.bug") },
+          { value: "incorrect_info", label: t("category.incorrectInfo") },
+          { value: "confusing", label: t("category.confusing") },
+          { value: "other", label: t("category.other") },
+        ]}
       >
         <SelectTrigger id="report-category">
           <SelectValue placeholder={t("category.label")} />

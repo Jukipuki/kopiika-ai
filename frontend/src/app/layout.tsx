@@ -31,12 +31,12 @@ export default async function RootLayout({
     <html lang={locale} className={cn("dark h-full antialiased", dmSans.variable)}>
       <body className="min-h-full flex flex-col font-sans">
         <SessionProvider>
-          <QueryProvider>
-            <NextIntlClientProvider locale={locale} messages={messages}>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <QueryProvider>
               {children}
               <Toaster position="top-right" richColors />
-            </NextIntlClientProvider>
-          </QueryProvider>
+            </QueryProvider>
+          </NextIntlClientProvider>
         </SessionProvider>
       </body>
     </html>
