@@ -8,6 +8,10 @@ vi.mock("next-auth/react", () => ({
   useSession: () => ({ data: null, status: "unauthenticated" }),
 }));
 
+vi.mock("../hooks/use-card-feedback", () => ({
+  useCardFeedback: () => ({ vote: null, submitVote: vi.fn(), isPending: false }),
+}));
+
 // HTML-safe attributes to forward to the rendered div
 const HTML_PROPS = new Set([
   "children",

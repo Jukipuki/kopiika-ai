@@ -1,10 +1,13 @@
-"""Feedback service: engagement score computation and batch persistence (Story 7.1)."""
+"""Feedback service: engagement score computation and batch persistence (Story 7.1),
+explicit card vote/feedback (Story 7.2)."""
 import uuid
-from typing import Protocol, Sequence
+from typing import Optional, Protocol, Sequence
 
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
-from app.models.feedback import CardInteraction
+from app.models.feedback import CardFeedback, CardInteraction
 
 _TIME_WEIGHT = 0.30
 _EDUCATION_EXPANDED_WEIGHT = 0.25
@@ -99,3 +102,98 @@ async def store_card_interactions(
     ]
     session.add_all(records)
     await session.commit()
+
+
+async def submit_card_vote(
+    card_id: uuid.UUID,
+    user_id: uuid.UUID,
+    vote: str,
+    card_type: str,
+    session: SQLModelAsyncSession,
+    feedback_source: str = "card_vote",
+) -> CardFeedback:
+    """Insert or update a card vote.
+
+    Uses SELECT-then-INSERT/UPDATE. On concurrent first-vote races the INSERT
+    raises IntegrityError; we roll back and re-load the winner's row, then
+    update its vote — keeping the endpoint's response correct instead of 500.
+    """
+    existing_stmt = select(CardFeedback).where(
+        CardFeedback.user_id == user_id,
+        CardFeedback.card_id == card_id,
+        CardFeedback.feedback_source == feedback_source,
+    )
+
+    existing = (await session.exec(existing_stmt)).one_or_none()
+
+    if existing is not None:
+        existing.vote = vote
+        record = existing
+        await session.flush()
+    else:
+        record = CardFeedback(
+            user_id=user_id,
+            card_id=card_id,
+            card_type=card_type,
+            vote=vote,
+            feedback_source=feedback_source,
+        )
+        session.add(record)
+        try:
+            await session.flush()
+        except IntegrityError:
+            await session.rollback()
+            winner = (await session.exec(existing_stmt)).one_or_none()
+            if winner is None:
+                raise
+            winner.vote = vote
+            record = winner
+            await session.flush()
+
+    snapshot = CardFeedback(
+        id=record.id,
+        user_id=record.user_id,
+        card_id=record.card_id,
+        card_type=record.card_type,
+        vote=record.vote,
+        reason_chip=record.reason_chip,
+        free_text=record.free_text,
+        feedback_source=record.feedback_source,
+        issue_category=record.issue_category,
+        created_at=record.created_at,
+    )
+    await session.commit()
+    return snapshot
+
+
+async def get_card_feedback(
+    card_id: uuid.UUID,
+    user_id: uuid.UUID,
+    session: SQLModelAsyncSession,
+    feedback_source: str = "card_vote",
+) -> Optional[CardFeedback]:
+    """Return the user's feedback for a specific card, or None if not found."""
+    result = (
+        await session.exec(
+            select(CardFeedback).where(
+                CardFeedback.user_id == user_id,
+                CardFeedback.card_id == card_id,
+                CardFeedback.feedback_source == feedback_source,
+            )
+        )
+    ).one_or_none()
+    if result is None:
+        return None
+    # Return a detached snapshot to avoid MissingGreenlet after session closes
+    return CardFeedback(
+        id=result.id,
+        user_id=result.user_id,
+        card_id=result.card_id,
+        card_type=result.card_type,
+        vote=result.vote,
+        reason_chip=result.reason_chip,
+        free_text=result.free_text,
+        feedback_source=result.feedback_source,
+        issue_category=result.issue_category,
+        created_at=result.created_at,
+    )

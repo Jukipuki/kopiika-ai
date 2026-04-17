@@ -275,3 +275,48 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 4. Grep for `datetime.utcnow()` (deprecated in Python 3.12) and replace.
 
 **Surfaced in:** Story 7.1 code review (2026-04-17)
+
+### TD-017 — `card_feedback.created_at` is frozen on vote flip, obscuring vote-change time [LOW]
+
+**Where:** [backend/app/services/feedback_service.py:154](backend/app/services/feedback_service.py#L154)
+
+**Problem:** When a user flips their vote (up → down or down → up), `submit_card_vote` updates the `vote` column in place but leaves `created_at` unchanged. The GET endpoint returns this original timestamp, so "createdAt" in the API response actually means "when the user first voted on this card", not "when the current vote was chosen". Analytics that assume `createdAt` marks the current-state age will be wrong for any flipped vote, and the UI has no way to show "you changed your mind at T".
+
+**Why deferred:** No consumer currently depends on vote-change timing; the ambiguity is latent. Fix touches both schema (add `updated_at`) and response shape, which is broader than a LOW nit warrants inside Story 7.2.
+
+**Fix shape:**
+1. Add `updated_at timestamptz NOT NULL default now()` column to `card_feedback` via Alembic migration.
+2. Update `submit_card_vote` to set `updated_at = _utcnow()` on both INSERT and UPDATE paths.
+3. Expose `updatedAt` in `CardVoteOut` and `CardFeedbackResponse`.
+4. Frontend `CardFeedbackState` picks up `updatedAt`.
+
+**Surfaced in:** Story 7.2 code review (2026-04-17)
+
+### TD-018 — No concurrency test for `submit_card_vote` unique-constraint race path [LOW]
+
+**Where:** [backend/app/services/feedback_service.py:106-160](backend/app/services/feedback_service.py#L106-L160), [backend/tests/test_feedback_service.py](backend/tests/test_feedback_service.py)
+
+**Problem:** The `submit_card_vote` service now catches `IntegrityError` on concurrent first-vote inserts, rolls back, and re-loads the winner's row to UPDATE its vote. This branch is never exercised by tests — existing tests only hit the sequential SELECT-hit or single-session INSERT paths. A future refactor could silently regress the IntegrityError retry without any test failing.
+
+**Why deferred:** Reliably simulating the race requires either two independent `SQLModelAsyncSession` instances against a file-backed SQLite DB (brittle, SQLite locking behaves differently from Postgres), or a Postgres testcontainer (new dev-dependency + CI wiring). Outside the scope of Story 7.2's bugfix.
+
+**Fix shape:**
+1. Add a Postgres testcontainer fixture (or extend the existing test DB setup) so tests can exercise real INSERT contention.
+2. Write a test that spawns two coroutines both attempting `submit_card_vote(card_id, user_id, vote="up", ...)` with `asyncio.gather`, asserts exactly one row exists post-race, and both futures resolve without a 500.
+
+**Surfaced in:** Story 7.2 code review (2026-04-17)
+
+### TD-019 — GET `/api/v1/feedback/cards/{cardId}` is not rate-limited [LOW]
+
+**Where:** [backend/app/api/v1/feedback.py:111-132](backend/app/api/v1/feedback.py#L111-L132)
+
+**Problem:** The GET card-feedback endpoint is invoked on every Teaching Feed card mount with the user's bearer token. Unlike the POST endpoint it does not call `rate_limiter.check_feedback_rate_limit`, so a misbehaving client (or abuse) can hammer the endpoint indefinitely. Reads are typically exempt, but this path hits Postgres per call and could be a cheap amplification vector.
+
+**Why deferred:** Read-path throttling wasn't explicitly required by Story 7.2 ACs and the endpoint is per-card low-volume in normal use. Safer to add under a dedicated "feedback read tier" once there's observability on actual call rates.
+
+**Fix shape:**
+1. Add `check_feedback_read_rate_limit(user_id, max_reads=120, window_seconds=60)` (or similar tier) to `RateLimiter`, distinct from the write tier.
+2. Wire `Depends(get_rate_limiter)` into `get_card_feedback` and call the new method.
+3. Add a 429 test mirroring `test_submit_vote_rate_limited`.
+
+**Surfaced in:** Story 7.2 code review (2026-04-17)

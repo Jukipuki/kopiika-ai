@@ -1,11 +1,13 @@
-"""Unit tests for feedback_service.compute_engagement_score (Story 7.1)."""
+"""Unit tests for feedback_service (Story 7.1: engagement score, Story 7.2: card votes)."""
 import uuid
 
 import pytest
 
 from app.services.feedback_service import (
     compute_engagement_score,
+    get_card_feedback,
     store_card_interactions,
+    submit_card_vote,
 )
 
 
@@ -191,3 +193,130 @@ async def test_store_card_interactions_inserts_with_scores(async_session):
     assert rows[1].engagement_score == 0  # card_b zero-signals
     assert {r.card_id for r in rows} == {card_a_id, card_b_id}
     assert all(r.user_id == user_id for r in rows)
+
+
+# ==================== Card Vote Service Tests (Story 7.2) ====================
+
+
+async def _setup_user_and_card(session):
+    """Helper to create a user and insight card for vote tests."""
+    from app.models.insight import Insight
+    from app.models.user import User
+
+    user = User(email="vote@test.com", cognito_sub="vote-sub", locale="en")
+    session.add(user)
+    await session.flush()
+
+    card = Insight(
+        user_id=user.id,
+        headline="Vote test",
+        key_metric="$1",
+        why_it_matters="why",
+        deep_dive="deep",
+        severity="medium",
+        category="food",
+    )
+    session.add(card)
+    await session.flush()
+    return user.id, card.id
+
+
+@pytest.mark.asyncio
+async def test_submit_card_vote_creates_new_record(async_session):
+    """AC #2: first vote creates a new card_feedback row."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    result = await submit_card_vote(
+        card_id=card_id,
+        user_id=user_id,
+        vote="up",
+        card_type="food",
+        session=async_session,
+    )
+    assert result.vote == "up"
+    assert result.card_id == card_id
+    assert result.user_id == user_id
+    assert result.feedback_source == "card_vote"
+
+
+@pytest.mark.asyncio
+async def test_submit_card_vote_upsert_changes_vote(async_session):
+    """AC #5: voting opposite direction updates existing row, not duplicates."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    first = await submit_card_vote(
+        card_id=card_id,
+        user_id=user_id,
+        vote="up",
+        card_type="food",
+        session=async_session,
+    )
+    assert first.vote == "up"
+
+    second = await submit_card_vote(
+        card_id=card_id,
+        user_id=user_id,
+        vote="down",
+        card_type="food",
+        session=async_session,
+    )
+    assert second.vote == "down"
+
+    # Verify only one row exists (upsert, not insert)
+    from sqlmodel import func, select
+    from app.models.feedback import CardFeedback
+
+    count = (
+        await async_session.exec(
+            select(func.count()).select_from(CardFeedback).where(
+                CardFeedback.user_id == user_id,
+                CardFeedback.card_id == card_id,
+            )
+        )
+    ).one()
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_submit_card_vote_idempotent(async_session):
+    """Voting the same way twice is idempotent."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    await submit_card_vote(card_id=card_id, user_id=user_id, vote="up", card_type="food", session=async_session)
+    await submit_card_vote(card_id=card_id, user_id=user_id, vote="up", card_type="food", session=async_session)
+
+    from sqlmodel import func, select
+    from app.models.feedback import CardFeedback
+
+    count = (
+        await async_session.exec(
+            select(func.count()).select_from(CardFeedback).where(
+                CardFeedback.user_id == user_id,
+                CardFeedback.card_id == card_id,
+            )
+        )
+    ).one()
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_card_feedback_found(async_session):
+    """AC #4: get_card_feedback returns the existing vote."""
+    user_id, card_id = await _setup_user_and_card(async_session)
+
+    await submit_card_vote(card_id=card_id, user_id=user_id, vote="down", card_type="food", session=async_session)
+
+    result = await get_card_feedback(card_id=card_id, user_id=user_id, session=async_session)
+    assert result is not None
+    assert result.vote == "down"
+
+
+@pytest.mark.asyncio
+async def test_get_card_feedback_not_found(async_session):
+    """AC #4: get_card_feedback returns None when no vote exists."""
+    result = await get_card_feedback(
+        card_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        session=async_session,
+    )
+    assert result is None

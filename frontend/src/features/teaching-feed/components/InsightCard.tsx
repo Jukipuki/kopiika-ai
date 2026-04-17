@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TriageBadge } from "./TriageBadge";
 import { EducationLayer } from "./EducationLayer";
+import { CardFeedbackBar } from "./CardFeedbackBar";
 import { useCardInteractions } from "../hooks/use-card-interactions";
 import type { InsightCard as InsightCardType } from "../types";
 
@@ -66,6 +67,7 @@ export function InsightCard({ insight, cardPositionInFeed = 0 }: InsightCardProp
             {BUTTON_LABELS[expandLevel]}
           </Button>
         </div>
+        <CardFeedbackBar cardId={insight.id} />
       </CardContent>
     </Card>
   );

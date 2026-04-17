@@ -7,6 +7,10 @@ vi.mock("next-auth/react", () => ({
   useSession: () => ({ data: null, status: "unauthenticated" }),
 }));
 
+vi.mock("../hooks/use-card-feedback", () => ({
+  useCardFeedback: () => ({ vote: null, submitVote: vi.fn(), isPending: false }),
+}));
+
 const mockInsight: InsightCardType = {
   id: "uuid-1",
   uploadId: null,
