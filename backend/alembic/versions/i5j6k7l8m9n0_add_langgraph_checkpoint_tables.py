@@ -18,14 +18,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create LangGraph checkpoint tables via PostgresSaver.setup()."""
+    """Create LangGraph checkpoint tables via PostgresSaver.setup().
+
+    autocommit=True is required: PostgresSaver.setup() runs
+    `CREATE INDEX CONCURRENTLY` statements (library migrations 6–8) which
+    cannot execute inside a transaction block. Opening a dedicated psycopg
+    connection outside Alembic's own transaction keeps this safe — all of
+    langgraph's setup statements use `IF NOT EXISTS`, so re-running is a
+    no-op on environments where the tables already exist.
+    """
     from app.agents.checkpointer import _get_psycopg_conn_string
 
     from psycopg import Connection
     from langgraph.checkpoint.postgres import PostgresSaver
 
     conn_string = _get_psycopg_conn_string()
-    with Connection.connect(conn_string) as conn:
+    with Connection.connect(conn_string, autocommit=True) as conn:
         checkpointer = PostgresSaver(conn)
         checkpointer.setup()
 

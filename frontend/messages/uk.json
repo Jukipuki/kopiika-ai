@@ -373,6 +373,18 @@
         "actionable": "Практично корисно",
         "wellExplained": "Добре пояснено"
       }
+    },
+    "milestoneFeedback": {
+      "thirdUploadTitle": "Як вам Kopiika?",
+      "healthScoreTitle": "Ваш рахунок змінився! Це схоже на правду?",
+      "emojiHappy": "😊 Чудово",
+      "emojiNeutral": "😐 Нормально",
+      "emojiSad": "😞 Не дуже",
+      "yes": "Так",
+      "no": "Ні",
+      "optionalComment": "Деталі? (необов'язково)",
+      "submit": "Надіслати",
+      "skip": "Пропустити"
     }
   },
   "onboarding": {

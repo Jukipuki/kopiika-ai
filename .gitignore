@@ -35,6 +35,8 @@ coverage/
 htmlcov/
 .coverage
 .pytest_cache/
+*.db
+*.db-journal
 
 # Build
 *.tsbuildinfo

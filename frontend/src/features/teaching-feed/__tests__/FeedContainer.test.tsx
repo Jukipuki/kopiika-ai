@@ -21,6 +21,14 @@ vi.mock("../hooks/use-card-feedback", () => ({
   useCardFeedback: () => ({ vote: null, submitVote: vi.fn(), isPending: false }),
 }));
 
+vi.mock("../hooks/use-milestone-feedback", () => ({
+  useMilestoneFeedback: () => ({
+    pendingCard: null,
+    submitResponse: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 // Mock use-feed-sse — controllable per-test
 const mockUseFeedSSE = vi.fn();
 vi.mock("../hooks/use-feed-sse", () => ({

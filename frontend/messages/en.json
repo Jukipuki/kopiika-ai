@@ -373,6 +373,18 @@
         "actionable": "Actionable",
         "wellExplained": "Well explained"
       }
+    },
+    "milestoneFeedback": {
+      "thirdUploadTitle": "How's Kopiika working for you?",
+      "healthScoreTitle": "Your score changed! Does this feel accurate?",
+      "emojiHappy": "😊 Great",
+      "emojiNeutral": "😐 Ok",
+      "emojiSad": "😞 Not great",
+      "yes": "Yes",
+      "no": "No",
+      "optionalComment": "Any details? (optional)",
+      "submit": "Submit",
+      "skip": "Skip"
     }
   },
   "onboarding": {

@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTeachingFeed } from "../hooks/use-teaching-feed";
 import { useFeedSSE } from "../hooks/use-feed-sse";
+import { useMilestoneFeedback } from "../hooks/use-milestone-feedback";
 import { CardStackNavigator } from "./CardStackNavigator";
+import { MilestoneFeedbackCard } from "./MilestoneFeedbackCard";
 import { SkeletonCard } from "./SkeletonCard";
 import { ProgressiveLoadingState } from "./ProgressiveLoadingState";
 import { FeedDisclaimer } from "./FeedDisclaimer";
@@ -37,6 +39,7 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
   const { cards, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, isLoading, isError, isFetching } = useTeachingFeed();
   const queryClient = useQueryClient();
   const { pendingInsightIds, isStreaming, message } = useFeedSSE(jobId ?? null, session?.accessToken);
+  const { pendingCard, submitResponse, isPending: isSubmittingMilestone } = useMilestoneFeedback();
 
   // Refetch feed data as new insights arrive from SSE
   useEffect(() => {
@@ -113,6 +116,25 @@ export function FeedContainer({ jobId }: FeedContainerProps) {
         isFetchingNextPage={isFetchingNextPage}
         onLoadMore={fetchNextPage}
       />
+      {pendingCard && !isStreaming && (
+        <MilestoneFeedbackCard
+          cardType={pendingCard.cardType}
+          isSubmitting={isSubmittingMilestone}
+          onRespond={(responseValue, freeText) =>
+            submitResponse({
+              cardType: pendingCard.cardType,
+              responseValue,
+              freeText,
+            })
+          }
+          onDismiss={() =>
+            submitResponse({
+              cardType: pendingCard.cardType,
+              responseValue: "dismissed",
+            })
+          }
+        />
+      )}
       <FeedDisclaimer />
       {isFetchNextPageError && (
         <Card>
