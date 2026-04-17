@@ -592,6 +592,89 @@ class TestPatchReasonChipEndpoint:
             app.dependency_overrides.pop(get_current_user_payload, None)
 
     @pytest.mark.asyncio
+    async def test_patch_thumbs_up_chip_learned_something(self, vote_client, vote_session):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-up-ls-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "chipupls@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            vote_resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/vote",
+                json={"vote": "up"},
+            )
+            assert vote_resp.status_code == 201
+            feedback_id = vote_resp.json()["id"]
+
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{feedback_id}",
+                json={"reasonChip": "learned_something"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["reasonChip"] == "learned_something"
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_patch_thumbs_up_chip_actionable(self, vote_client, vote_session):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-up-act-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "chipupact@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            vote_resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/vote",
+                json={"vote": "up"},
+            )
+            assert vote_resp.status_code == 201
+            feedback_id = vote_resp.json()["id"]
+
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{feedback_id}",
+                json={"reasonChip": "actionable"},
+            )
+            assert resp.status_code == 200
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_patch_thumbs_up_chip_well_explained(self, vote_client, vote_session):
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "chip-up-we-sub"
+        user_id = await _create_user(vote_session, cognito_sub, "chipupwe@test.com")
+        card_id = await _create_insight(vote_session, user_id)
+        await vote_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            vote_resp = await vote_client.post(
+                f"/api/v1/feedback/cards/{card_id}/vote",
+                json={"vote": "up"},
+            )
+            assert vote_resp.status_code == 201
+            feedback_id = vote_resp.json()["id"]
+
+            resp = await vote_client.patch(
+                f"/api/v1/feedback/{feedback_id}",
+                json={"reasonChip": "well_explained"},
+            )
+            assert resp.status_code == 200
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
     async def test_patch_reason_chip_rate_limited(self, vote_engine, vote_session):
         """Rate-limited PATCH returns 429 and invokes check_feedback_rate_limit."""
         from app.api.deps import get_cognito_service, get_db, get_rate_limiter

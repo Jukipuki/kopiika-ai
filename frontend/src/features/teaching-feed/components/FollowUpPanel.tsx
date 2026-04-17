@@ -6,20 +6,29 @@ import { Button } from "@/components/ui/button";
 import type { ReasonChip } from "../hooks/use-card-feedback";
 /* eslint-disable jsx-a11y/no-autofocus */
 
-const CHIPS: ReadonlyArray<{ value: ReasonChip; key: string }> = [
+const THUMBS_DOWN_CHIPS: ReadonlyArray<{ value: ReasonChip; key: string }> = [
   { value: "not_relevant", key: "chip.notRelevant" },
   { value: "already_knew", key: "chip.alreadyKnew" },
   { value: "seems_incorrect", key: "chip.seemsIncorrect" },
   { value: "hard_to_understand", key: "chip.hardToUnderstand" },
 ];
 
+const THUMBS_UP_CHIPS: ReadonlyArray<{ value: ReasonChip; key: string }> = [
+  { value: "learned_something", key: "chip.learnedSomething" },
+  { value: "actionable", key: "chip.actionable" },
+  { value: "well_explained", key: "chip.wellExplained" },
+];
+
 interface FollowUpPanelProps {
+  variant?: "thumbs_down" | "thumbs_up";
   onDismiss: () => void;
   onChipSelect?: (chip: ReasonChip) => void;
 }
 
-export function FollowUpPanel({ onDismiss, onChipSelect }: FollowUpPanelProps) {
+export function FollowUpPanel({ variant = "thumbs_down", onDismiss, onChipSelect }: FollowUpPanelProps) {
   const t = useTranslations("feed.followUpPanel");
+  const chips = variant === "thumbs_up" ? THUMBS_UP_CHIPS : THUMBS_DOWN_CHIPS;
+  const titleKey = variant === "thumbs_up" ? "thumbsUpTitle" : "thumbsDownTitle";
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [selected, setSelected] = useState<ReasonChip | null>(null);
@@ -69,10 +78,10 @@ export function FollowUpPanel({ onDismiss, onChipSelect }: FollowUpPanelProps) {
       className="mt-2 rounded-lg border bg-background p-3 shadow-sm animate-in slide-in-from-bottom duration-200"
     >
       <p id={titleId} className="mb-2 text-sm font-medium">
-        {t("title")}
+        {t(titleKey)}
       </p>
       <div className="flex flex-wrap gap-2">
-        {CHIPS.map(({ value, key }, index) => (
+        {chips.map(({ value, key }, index) => (
           <Button
             key={value}
             variant="outline"

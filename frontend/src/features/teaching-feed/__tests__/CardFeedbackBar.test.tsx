@@ -33,21 +33,27 @@ vi.mock("../components/ReportIssueForm", () => ({
 
 vi.mock("../components/FollowUpPanel", () => ({
   FollowUpPanel: ({
+    variant,
     onDismiss,
     onChipSelect,
   }: {
+    variant?: "thumbs_down" | "thumbs_up";
     onDismiss: () => void;
     onChipSelect?: (chip: string) => void;
-  }) => (
-    <div data-testid="follow-up-panel">
-      <button type="button" onClick={onDismiss}>
-        dismiss-panel
-      </button>
-      <button type="button" onClick={() => onChipSelect?.("not_relevant")}>
-        pick-chip
-      </button>
-    </div>
-  ),
+  }) => {
+    const defaultChip =
+      variant === "thumbs_up" ? "actionable" : "not_relevant";
+    return (
+      <div data-testid={`follow-up-panel-${variant ?? "thumbs_down"}`}>
+        <button type="button" onClick={onDismiss}>
+          dismiss-panel
+        </button>
+        <button type="button" onClick={() => onChipSelect?.(defaultChip)}>
+          pick-chip
+        </button>
+      </div>
+    );
+  },
 }));
 
 // Mock DropdownMenu (base-ui portals are awkward in jsdom). Render the menu
@@ -263,12 +269,12 @@ describe("CardFeedbackBar", () => {
     });
 
     fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(299);
     });
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
   });
 
   it("renders FollowUpPanel 300ms after thumbs-down (AC #1)", () => {
@@ -281,10 +287,11 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("follow-up-panel-thumbs_down")).toBeInTheDocument();
   });
 
-  it("does NOT render FollowUpPanel on thumbs-up", () => {
+  it("does NOT render thumbs-down FollowUpPanel on thumbs-up", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     render(<CardFeedbackBar cardId="card-1" />);
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -294,7 +301,8 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_up")).not.toBeInTheDocument();
   });
 
   it("only shows FollowUpPanel on the first thumbs-down of the session (AC #4)", () => {
@@ -306,7 +314,7 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("follow-up-panel-thumbs_down")).toBeInTheDocument();
     unmount();
 
     // Fresh instance, another thumbs-down — panel should NOT appear again.
@@ -318,7 +326,7 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
   });
 
   it("hides FollowUpPanel when its onDismiss is invoked (AC #3)", () => {
@@ -331,10 +339,10 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("follow-up-panel-thumbs_down")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("dismiss-panel"));
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
   });
 
   it("forwards chip selection to submitReasonChip (AC #2)", () => {
@@ -370,7 +378,101 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
+  });
+
+  // ── Thumbs-up follow-up panel (Story 7.6) ───────────────────────────────
+
+  it("shows thumbs_up panel when Math.random returns < 0.1", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.05);
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(300); });
+
+    expect(screen.getByTestId("follow-up-panel-thumbs_up")).toBeInTheDocument();
+  });
+
+  it("does NOT show follow-up panel for thumbs-up when Math.random returns >= 0.1", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(300); });
+
+    expect(screen.queryByTestId("follow-up-panel-thumbs_up")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
+  });
+
+  it("thumbs-up follow-up panel shows on second thumbs-up (no session cap)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.05);
+    const { unmount } = render(<CardFeedbackBar cardId="card-1" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.getByTestId("follow-up-panel-thumbs_up")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("dismiss-panel"));
+    unmount();
+
+    render(<CardFeedbackBar cardId="card-2" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.getByTestId("follow-up-panel-thumbs_up")).toBeInTheDocument();
+  });
+
+  it("forwards thumbs-up chip selection to submitReasonChip (AC #2 end-to-end)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.05);
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(300); });
+
+    fireEvent.click(screen.getByText("pick-chip"));
+    expect(mockSubmitReasonChip).toHaveBeenCalledWith("actionable");
+  });
+
+  it("clears pending timer when user switches vote within 300ms (race fix)", () => {
+    // Math.random() only matters if thumbs-up timer fires. We want to prove
+    // the thumbs-down timer scheduled first does NOT fire after switching to up.
+    vi.spyOn(Math, "random").mockReturnValue(0.5); // prevent thumbs-up trigger
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    // Tap thumbs-down — schedules 300ms timer for thumbs_down panel
+    fireEvent.click(screen.getByLabelText("Rate this insight not helpful"));
+    act(() => { vi.advanceTimersByTime(100); });
+    // Switch to thumbs-up before the 300ms elapses
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(500); });
+
+    // Neither panel should render: thumbs-down timer was cleared; thumbs-up
+    // skipped due to Math.random >= 0.1.
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_up")).not.toBeInTheDocument();
+    // Session flag must remain unconsumed since thumbs-down timer never fired.
+    expect(_sessionFlags.hasShownFollowUp).toBe(false);
+  });
+
+  it("thumbs-down and thumbs-up panels are independent", () => {
+    // Simulate that thumbs-down was already shown (session flag consumed)
+    _sessionFlags.hasShownFollowUp = true;
+
+    vi.spyOn(Math, "random").mockReturnValue(0.05);
+    render(<CardFeedbackBar cardId="card-1" />);
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    fireEvent.click(screen.getByLabelText("Rate this insight helpful"));
+    act(() => { vi.advanceTimersByTime(300); });
+
+    expect(screen.getByTestId("follow-up-panel-thumbs_up")).toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
   });
 
   it("defers session flag until feedbackId is known (H1 race fix)", () => {
@@ -392,7 +494,7 @@ describe("CardFeedbackBar", () => {
       vi.advanceTimersByTime(300);
     });
     // feedbackId was null: panel not shown AND flag NOT consumed.
-    expect(screen.queryByTestId("follow-up-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("follow-up-panel-thumbs_down")).not.toBeInTheDocument();
     expect(_sessionFlags.hasShownFollowUp).toBe(false);
     unmount();
 
@@ -414,6 +516,6 @@ describe("CardFeedbackBar", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(screen.getByTestId("follow-up-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("follow-up-panel-thumbs_down")).toBeInTheDocument();
   });
 });

@@ -121,7 +121,8 @@ class ReasonChipIn(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     reason_chip: Literal[
-        "not_relevant", "already_knew", "seems_incorrect", "hard_to_understand"
+        "not_relevant", "already_knew", "seems_incorrect", "hard_to_understand",
+        "learned_something", "actionable", "well_explained",
     ]
 
 

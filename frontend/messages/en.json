@@ -362,12 +362,16 @@
       "alreadyReported": "You've already reported this card"
     },
     "followUpPanel": {
-      "title": "Why wasn't this helpful?",
+      "thumbsDownTitle": "Why wasn't this helpful?",
+      "thumbsUpTitle": "What made this useful?",
       "chip": {
         "notRelevant": "Not relevant to me",
         "alreadyKnew": "Already knew this",
         "seemsIncorrect": "Seems incorrect",
-        "hardToUnderstand": "Hard to understand"
+        "hardToUnderstand": "Hard to understand",
+        "learnedSomething": "Learned something",
+        "actionable": "Actionable",
+        "wellExplained": "Well explained"
       }
     }
   },

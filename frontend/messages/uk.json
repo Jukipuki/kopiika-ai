@@ -362,12 +362,16 @@
       "alreadyReported": "Ви вже повідомили про проблему з цією карткою"
     },
     "followUpPanel": {
-      "title": "Чому це не було корисним?",
+      "thumbsDownTitle": "Чому це не було корисним?",
+      "thumbsUpTitle": "Що зробило цю картку корисною?",
       "chip": {
         "notRelevant": "Не актуально для мене",
         "alreadyKnew": "Я це вже знав",
         "seemsIncorrect": "Здається некоректним",
-        "hardToUnderstand": "Важко зрозуміти"
+        "hardToUnderstand": "Важко зрозуміти",
+        "learnedSomething": "Дізнався щось нове",
+        "actionable": "Практично корисно",
+        "wellExplained": "Добре пояснено"
       }
     }
   },

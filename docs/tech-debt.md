@@ -387,3 +387,40 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 3. Add a Vitest test that fires `pointerdown` on the panel, `pointermove` with `clientY` delta > 80, `pointerup`, and asserts `onDismiss` was called.
 
 **Surfaced in:** Story 7.5 code review (2026-04-17)
+
+---
+
+### TD-024 — Thumbs-up follow-up probability is an inline literal, not a named constant [LOW]
+
+**Where:** [frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx:92](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L92)
+
+**Problem:** The 1-in-10 trigger for the thumbs-up follow-up panel is expressed inline as `Math.random() < 0.1`. The `0.1` is meaningful (product-tuning knob — matches PRD FR51 "1 in 10 occurrences"), but reads as a magic number. If product ever wants to tune this (e.g. A/B at 0.05 vs 0.15), or if a second variant adds its own probability, the intent-free literal is easy to miss during grep and easy to drift between call sites.
+
+**Why deferred:** One-line polish with no functional impact; fixing requires agreement on the constant's scope (per-component, per-feature module, or a shared feedback-config) which is a larger design call than the Story 7.6 scope.
+
+**Fix shape:**
+1. Extract `const THUMBS_UP_FOLLOW_UP_PROBABILITY = 0.1` at module scope in `CardFeedbackBar.tsx` (or, better, in a shared `features/teaching-feed/config.ts` alongside any future feedback tunables).
+2. Replace the inline literal with the named constant.
+3. If a shared config module is introduced, also move the 300ms `followUpTimerRef` delay there for consistency.
+
+**Surfaced in:** Story 7.6 code review (2026-04-17)
+
+---
+
+### TD-025 — `_sessionFlags` module-level object read inside useEffect without being in deps [LOW]
+
+**Where:** [frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx:24](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L24), [CardFeedbackBar.tsx:59-71](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L59-L71), [CardFeedbackBar.tsx:86](frontend/src/features/teaching-feed/components/CardFeedbackBar.tsx#L86)
+
+**Problem:** `_sessionFlags.hasShownFollowUp` is a mutable module-level object that gates whether the thumbs-down follow-up panel has already been shown in this session. The flag is read inside a `useEffect`, but the deps array (`[followUpPending, feedbackId, followUpVariant]`) does not include it — React will not re-run the effect when the flag flips. This works today because the effect re-runs on every vote (via `followUpPending` → true) and the read happens inside that re-entry, but:
+- `react-hooks/exhaustive-deps` under stricter config (or a future ESLint upgrade) may flag it.
+- The pattern is invisible to React's reactivity model, so any refactor that decouples the flag from `followUpPending` will silently break the session-cap behavior.
+- Exporting the object to allow tests to reset it leaks implementation state into the module surface.
+
+**Why deferred:** No observed bug today; the pattern was inherited from Story 7.5's follow-up panel session-cap fix, and replacing it with a reactive source (ref + context or `useSyncExternalStore`) is a structural change disproportionate to a cosmetic code-smell inside a single story.
+
+**Fix shape:**
+1. Replace `_sessionFlags` with either (a) a `useSyncExternalStore`-backed singleton that React can subscribe to, or (b) a React Context provider scoped to the feed page so the flag reads become reactive state, or (c) a `useRef` that lives in the nearest common ancestor of all `CardFeedbackBar` instances — if there isn't one, create one.
+2. Drop the `_sessionFlags` named export; replace the test-side reset with the chosen API (e.g. `vi.resetModules()` or a provider remount).
+3. Add an ESLint rule or CI check that fails if a module-level mutable object is read inside a hook body without being either a ref or a subscribed store.
+
+**Surfaced in:** Story 7.6 code review (2026-04-17)

@@ -10,7 +10,10 @@ export type ReasonChip =
   | "not_relevant"
   | "already_knew"
   | "seems_incorrect"
-  | "hard_to_understand";
+  | "hard_to_understand"
+  | "learned_something"
+  | "actionable"
+  | "well_explained";
 
 export interface CardFeedbackState {
   id: string;

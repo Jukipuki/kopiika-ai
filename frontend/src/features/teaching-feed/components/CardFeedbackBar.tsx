@@ -29,6 +29,7 @@ export function CardFeedbackBar({ cardId }: CardFeedbackBarProps) {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [followUpPending, setFollowUpPending] = useState(false);
+  const [followUpVariant, setFollowUpVariant] = useState<"thumbs_down" | "thumbs_up">("thumbs_down");
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     vote,
@@ -54,31 +55,45 @@ export function CardFeedbackBar({ cardId }: CardFeedbackBarProps) {
   // Panel shows only once the 300ms delay AND the feedbackId are both ready.
   // Setting the session flag here (not in handleVote) prevents a slow-POST
   // race where the flag consumed but the panel never rendered.
+  // Thumbs-up has no session cap — only thumbs-down is guarded.
   useEffect(() => {
     if (!followUpPending) return;
     if (!feedbackId) return;
-    if (_sessionFlags.hasShownFollowUp) {
-      setFollowUpPending(false);
-      return;
+    if (followUpVariant === "thumbs_down") {
+      if (_sessionFlags.hasShownFollowUp) {
+        setFollowUpPending(false);
+        return;
+      }
+      _sessionFlags.hasShownFollowUp = true;
     }
-    _sessionFlags.hasShownFollowUp = true;
     setShowFollowUp(true);
     setFollowUpPending(false);
-  }, [followUpPending, feedbackId]);
+  }, [followUpPending, feedbackId, followUpVariant]);
 
   if (!visible) return null;
 
   const handleVote = (value: "up" | "down") => {
     if (vote === value) return;
+    if (followUpTimerRef.current !== null) {
+      clearTimeout(followUpTimerRef.current);
+      followUpTimerRef.current = null;
+    }
+    setFollowUpPending(false);
     if ("vibrate" in navigator) {
       navigator.vibrate(10);
     }
     submitVote(value);
     if (value === "down" && !_sessionFlags.hasShownFollowUp) {
-      followUpTimerRef.current = setTimeout(
-        () => setFollowUpPending(true),
-        300,
-      );
+      followUpTimerRef.current = setTimeout(() => {
+        setFollowUpVariant("thumbs_down");
+        setFollowUpPending(true);
+      }, 300);
+    }
+    if (value === "up" && Math.random() < 0.1) {
+      followUpTimerRef.current = setTimeout(() => {
+        setFollowUpVariant("thumbs_up");
+        setFollowUpPending(true);
+      }, 300);
     }
   };
 
@@ -144,6 +159,7 @@ export function CardFeedbackBar({ cardId }: CardFeedbackBarProps) {
       )}
       {showFollowUp && feedbackId && (
         <FollowUpPanel
+          variant={followUpVariant}
           onDismiss={() => setShowFollowUp(false)}
           onChipSelect={submitReasonChip}
         />
