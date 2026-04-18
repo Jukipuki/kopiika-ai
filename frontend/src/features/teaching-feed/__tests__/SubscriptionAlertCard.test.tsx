@@ -32,7 +32,7 @@ function buildInsight(overrides: Partial<InsightCardType> = {}): InsightCardType
     keyMetric: "₴300.00/month",
     whyItMatters: "You have an active monthly subscription to netflix ua.",
     deepDive: "Last charge: 2026-03-16. Currently active.",
-    severity: "medium",
+    severity: "warning",
     category: "subscriptions",
     cardType: "subscriptionAlert",
     subscription: {
@@ -86,6 +86,33 @@ describe("SubscriptionAlertCard", () => {
   it("does NOT render inactivity badge when isActive is true", () => {
     render(<SubscriptionAlertCard insight={buildInsight()} />);
     expect(screen.queryByText(/Inactive \d+ month/)).not.toBeInTheDocument();
+  });
+
+  it("renders TriageBadge with Severity: Warning aria-label for warning severity", () => {
+    render(<SubscriptionAlertCard insight={buildInsight()} />);
+    expect(screen.getByLabelText("Severity: Warning")).toBeInTheDocument();
+  });
+
+  it("critical subscription card renders with border-l-4 class", () => {
+    const { container } = render(
+      <SubscriptionAlertCard insight={buildInsight({ severity: "critical" })} />,
+    );
+    const card = container.querySelector("[data-slot='card']");
+    expect(card).toHaveClass("border-l-4");
+  });
+
+  it("backward compat: high severity subscription card renders with border-l-4 class", () => {
+    const { container } = render(
+      <SubscriptionAlertCard insight={buildInsight({ severity: "high" })} />,
+    );
+    const card = container.querySelector("[data-slot='card']");
+    expect(card).toHaveClass("border-l-4");
+  });
+
+  it("warning subscription card does NOT render with border-l-4 class", () => {
+    const { container } = render(<SubscriptionAlertCard insight={buildInsight()} />);
+    const card = container.querySelector("[data-slot='card']");
+    expect(card).not.toHaveClass("border-l-4");
   });
 
   it("renders nothing when subscription data is missing", () => {

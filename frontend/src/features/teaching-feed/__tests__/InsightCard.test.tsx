@@ -31,7 +31,7 @@ const mockInsight: InsightCardType = {
   keyMetric: "₴3,200",
   whyItMatters: "Food is your biggest variable expense.",
   deepDive: "Breaking down by category: restaurants 60%, groceries 40%.",
-  severity: "high",
+  severity: "critical",
   category: "food",
   cardType: "insight",
   subscription: null,
@@ -61,7 +61,29 @@ describe("InsightCard", () => {
 
   it("renders TriageBadge with correct severity", () => {
     render(<InsightCard insight={mockInsight} />);
-    expect(screen.getByLabelText("High priority insight")).toBeInTheDocument();
+    expect(screen.getByLabelText("Severity: Critical")).toBeInTheDocument();
+  });
+
+  it("critical card renders with border-l-4 class on card element", () => {
+    const { container } = render(<InsightCard insight={mockInsight} />);
+    const card = container.querySelector("[data-slot='card']");
+    expect(card).toHaveClass("border-l-4");
+  });
+
+  it("warning card does NOT render with border-l-4 class", () => {
+    const { container } = render(
+      <InsightCard insight={{ ...mockInsight, severity: "warning" }} />,
+    );
+    const card = container.querySelector("[data-slot='card']");
+    expect(card).not.toHaveClass("border-l-4");
+  });
+
+  it("backward compat: high severity card renders with border-l-4 class", () => {
+    const { container } = render(
+      <InsightCard insight={{ ...mockInsight, severity: "high" }} />,
+    );
+    const card = container.querySelector("[data-slot='card']");
+    expect(card).toHaveClass("border-l-4");
   });
 
   it("shows 'Learn why →' button initially (level 0)", () => {

@@ -1,4 +1,8 @@
-export type SeverityLevel = "high" | "medium" | "low";
+export type SeverityLevel = "critical" | "warning" | "info" | "high" | "medium" | "low";
+
+export function isCriticalSeverity(severity: SeverityLevel): boolean {
+  return severity === "critical" || severity === "high";
+}
 
 export interface SubscriptionInfo {
   merchantName: string;

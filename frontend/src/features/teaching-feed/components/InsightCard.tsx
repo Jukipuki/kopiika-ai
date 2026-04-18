@@ -7,7 +7,7 @@ import { TriageBadge } from "./TriageBadge";
 import { EducationLayer } from "./EducationLayer";
 import { CardFeedbackBar } from "./CardFeedbackBar";
 import { useCardInteractions } from "../hooks/use-card-interactions";
-import type { InsightCard as InsightCardType } from "../types";
+import { isCriticalSeverity, type InsightCard as InsightCardType } from "../types";
 
 interface InsightCardProps {
   insight: InsightCardType;
@@ -40,7 +40,7 @@ export function InsightCard({ insight, cardPositionInFeed = 0 }: InsightCardProp
   const layerId = `education-${insight.id}`;
 
   return (
-    <Card>
+    <Card className={isCriticalSeverity(insight.severity) ? "border-l-4 border-l-red-500" : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <TriageBadge severity={insight.severity} />

@@ -3,36 +3,51 @@ import { describe, it, expect } from "vitest";
 import { TriageBadge } from "../components/TriageBadge";
 
 describe("TriageBadge", () => {
-  it("renders High Priority label and icon for high severity", () => {
+  it("renders Critical label for critical severity", () => {
+    render(<TriageBadge severity="critical" />);
+    expect(screen.getByText("Critical")).toBeInTheDocument();
+  });
+
+  it("renders Warning label for warning severity", () => {
+    render(<TriageBadge severity="warning" />);
+    expect(screen.getByText("Warning")).toBeInTheDocument();
+  });
+
+  it("renders Info label for info severity", () => {
+    render(<TriageBadge severity="info" />);
+    expect(screen.getByText("Info")).toBeInTheDocument();
+  });
+
+  it("has aria-label Severity: Critical for critical severity", () => {
+    render(<TriageBadge severity="critical" />);
+    expect(screen.getByLabelText("Severity: Critical")).toBeInTheDocument();
+  });
+
+  it("has aria-label Severity: Warning for warning severity", () => {
+    render(<TriageBadge severity="warning" />);
+    expect(screen.getByLabelText("Severity: Warning")).toBeInTheDocument();
+  });
+
+  it("has aria-label Severity: Informational for info severity", () => {
+    render(<TriageBadge severity="info" />);
+    expect(screen.getByLabelText("Severity: Informational")).toBeInTheDocument();
+  });
+
+  it("backward compat: high renders same as critical", () => {
     render(<TriageBadge severity="high" />);
-    expect(screen.getByText("High Priority")).toBeInTheDocument();
-    expect(screen.getByText("🔴")).toBeInTheDocument();
+    expect(screen.getByText("Critical")).toBeInTheDocument();
+    expect(screen.getByLabelText("Severity: Critical")).toBeInTheDocument();
   });
 
-  it("renders Medium label and icon for medium severity", () => {
+  it("backward compat: medium renders same as warning", () => {
     render(<TriageBadge severity="medium" />);
-    expect(screen.getByText("Medium")).toBeInTheDocument();
-    expect(screen.getByText("🟡")).toBeInTheDocument();
+    expect(screen.getByText("Warning")).toBeInTheDocument();
+    expect(screen.getByLabelText("Severity: Warning")).toBeInTheDocument();
   });
 
-  it("renders Low label and icon for low severity", () => {
+  it("backward compat: low renders same as info", () => {
     render(<TriageBadge severity="low" />);
-    expect(screen.getByText("Low")).toBeInTheDocument();
-    expect(screen.getByText("🟢")).toBeInTheDocument();
-  });
-
-  it("has aria-label on the badge for high severity", () => {
-    render(<TriageBadge severity="high" />);
-    expect(screen.getByLabelText("High priority insight")).toBeInTheDocument();
-  });
-
-  it("has aria-label on the badge for medium severity", () => {
-    render(<TriageBadge severity="medium" />);
-    expect(screen.getByLabelText("Medium priority insight")).toBeInTheDocument();
-  });
-
-  it("has aria-label on the badge for low severity", () => {
-    render(<TriageBadge severity="low" />);
-    expect(screen.getByLabelText("Low priority insight")).toBeInTheDocument();
+    expect(screen.getByText("Info")).toBeInTheDocument();
+    expect(screen.getByLabelText("Severity: Informational")).toBeInTheDocument();
   });
 });

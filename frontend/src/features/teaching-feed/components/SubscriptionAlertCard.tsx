@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TriageBadge } from "./TriageBadge";
 import { CardFeedbackBar } from "./CardFeedbackBar";
-import type { InsightCard as InsightCardType } from "../types";
+import { isCriticalSeverity, type InsightCard as InsightCardType } from "../types";
 
 interface SubscriptionAlertCardProps {
   insight: InsightCardType;
@@ -27,7 +27,7 @@ export function SubscriptionAlertCard({ insight }: SubscriptionAlertCardProps) {
       : null;
 
   return (
-    <Card>
+    <Card className={isCriticalSeverity(insight.severity) ? "border-l-4 border-l-red-500" : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <TriageBadge severity={insight.severity} />

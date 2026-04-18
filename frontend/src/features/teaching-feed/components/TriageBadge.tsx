@@ -1,27 +1,54 @@
 "use client";
 
+import { AlertTriangle, AlertCircle, Info, type LucideIcon } from "lucide-react";
 import type { SeverityLevel } from "../types";
 
-const SEVERITY_CONFIG = {
-  high: {
-    label: "High Priority",
-    icon: "🔴",
+interface SeverityConfig {
+  label: string;
+  Icon: LucideIcon;
+  className: string;
+  ariaLabel: string;
+}
+
+const SEVERITY_CONFIG: Record<SeverityLevel, SeverityConfig> = {
+  critical: {
+    label: "Critical",
+    Icon: AlertTriangle,
     className: "bg-red-100 text-red-800",
-    ariaLabel: "High priority insight",
+    ariaLabel: "Severity: Critical",
+  },
+  warning: {
+    label: "Warning",
+    Icon: AlertCircle,
+    className: "bg-amber-100 text-amber-800",
+    ariaLabel: "Severity: Warning",
+  },
+  info: {
+    label: "Info",
+    // Visual "Info" vs aria-label "Informational" is intentional per AC #5 — do not align.
+    Icon: Info,
+    className: "bg-teal-100 text-teal-800",
+    ariaLabel: "Severity: Informational",
+  },
+  high: {
+    label: "Critical",
+    Icon: AlertTriangle,
+    className: "bg-red-100 text-red-800",
+    ariaLabel: "Severity: Critical",
   },
   medium: {
-    label: "Medium",
-    icon: "🟡",
-    className: "bg-yellow-100 text-yellow-800",
-    ariaLabel: "Medium priority insight",
+    label: "Warning",
+    Icon: AlertCircle,
+    className: "bg-amber-100 text-amber-800",
+    ariaLabel: "Severity: Warning",
   },
   low: {
-    label: "Low",
-    icon: "🟢",
-    className: "bg-green-100 text-green-800",
-    ariaLabel: "Low priority insight",
+    label: "Info",
+    Icon: Info,
+    className: "bg-teal-100 text-teal-800",
+    ariaLabel: "Severity: Informational",
   },
-} as const;
+};
 
 interface TriageBadgeProps {
   severity: SeverityLevel;
@@ -29,13 +56,14 @@ interface TriageBadgeProps {
 
 export function TriageBadge({ severity }: TriageBadgeProps) {
   const config = SEVERITY_CONFIG[severity];
+  const { Icon } = config;
 
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${config.className}`}
       aria-label={config.ariaLabel}
     >
-      <span aria-hidden="true">{config.icon}</span>
+      <Icon size={12} aria-hidden="true" />
       {config.label}
     </span>
   );
