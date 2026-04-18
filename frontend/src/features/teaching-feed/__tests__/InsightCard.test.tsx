@@ -33,6 +33,8 @@ const mockInsight: InsightCardType = {
   deepDive: "Breaking down by category: restaurants 60%, groceries 40%.",
   severity: "high",
   category: "food",
+  cardType: "insight",
+  subscription: null,
   createdAt: "2026-04-04T12:00:00.000000Z",
 };
 

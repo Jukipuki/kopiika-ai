@@ -16,3 +16,4 @@ class FinancialPipelineState(TypedDict):
     completed_nodes: list[str]            # nodes that finished successfully
     failed_node: str | None               # node that failed (if any)
     pattern_findings: list[dict]          # output of pattern_detection_node; each dict mirrors a DB finding row
+    detected_subscriptions: list[dict]    # output of pattern_detection_node recurring detector; each dict mirrors a DB row

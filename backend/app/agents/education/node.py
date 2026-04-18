@@ -74,8 +74,51 @@ def _parse_insight_cards(content: str) -> list[dict]:
                 "deep_dive": card.get("deep_dive", ""),
                 "severity": card.get("severity", "medium"),
                 "category": card.get("category", "other"),
+                "card_type": card.get("card_type", "insight"),
+                "subscription": card.get("subscription"),
             })
     return valid_cards
+
+
+def _build_subscription_cards(detected_subscriptions: list[dict]) -> list[dict]:
+    """Deterministically build subscription alert card dicts from pipeline state.
+
+    Runs before the LLM call; no LLM/RAG involvement. One card per detected
+    subscription, with all user-facing fields pre-rendered so the frontend can
+    display without recomputation.
+    """
+    cards: list[dict] = []
+    for sub in detected_subscriptions:
+        monthly_uah = sub["estimated_monthly_cost_kopiykas"] / 100
+        why_it_matters = (
+            f"You have an {'inactive' if not sub['is_active'] else 'active'} "
+            f"{sub['billing_frequency']} subscription to {sub['merchant_name']}."
+        )
+        if sub["is_active"]:
+            deep_dive = f"Last charge: {sub['last_charge_date']}. Currently active."
+        else:
+            deep_dive = (
+                f"Last charge: {sub['last_charge_date']}. "
+                f"Inactive for {sub['months_with_no_activity']} month(s)."
+            )
+        cards.append({
+            "headline": f"{sub['merchant_name']} subscription",
+            "key_metric": f"₴{monthly_uah:,.2f}/month",
+            "why_it_matters": why_it_matters,
+            "deep_dive": deep_dive,
+            "severity": "medium",
+            "category": "subscriptions",
+            "card_type": "subscriptionAlert",
+            "subscription": {
+                "merchant_name": sub["merchant_name"],
+                "estimated_monthly_cost_kopiykas": sub["estimated_monthly_cost_kopiykas"],
+                "billing_frequency": sub["billing_frequency"],
+                "last_charge_date": sub["last_charge_date"],
+                "is_active": sub["is_active"],
+                "months_with_no_activity": sub["months_with_no_activity"],
+            },
+        })
+    return cards
 
 
 def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
@@ -83,6 +126,9 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
     job_id = state["job_id"]
     user_id = state["user_id"]
     log_ctx = {"job_id": job_id, "user_id": user_id}
+    # Build deterministic subscription cards up-front so the except branch
+    # can still surface them if the LLM/RAG path raises.
+    subscription_cards = _build_subscription_cards(state.get("detected_subscriptions", []))
 
     try:
         categorized = state.get("categorized_transactions", [])
@@ -90,7 +136,7 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             logger.info("education_skipped", extra={**log_ctx, "step": "education", "reason": "no_categorized_transactions"})
             completed = list(state.get("completed_nodes", []))
             completed.append("education")
-            return {**state, "insight_cards": [], "step": "education", "completed_nodes": completed, "failed_node": None}
+            return {**state, "insight_cards": subscription_cards, "step": "education", "completed_nodes": completed, "failed_node": None}
 
         locale = state.get("locale", "uk")
         literacy_level = state.get("literacy_level", "beginner")
@@ -127,6 +173,9 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             response = llm.invoke(prompt)
 
         cards = _parse_insight_cards(response.content)
+        # Subscription alert cards are prepended so they appear first in the
+        # feed for this upload — the LLM never sees subscription data.
+        all_cards = subscription_cards + cards
 
         # Observability for Story 3.9: sample every key_metric > 30 chars so
         # prompt drift toward compound/verbose metrics is visible without
@@ -142,11 +191,18 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
 
         logger.info(
             "education_completed",
-            extra={**log_ctx, "step": "education", "cards_generated": len(cards), "locale": locale, "literacy_level": literacy_level},
+            extra={
+                **log_ctx,
+                "step": "education",
+                "cards_generated": len(cards),
+                "subscription_cards": len(subscription_cards),
+                "locale": locale,
+                "literacy_level": literacy_level,
+            },
         )
         completed = list(state.get("completed_nodes", []))
         completed.append("education")
-        return {**state, "insight_cards": cards, "step": "education", "completed_nodes": completed, "failed_node": None}
+        return {**state, "insight_cards": all_cards, "step": "education", "completed_nodes": completed, "failed_node": None}
 
     except Exception as exc:
         from app.agents.circuit_breaker import CircuitBreakerOpenError
@@ -155,4 +211,6 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             # preserves prior node results for retry
             raise
         logger.error("education_failed", extra={**log_ctx, "step": "education"}, exc_info=True)
-        return {**state, "insight_cards": [], "step": "education", "failed_node": "education"}
+        # Subscription cards are deterministic — surface them even when the
+        # LLM path fails, so the user still sees detected subscriptions.
+        return {**state, "insight_cards": subscription_cards, "step": "education", "failed_node": "education"}

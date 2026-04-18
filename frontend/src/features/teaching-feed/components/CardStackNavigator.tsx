@@ -5,9 +5,17 @@ import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InsightCard } from "./InsightCard";
+import { SubscriptionAlertCard } from "./SubscriptionAlertCard";
 import { SkeletonCard } from "./SkeletonCard";
 import { setPendingSwipeDirection } from "../hooks/use-card-interactions";
 import type { InsightCard as InsightCardType } from "../types";
+
+function renderCard(card: InsightCardType, index: number) {
+  if (card.cardType === "subscriptionAlert" && card.subscription) {
+    return <SubscriptionAlertCard insight={card} cardPositionInFeed={index} />;
+  }
+  return <InsightCard insight={card} cardPositionInFeed={index} />;
+}
 
 interface CardStackNavigatorProps {
   cards: InsightCardType[];
@@ -129,10 +137,7 @@ export function CardStackNavigator({
             if (info.offset.x > 80) goPrev();
           }}
         >
-          <InsightCard
-            insight={cards[currentIndex]}
-            cardPositionInFeed={currentIndex}
-          />
+          {renderCard(cards[currentIndex], currentIndex)}
         </motion.div>
       </AnimatePresence>
 

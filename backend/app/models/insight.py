@@ -1,7 +1,8 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Optional
+from typing import Any, Optional
 
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -21,4 +22,10 @@ class Insight(SQLModel, table=True):
     deep_dive: str
     severity: str = Field(default="medium")  # high, medium, low
     category: str
+    card_type: str = Field(default="insight", max_length=50)
+    # JSON here (not JSONB) for SQLite test compatibility. The Alembic migration
+    # uses postgresql.JSONB for production, mirroring PatternFinding.finding_json.
+    subscription_json: Optional[dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     created_at: datetime = Field(default_factory=_utcnow)

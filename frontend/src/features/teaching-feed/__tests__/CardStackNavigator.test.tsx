@@ -74,6 +74,8 @@ const mockCards: InsightCard[] = [
     deepDive: "Deep one.",
     severity: "high",
     category: "food",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
   {
@@ -85,6 +87,8 @@ const mockCards: InsightCard[] = [
     deepDive: "Deep two.",
     severity: "medium",
     category: "utilities",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
   {
@@ -96,6 +100,8 @@ const mockCards: InsightCard[] = [
     deepDive: "Deep three.",
     severity: "low",
     category: "transport",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
 ];
@@ -112,6 +118,8 @@ const fiveCards: InsightCard[] = [
     deepDive: "Deep four.",
     severity: "low",
     category: "shopping",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
   {
@@ -123,6 +131,8 @@ const fiveCards: InsightCard[] = [
     deepDive: "Deep five.",
     severity: "low",
     category: "other",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
 ];

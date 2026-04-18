@@ -171,7 +171,7 @@ development_status:
   # Epic 8: Pattern Detection, Triage & Subscription Detection
   epic-8: in-progress
   8-1-pattern-detection-agent: done
-  8-2-subscription-detection: backlog
+  8-2-subscription-detection: done
   8-3-triage-agent-severity-scoring: backlog
   8-4-teaching-feed-triage-ux: backlog
   epic-8-retrospective: optional

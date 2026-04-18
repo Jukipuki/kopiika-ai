@@ -12,6 +12,23 @@ from app.services.insight_service import get_insights_for_user
 router = APIRouter(prefix="/insights", tags=["insights"])
 
 
+def _serialize_subscription(sub_json: dict | None) -> dict | None:
+    """Convert the stored snake_case subscription dict into the camelCase API shape.
+
+    Pydantic's alias generator does not recurse into nested plain ``dict``
+    values, so we must build the camelCase keys manually here.
+    """
+    if not sub_json:
+        return None
+    return {
+        "merchantName": sub_json.get("merchant_name", ""),
+        "monthlyCostUah": sub_json.get("estimated_monthly_cost_kopiykas", 0) / 100,
+        "billingFrequency": sub_json.get("billing_frequency", "monthly"),
+        "isActive": sub_json.get("is_active", True),
+        "monthsWithNoActivity": sub_json.get("months_with_no_activity"),
+    }
+
+
 class InsightResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -23,6 +40,12 @@ class InsightResponse(BaseModel):
     deep_dive: str
     severity: str
     category: str
+    # card_type is snake_case here; the to_camel alias generator exposes it
+    # as `cardType` on the wire. Default keeps legacy rows valid.
+    card_type: str = "insight"
+    # `subscription` holds the already-camelCased dict built by
+    # `_serialize_subscription`; Pydantic does not recurse into plain dicts.
+    subscription: Optional[dict] = None
     created_at: str
 
 
@@ -60,6 +83,8 @@ async def list_insights(
             deep_dive=insight.deep_dive,
             severity=insight.severity,
             category=insight.category,
+            card_type=insight.card_type,
+            subscription=_serialize_subscription(insight.subscription_json),
             created_at=insight.created_at.isoformat() + "Z",
         )
         for insight in result.items

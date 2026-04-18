@@ -25,6 +25,8 @@ const mockItems: InsightCard[] = [
     deepDive: "Restaurants 60%, groceries 40%.",
     severity: "high",
     category: "food",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
 ];
@@ -39,6 +41,8 @@ const mockItems2: InsightCard[] = [
     deepDive: "Electricity usage up 20%.",
     severity: "medium",
     category: "utilities",
+    cardType: "insight",
+    subscription: null,
     createdAt: "2026-04-04T12:00:00.000000Z",
   },
 ];

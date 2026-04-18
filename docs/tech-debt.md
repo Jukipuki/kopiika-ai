@@ -513,6 +513,75 @@ As long as uploads contain only UAH rows, everything looks right. The moment a u
 
 ---
 
+### TD-032 — Inactivity badge/text says "month(s)" even for annual subscriptions [LOW]
+
+**Where:** [backend/app/agents/pattern_detection/detectors/recurring.py:110-114](backend/app/agents/pattern_detection/detectors/recurring.py#L110-L114), [frontend/src/features/teaching-feed/components/SubscriptionAlertCard.tsx:24-27](frontend/src/features/teaching-feed/components/SubscriptionAlertCard.tsx#L24-L27)
+
+**Problem:** The detector's `_inactivity_for_annual` returns `max(1, delta_days // 365)` — i.e. missed YEARS — but persists it into a column called `months_with_no_activity`, and `SubscriptionAlertCard` renders the value as `"Inactive {n} month(s)"` regardless of billing frequency. A user with an Adobe annual sub that hasn't charged for 26 months sees "Inactive 2 month(s)" when the truthful copy is "Inactive 2 year(s)" (or "Inactive ~24 month(s)"). Data is technically correct in count-of-missed-cycles terms but the unit label lies.
+
+**Why deferred:** LOW severity because annual subs going dormant for multiple cycles is a long-tail case; the label-vs-value mismatch only bites users in that scenario. Fix requires deciding the canonical unit (rename column to `cycles_missed` + conditional unit in UI, or store months-since consistently and let the UI divide) and coordinating backend + frontend + migration.
+
+**Fix shape:**
+1. Pick canonical representation. Recommended: rename column to `cycles_missed` (Alembic migration), keep detector math as-is; UI renders `"Inactive {n} month(s)"` for monthly, `"Inactive {n} year(s)"` for annual.
+2. Update `_serialize_subscription` / `SubscriptionInfo` / `SubscriptionAlertCard` to key off `billingFrequency` when formatting the badge.
+3. Add a frontend test covering the annual-inactive case so the label never regresses.
+
+**Surfaced in:** Story 8.2 code review (2026-04-18)
+
+---
+
+### TD-033 — `InsightCard.cardType` is typed as plain `string`, not a literal union [LOW]
+
+**Where:** [frontend/src/features/teaching-feed/types.ts:20](frontend/src/features/teaching-feed/types.ts#L20), [frontend/src/features/teaching-feed/components/CardStackNavigator.tsx:13-18](frontend/src/features/teaching-feed/components/CardStackNavigator.tsx#L13-L18)
+
+**Problem:** `cardType: string` with an inline comment listing the three valid values (`"insight" | "subscriptionAlert" | "milestoneFeedback"`). TypeScript doesn't enforce the comment — a typo in the dispatch (`"subscriptionalert"`, `"SubscriptionAlert"`) silently falls through to the default `InsightCard` render with no compile error. The comment stays in sync only by convention.
+
+**Why deferred:** No known miss today; the story explicitly chose `string` so the API contract (server returns whatever literal it wants) stays permissive. Worth tightening once the third card type (`milestoneFeedback`) lands and a discriminated-union dispatcher becomes natural.
+
+**Fix shape:**
+1. Introduce `export type CardType = "insight" | "subscriptionAlert" | "milestoneFeedback";` in `types.ts`.
+2. Change `cardType: string` to `cardType: CardType` on `InsightCard`.
+3. Convert the dispatch helper in `CardStackNavigator` to a discriminated-union `switch (card.cardType)` so the compiler flags missing branches when a new card type is added.
+
+**Surfaced in:** Story 8.2 code review (2026-04-18)
+
+---
+
+### TD-034 — `detected_subscriptions` has no `(upload_id, merchant_name)` uniqueness [LOW]
+
+**Where:** [backend/alembic/versions/u7v8w9x0y1z2_add_detected_subscriptions_table.py:26-80](backend/alembic/versions/u7v8w9x0y1z2_add_detected_subscriptions_table.py#L26-L80), [backend/app/agents/pattern_detection/node.py:64-85](backend/app/agents/pattern_detection/node.py#L64-L85)
+
+**Problem:** `_persist_subscriptions` runs `session.add()` per subscription dict inside the pattern detection node. If the pipeline is retried or resumed after a post-persist failure, `_persist_subscriptions` re-runs and duplicates every row for the upload — same `(user_id, upload_id, merchant_name)` tuple, different `id`. The Education agent then generates duplicate subscription alert cards. Overlaps with TD-007 (same class of retry-duplication issue in the insights resume path).
+
+**Why deferred:** Retries today are uncommon; the `process_upload` task's retry path doesn't routinely re-enter `pattern_detection_node`. Fix requires deciding the contract (unique constraint + `ON CONFLICT DO UPDATE`, or wipe-and-replay per upload) plus a migration.
+
+**Fix shape:**
+1. Decide policy: (a) `UNIQUE (upload_id, merchant_name)` + upsert, or (b) `DELETE WHERE upload_id = :id` at the top of `_persist_subscriptions`.
+2. If (a): new Alembic migration adding the unique index; `_persist_subscriptions` uses `INSERT ... ON CONFLICT (upload_id, merchant_name) DO UPDATE`.
+3. If (b): add the delete at the top of `_persist_subscriptions`. Cheaper but diverges from whatever TD-007 resolves on for insights.
+4. Either way, add a test that re-runs `pattern_detection_node` twice for the same upload and asserts exactly N rows.
+
+**Surfaced in:** Story 8.2 code review (2026-04-18)
+
+---
+
+### TD-035 — Inactivity badge color is amber-only; no escalation for severe inactivity [LOW]
+
+**Where:** [frontend/src/features/teaching-feed/components/SubscriptionAlertCard.tsx:35-41](frontend/src/features/teaching-feed/components/SubscriptionAlertCard.tsx#L35-L41)
+
+**Problem:** Story 8.2 AC #6 describes a "red/amber badge" for the inactivity indicator, but the component ships with amber-only styling (`bg-amber-100 text-amber-900`) regardless of how long the sub has been dormant. A 2-cycle-inactive sub and a 12-cycle-inactive sub look identical. Red is reserved in the design system for higher-severity signals, so always-amber under-signals long-dormant auto-renewals — exactly the case a user most wants to act on.
+
+**Why deferred:** Amber satisfies the literal AC (the spec says "red/amber", not "red AND amber"), and deciding the escalation threshold is a product call that wasn't in scope for the detection story. The component also doesn't currently receive enough context to escalate based on absolute time since last charge (only `monthsWithNoActivity`, which is per-cycle).
+
+**Fix shape:**
+1. Pick a threshold with product (e.g. ≥ 3 missed cycles for monthly, ≥ 1 missed cycle for annual = red; otherwise amber).
+2. Extract a `getInactivityTone(subscription): "red" | "amber"` helper in the component; switch `className` on the result (`bg-red-100 text-red-900` vs current amber).
+3. Add Vitest cases: 2-month-inactive → amber, 6-month-inactive → red, 1-year-inactive annual → red.
+
+**Surfaced in:** Story 8.2 code review (2026-04-18)
+
+---
+
 ### TD-031 — `detect_anomalies` uses population variance, not sample variance [LOW]
 
 **Where:** [backend/app/agents/pattern_detection/detectors/trends.py:160-163](backend/app/agents/pattern_detection/detectors/trends.py#L160-L163)

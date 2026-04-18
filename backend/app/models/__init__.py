@@ -1,5 +1,6 @@
 from app.models.audit_log import AuditLog
 from app.models.consent import UserConsent
+from app.models.detected_subscription import DetectedSubscription
 from app.models.embedding import DocumentEmbedding
 from app.models.feedback import CardFeedback, CardInteraction
 from app.models.feedback_response import FeedbackResponse
@@ -18,6 +19,7 @@ __all__ = [
     "AuditLog",
     "CardFeedback",
     "CardInteraction",
+    "DetectedSubscription",
     "DocumentEmbedding",
     "FeedbackResponse",
     "FinancialHealthScore",

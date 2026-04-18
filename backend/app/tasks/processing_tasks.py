@@ -206,6 +206,7 @@ def process_upload(self, job_id: str) -> dict:
                     "completed_nodes": [],
                     "failed_node": None,
                     "pattern_findings": [],
+                    "detected_subscriptions": [],
                 }
 
                 with get_checkpointer() as checkpointer:
@@ -253,6 +254,8 @@ def process_upload(self, job_id: str) -> dict:
                             deep_dive=card.get("deep_dive", ""),
                             severity=card.get("severity", "medium"),
                             category=card.get("category", "other"),
+                            card_type=card.get("card_type", "insight"),
+                            subscription_json=card.get("subscription"),
                         )
                         session.add(insight)
                         insights.append(insight)
@@ -633,6 +636,8 @@ def resume_upload(self, job_id: str) -> dict:
                         deep_dive=card.get("deep_dive", ""),
                         severity=card.get("severity", "medium"),
                         category=card.get("category", "other"),
+                        card_type=card.get("card_type", "insight"),
+                        subscription_json=card.get("subscription"),
                     )
                     session.add(insight)
                 session.commit()
