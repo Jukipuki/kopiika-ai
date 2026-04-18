@@ -7,14 +7,18 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 from app.models.insight import Insight
 from app.services.transaction_service import PaginatedResult
 
-# Severity triage order: high=0, medium=1, low=2
+# Severity triage order (Story 8.3): critical=0, warning=1, info=2.
+# Backward compatibility: pre-8.3 rows used high/medium/low and remain valid.
 severity_order = case(
+    (Insight.severity == "critical", 0),
+    (Insight.severity == "warning", 1),
+    (Insight.severity == "info", 2),
     (Insight.severity == "high", 0),
     (Insight.severity == "medium", 1),
     else_=2,
 )
 
-_SEV_MAP = {"high": 0, "medium": 1, "low": 2}
+_SEV_MAP = {"critical": 0, "warning": 1, "info": 2, "high": 0, "medium": 1, "low": 2}
 
 
 async def get_insights_for_user(
@@ -23,7 +27,7 @@ async def get_insights_for_user(
     cursor: str | None = None,
     page_size: int = 20,
 ) -> PaginatedResult:
-    """Get paginated insights for a user, sorted by severity triage (high first), then created_at DESC."""
+    """Get paginated insights for a user, sorted by severity triage (critical first, then warning, then info; pre-8.3 high/medium/low rows bucket into the same priorities), then created_at DESC."""
     page_size = min(max(page_size, 1), 100)
 
     # Total count

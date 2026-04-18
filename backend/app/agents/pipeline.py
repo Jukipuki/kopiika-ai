@@ -3,6 +3,7 @@
 Story 3.3 pipeline: categorization → education.
 Story 6.2: added checkpointer support for failure recovery.
 Story 8.1: inserted pattern_detection node between categorization and education.
+Story 8.3: inserted triage node between pattern_detection and education.
 """
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -13,6 +14,7 @@ from app.agents.categorization.node import categorization_node
 from app.agents.education.node import education_node
 from app.agents.pattern_detection.node import pattern_detection_node
 from app.agents.state import FinancialPipelineState
+from app.agents.triage.node import triage_node
 
 
 def build_pipeline(
@@ -21,10 +23,12 @@ def build_pipeline(
     graph = StateGraph(FinancialPipelineState)
     graph.add_node("categorization", categorization_node)
     graph.add_node("pattern_detection", pattern_detection_node)
+    graph.add_node("triage", triage_node)
     graph.add_node("education", education_node)
     graph.set_entry_point("categorization")
     graph.add_edge("categorization", "pattern_detection")
-    graph.add_edge("pattern_detection", "education")
+    graph.add_edge("pattern_detection", "triage")
+    graph.add_edge("triage", "education")
     graph.add_edge("education", END)
     return graph.compile(checkpointer=checkpointer)
 

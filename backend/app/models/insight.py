@@ -20,7 +20,7 @@ class Insight(SQLModel, table=True):
     key_metric: str
     why_it_matters: str
     deep_dive: str
-    severity: str = Field(default="medium")  # high, medium, low
+    severity: str = Field(default="info")  # critical, warning, info (pre-8.3 rows may contain high/medium/low — handled in insight_service.py)
     category: str
     card_type: str = Field(default="insight", max_length=50)
     # JSON here (not JSONB) for SQLite test compatibility. The Alembic migration

@@ -207,6 +207,7 @@ def process_upload(self, job_id: str) -> dict:
                     "failed_node": None,
                     "pattern_findings": [],
                     "detected_subscriptions": [],
+                    "triage_category_severity_map": {},
                 }
 
                 with get_checkpointer() as checkpointer:
@@ -252,7 +253,7 @@ def process_upload(self, job_id: str) -> dict:
                             key_metric=card.get("key_metric", ""),
                             why_it_matters=card.get("why_it_matters", ""),
                             deep_dive=card.get("deep_dive", ""),
-                            severity=card.get("severity", "medium"),
+                            severity=card.get("severity", "info"),
                             category=card.get("category", "other"),
                             card_type=card.get("card_type", "insight"),
                             subscription_json=card.get("subscription"),
@@ -634,7 +635,7 @@ def resume_upload(self, job_id: str) -> dict:
                         key_metric=card.get("key_metric", ""),
                         why_it_matters=card.get("why_it_matters", ""),
                         deep_dive=card.get("deep_dive", ""),
-                        severity=card.get("severity", "medium"),
+                        severity=card.get("severity", "info"),
                         category=card.get("category", "other"),
                         card_type=card.get("card_type", "insight"),
                         subscription_json=card.get("subscription"),

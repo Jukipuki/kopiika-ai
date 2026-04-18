@@ -416,6 +416,63 @@ def test_education_node_defaults_literacy_level_to_beginner():
     mock_get_prompt.assert_called_once_with("uk", "beginner")
 
 
+def test_education_node_applies_triage_severity_override(monkeypatch):
+    """Story 8.3: LLM-assigned severity is overridden by triage_category_severity_map
+    for cards whose category matches the map; non-matching cards keep LLM severity."""
+    mock_response = MagicMock()
+    mock_response.content = json.dumps([
+        # Category in map → overridden to 'critical'
+        {"headline": "Food", "key_metric": "₴6,800", "why_it_matters": "x",
+         "deep_dive": "y", "severity": "info", "category": "groceries"},
+        # Category NOT in map → keeps LLM-assigned 'warning'
+        {"headline": "Restaurants", "key_metric": "₴1,200", "why_it_matters": "x",
+         "deep_dive": "y", "severity": "warning", "category": "restaurants"},
+    ])
+
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="uk",
+    )
+    state["triage_category_severity_map"] = {"groceries": "critical"}
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        result = education_node(state)
+
+    by_category = {c["category"]: c for c in result["insight_cards"]}
+    assert by_category["groceries"]["severity"] == "critical"  # overridden by triage map
+    assert by_category["restaurants"]["severity"] == "warning"  # LLM value preserved
+
+
+def test_education_node_empty_triage_map_preserves_llm_severity():
+    """When triage_category_severity_map is empty (triage failed or didn't run),
+    LLM-assigned severities flow through unchanged."""
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(MOCK_INSIGHT_CARDS)
+
+    state = _make_state(
+        transactions=_make_transactions(),
+        categorized_transactions=_make_categorized_transactions(),
+        locale="uk",
+    )
+    state["triage_category_severity_map"] = {}
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        result = education_node(state)
+
+    # Mock cards supply "medium" and "low" — assert they survive the override branch.
+    severities = {c["severity"] for c in result["insight_cards"]}
+    assert severities == {"medium", "low"}
+
+
 def test_education_node_intermediate_prompt_end_to_end():
     """Education node uses intermediate prompt text when literacy_level is 'intermediate' (no mock on get_prompt)."""
     mock_response = MagicMock()

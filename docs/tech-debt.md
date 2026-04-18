@@ -596,6 +596,55 @@ As long as uploads contain only UAH rows, everything looks right. The moment a u
 
 ---
 
+### TD-036 — `_SEVERITY_PRIORITY` duplicates `_SEV_MAP` across triage node + insight_service [LOW]
+
+**Where:** [backend/app/agents/triage/node.py:25](backend/app/agents/triage/node.py#L25), [backend/app/services/insight_service.py:21](backend/app/services/insight_service.py#L21)
+
+**Problem:** Two near-identical severity-priority maps live in different modules. `triage/node.py` exposes `_SEVERITY_PRIORITY = {"critical": 0, "warning": 1, "info": 2}` for the worst-per-category reduction. `insight_service.py` exposes `_SEV_MAP = {"critical": 0, "warning": 1, "info": 2, "high": 0, "medium": 1, "low": 2}` for pagination-cursor comparisons. Any future severity tweak (add a new bucket, renumber priorities) has to be made in both places or behavior will drift between the triage reducer and the feed sort.
+
+**Why deferred:** Pure refactor with zero user-visible payoff. Worth doing opportunistically the next time severity is touched.
+
+**Fix shape:** Hoist a single `SEVERITY_PRIORITY` constant into a shared module (options: `app/core/severity.py`, or alongside `Insight` in `app/models/insight.py`) plus a `LEGACY_SEVERITY_PRIORITY` containing the pre-8.3 high/medium/low buckets. `triage/node.py` imports `SEVERITY_PRIORITY`; `insight_service.py` builds `_SEV_MAP = {**SEVERITY_PRIORITY, **LEGACY_SEVERITY_PRIORITY}`. Delete the local copies.
+
+**Surfaced in:** Story 8.3 code review (2026-04-18)
+
+---
+
+### TD-037 — Triage failure path does not append `"triage"` to `completed_nodes` [LOW]
+
+**Where:** [backend/app/agents/triage/node.py:119-133](backend/app/agents/triage/node.py#L119-L133)
+
+**Problem:** The triage node's success path sets `step="triage"` AND appends `"triage"` to `completed_nodes`. The failure path sets `step="triage"` but does NOT append to `completed_nodes` and does NOT set `failed_node`. Downstream code that inspects `completed_nodes` to decide whether triage ran (or that inspects `failed_node` to detect who failed) gets inconsistent signals: the step marker says "triage ran last", but the completion list says "triage never ran" and the failed-node slot is empty. Contrast with `education_node`, which sets `failed_node="education"` on its failure branch.
+
+**Why deferred:** No caller currently reads `completed_nodes` to decide downstream behavior — LangGraph's own graph traversal drives control flow, not this list. Behaviorally invisible today; cost is observability/debugging clarity, not correctness.
+
+**Fix shape:** Pick one contract and apply consistently:
+1. **"Ran, regardless of outcome"** — always append `"triage"` to `completed_nodes` after the scoring try-block exits, set `failed_node="triage"` on the error branch. Matches `education_node`'s failure contract.
+2. **"Success-only membership"** — leave `completed_nodes` behavior as-is but ALSO set `failed_node="triage"` on error, so there's a single source of truth for "which node broke".
+
+Option 1 is the less-surprising contract across the pipeline.
+
+**Surfaced in:** Story 8.3 code review (2026-04-18)
+
+---
+
+### TD-038 — Inverted `FinancialProfile` period silently treated as 1 month of income [LOW]
+
+**Where:** [backend/app/agents/triage/node.py:45](backend/app/agents/triage/node.py#L45)
+
+**Problem:** `_estimate_monthly_income_kopiykas` computes `months = max(1.0, (period_end - period_start).days / 30.0)`. If `period_end < period_start` (data corruption, manual DB edit, clock skew during backfill, etc.), `days` is negative and the `max(1.0, ...)` clamp silently treats `total_income` as one month's worth. A user with `total_income=600_000_00` (600 kUAH accrued across many months) and an inverted 1-day period would suddenly look like they earn 600 kUAH/month — shifting every single pattern finding into the `info` bucket via the income-relative branch. The resulting severity-scoring is wildly wrong with no observable signal.
+
+**Why deferred:** `build_or_update_profile` always sets `period_end >= period_start` under normal flow, so the inversion is a defense-in-depth concern, not an active bug. Cheap to harden but out of Story 8.3's scope.
+
+**Fix shape:**
+1. Short-term: wrap the date delta in `abs(...)` or explicitly bail with `return None` when `period_end < period_start`.
+2. Medium-term: add a CHECK constraint on `financial_profiles` (`period_end >= period_start`) via Alembic migration; backfill any existing violators (likely zero in practice).
+3. Add one unit test for the triage node with an inverted-period profile asserting it falls back to absolute thresholds.
+
+**Surfaced in:** Story 8.3 code review (2026-04-18)
+
+---
+
 ## Resolved
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]

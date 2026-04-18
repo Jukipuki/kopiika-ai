@@ -72,7 +72,7 @@ def _parse_insight_cards(content: str) -> list[dict]:
                 "key_metric": card.get("key_metric", ""),
                 "why_it_matters": card.get("why_it_matters", ""),
                 "deep_dive": card.get("deep_dive", ""),
-                "severity": card.get("severity", "medium"),
+                "severity": card.get("severity", "info"),
                 "category": card.get("category", "other"),
                 "card_type": card.get("card_type", "insight"),
                 "subscription": card.get("subscription"),
@@ -106,7 +106,7 @@ def _build_subscription_cards(detected_subscriptions: list[dict]) -> list[dict]:
             "key_metric": f"₴{monthly_uah:,.2f}/month",
             "why_it_matters": why_it_matters,
             "deep_dive": deep_dive,
-            "severity": "medium",
+            "severity": sub.get("severity", "info"),
             "category": "subscriptions",
             "card_type": "subscriptionAlert",
             "subscription": {
@@ -173,6 +173,15 @@ def education_node(state: FinancialPipelineState) -> FinancialPipelineState:
             response = llm.invoke(prompt)
 
         cards = _parse_insight_cards(response.content)
+        # Story 8.3: override LLM-assigned severity with triage-computed
+        # severity for matching categories. Cards whose category isn't in
+        # triage_map keep the LLM-assigned severity.
+        triage_map = state.get("triage_category_severity_map", {})
+        if triage_map:
+            cards = [
+                {**card, "severity": triage_map.get(card.get("category", ""), card.get("severity", "info"))}
+                for card in cards
+            ]
         # Subscription alert cards are prepended so they appear first in the
         # feed for this upload — the LLM never sees subscription data.
         all_cards = subscription_cards + cards
