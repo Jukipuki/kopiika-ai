@@ -38,6 +38,7 @@ def _make_pipeline_state(thread_id: str) -> FinancialPipelineState:
         "literacy_level": "beginner",
         "completed_nodes": [],
         "failed_node": None,
+        "pattern_findings": [],
     }
 
 

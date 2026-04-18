@@ -462,6 +462,71 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 
 ---
 
+### TD-029 — Codebase-wide assumption that all integer money is kopiykas (UAH) [HIGH]
+
+**Where:** [backend/app/models/transaction.py:21](backend/app/models/transaction.py#L21) (`amount: int  # Integer kopiykas`), [backend/app/models/pattern_finding.py](backend/app/models/pattern_finding.py) (`baseline_amount_kopiykas`, `current_amount_kopiykas`), [backend/app/services/profile_service.py:46](backend/app/services/profile_service.py#L46), [backend/app/services/health_score_service.py](backend/app/services/health_score_service.py), [backend/app/agents/education/node.py](backend/app/agents/education/node.py) (`_build_spending_summary`), [backend/app/agents/pattern_detection/detectors/trends.py](backend/app/agents/pattern_detection/detectors/trends.py), [frontend/src/features/profile/format.ts](frontend/src/features/profile/format.ts) (`formatCurrency` divides by 100), and likely every other call site that reads `Transaction.amount` or sums money.
+
+**Problem:** `Transaction` carries a per-row `currency_code: int` (ISO 4217 numeric, default `980` = UAH) that parsers set from the source CSV, so non-UAH rows *can* land in the DB. However, every downstream aggregator, formatter, and now the new `pattern_findings` table treats `amount` as if it were always UAH kopiykas — no currency filter, no FX normalization, no per-currency partitioning. Concretely:
+
+- `profile_service.build_or_update_profile` sums `abs(amount)` across all rows into a single "total kopiykas" figure and feeds that into the health score.
+- `education_node._build_spending_summary` renders `₴{amount / 100}` regardless of the transaction's actual currency.
+- `pattern_detection.detectors.trends` sums across currencies per category and emits `baseline_amount_kopiykas` / `current_amount_kopiykas` columns that bake the kopiyka assumption into the schema.
+- The frontend `formatCurrency` in `features/profile/format.ts` divides by 100 and renders with the user's locale currency — not the transaction's.
+
+As long as uploads contain only UAH rows, everything looks right. The moment a user uploads a statement with EUR or USD rows (which the parsers already accept), every aggregate, health score, insight card, and pattern finding becomes silently wrong — mixing currencies as if they were the same unit, displaying `₴` over values that aren't hryvnias.
+
+**Why deferred:** This is a cross-cutting concern that touches the entire read path, not a single story's scope. It was surfaced while reviewing the column naming in `pattern_findings` (Story 8.1) — the columns honestly reflect what the code does, but the underlying assumption leaks into the schema.
+
+**Fix shape:**
+
+1. **Audit.** Grep the whole repo for every read path that touches `Transaction.amount`, every occurrence of the substring `kopiyka`, and every column / variable / identifier with an `_kopiykas` (or equivalent "cents"/"minor_units") suffix. Catalogue each site: aggregation, formatting, persistence, API response, UI render. Expect hits in at least:
+   - `backend/app/services/profile_service.py`, `health_score_service.py`, `insight_service.py`
+   - `backend/app/agents/education/node.py`, `backend/app/agents/pattern_detection/detectors/trends.py`
+   - `backend/app/models/pattern_finding.py` (column names), `backend/app/models/financial_profile.py`, `financial_health_score.py`
+   - `backend/app/api/v1/transactions.py`, `profile.py`, any endpoint returning `amount` fields
+   - `frontend/src/lib/format/currency.ts`, `frontend/src/features/profile/format.ts`, every component that formats money
+2. **Pick a strategy.** Three realistic options:
+   - **(a) Filter at aggregation** — every aggregator processes only `currency_code = 980` rows; non-UAH rows are shown raw on the transaction list but excluded from totals, pattern detection, health score, etc. Cheapest, but silently drops data the user uploaded.
+   - **(b) Normalize at ingestion** — add an `amount_uah_kopiykas` column computed via an FX rate at the transaction's date; all aggregations read that. Requires an FX rate service + historical rates + a backfill migration. Most accurate, highest effort.
+   - **(c) Partition findings by currency** — rename all `_kopiykas` fields to `_minor_units`, add `currency_code` alongside, and emit one finding / profile slice / insight per category-per-currency. Most honest schema; forces the UI to decide how to present multi-currency results.
+3. **Rename columns and helpers** once the strategy is chosen. `baseline_amount_kopiykas` → `baseline_amount_minor_units` (option c) or stays as-is if option (a) is adopted with a filter at the aggregator boundary. Update the Alembic migration and the `PatternFinding` SQLModel together. Do the same sweep for `FinancialProfile` and `FinancialHealthScore`.
+4. **Update formatters.** Frontend `formatCurrency` / `formatKopiykas` must stop hard-coding `₴` and the `/100` divisor; drive both from the row's `currency_code`. (Note: overlaps with TD-009 — the two `formatCurrency` helpers should collapse into one multi-currency-aware API as part of this work.)
+5. **Tests.** Add a representative multi-currency fixture (UAH + USD + EUR in one upload) and assert the chosen behaviour across every aggregator / formatter / agent node: no silent mixing, no `₴` over non-UAH values, pattern findings segregated by currency (if option c) or UAH-only (if option a).
+
+**Related:** TD-009 (two parallel `formatCurrency` helpers — consolidating them is a prerequisite for step 4), TD-010 (`CurrencyInfo.symbol` dead field — decide during step 4 whether to revive it), TD-011 (`extract_raw_currency` hardcodes CSV header keys — tangentially related, same currency-awareness family).
+
+**Surfaced in:** Story 8.1 code review follow-up (2026-04-17) — column naming discussion for `pattern_findings`
+
+---
+
+### TD-030 — `_make_state()` helper duplicated across pipeline test files [LOW]
+
+**Where:** [backend/tests/agents/test_categorization.py](backend/tests/agents/test_categorization.py), [backend/tests/agents/test_education.py](backend/tests/agents/test_education.py), [backend/tests/agents/test_pattern_detection.py](backend/tests/agents/test_pattern_detection.py), [backend/tests/test_pipeline_checkpointing.py](backend/tests/test_pipeline_checkpointing.py)
+
+**Problem:** Each test file defines its own `_make_state()` helper that constructs a `FinancialPipelineState` with every field defaulted. Every time the state TypedDict grows a field (e.g. `pattern_findings` in Story 8.1), all four helpers must be updated in lockstep or tests will fail at construction. Story 8.1 had to modify three existing `_make_state` helpers plus add a fourth in the new test file.
+
+**Why deferred:** Pure test-ergonomics refactor; no runtime impact. Worth doing the next time a state field is added and someone has to touch all four helpers again.
+
+**Fix shape:** Hoist a single `make_pipeline_state(**overrides)` helper into `backend/tests/conftest.py` (or a sibling `tests/agents/_helpers.py`). Every test file imports it. Adding a new state field then requires exactly one edit.
+
+**Surfaced in:** Story 8.1 code review (2026-04-18)
+
+---
+
+### TD-031 — `detect_anomalies` uses population variance, not sample variance [LOW]
+
+**Where:** [backend/app/agents/pattern_detection/detectors/trends.py:160-163](backend/app/agents/pattern_detection/detectors/trends.py#L160-L163)
+
+**Problem:** Variance is computed as `sum((a - mean) ** 2) / n` (population). With the sample-size guard at `n >= 5`, this underestimates stddev by ~10% compared to the sample formula `/ (n - 1)`. The net effect is that the mean+2σ outlier threshold fires slightly more often than a reader would expect from the "2-sigma" label. Not a correctness bug per se — just not what most statistical tooling defaults to — and testable thresholds will shift if we ever switch.
+
+**Why deferred:** The detector is new, and the 2σ threshold itself is a tuning parameter that will likely change once real user data shows false-positive rates. Swapping population → sample should be bundled with threshold re-calibration rather than done in isolation.
+
+**Fix shape:** Change `variance = sum((a - mean) ** 2 for a in amounts) / n` to `/ (n - 1)` (guarded by the existing `n >= 5` check so `n - 1 >= 4`). Update any tests that assert specific stddev-dependent values. Consider calling out in `detect_anomalies` docstring whether the threshold is population-σ or sample-σ to prevent re-drift.
+
+**Surfaced in:** Story 8.1 code review (2026-04-18)
+
+---
+
 ## Resolved
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]

@@ -32,6 +32,9 @@ def _make_state(**overrides) -> FinancialPipelineState:
         "locale": "uk",
         "insight_cards": [],
         "literacy_level": "beginner",
+        "completed_nodes": [],
+        "failed_node": None,
+        "pattern_findings": [],
     }
     base.update(overrides)
     return base

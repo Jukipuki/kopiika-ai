@@ -205,6 +205,7 @@ def process_upload(self, job_id: str) -> dict:
                     "literacy_level": literacy_level,
                     "completed_nodes": [],
                     "failed_node": None,
+                    "pattern_findings": [],
                 }
 
                 with get_checkpointer() as checkpointer:
@@ -260,16 +261,8 @@ def process_upload(self, job_id: str) -> dict:
                 publish_job_progress(job_id, {
                     "event": "pipeline-progress",
                     "jobId": job_id,
-                    "step": "categorization",
-                    "progress": 60,
-                    "message": "Categorization complete",
-                })
-
-                publish_job_progress(job_id, {
-                    "event": "pipeline-progress",
-                    "jobId": job_id,
-                    "step": "education",
-                    "progress": 80,
+                    "step": "insights",
+                    "progress": 70,
                     "message": f"Generated {len(insight_cards)} financial insights",
                 })
 

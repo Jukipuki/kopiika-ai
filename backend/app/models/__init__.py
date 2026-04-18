@@ -8,6 +8,7 @@ from app.models.financial_profile import FinancialProfile
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.flagged_topic_cluster import FlaggedTopicCluster
 from app.models.insight import Insight
+from app.models.pattern_finding import PatternFinding
 from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
 from app.models.upload import Upload
@@ -24,6 +25,7 @@ __all__ = [
     "FlaggedImportRow",
     "FlaggedTopicCluster",
     "Insight",
+    "PatternFinding",
     "ProcessingJob",
     "Transaction",
     "Upload",

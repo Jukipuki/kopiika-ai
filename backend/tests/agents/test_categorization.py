@@ -69,6 +69,7 @@ def _make_state(**overrides) -> FinancialPipelineState:
         "literacy_level": "beginner",
         "completed_nodes": [],
         "failed_node": None,
+        "pattern_findings": [],
     }
     base.update(overrides)
     return base
