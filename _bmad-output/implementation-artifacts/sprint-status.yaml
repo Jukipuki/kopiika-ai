@@ -1,4 +1,4 @@
-# generated: 2026-04-15
+# generated: 2026-04-19
 # project: kopiika-ai
 # project_key: NOKEY
 # tracking_system: file-system
@@ -33,7 +33,7 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-04-15
+generated: 2026-04-19
 project: kopiika-ai
 project_key: NOKEY
 tracking_system: file-system
@@ -175,3 +175,44 @@ development_status:
   8-3-triage-agent-severity-scoring: done
   8-4-teaching-feed-triage-ux: done
   epic-8-retrospective: optional
+
+  # Epic 9: AI Infra Readiness (Bedrock Provider, RAG Eval Harness, Embedding Decision)
+  # Story 9.5 split into 9.5a/b/c (refactor → Bedrock add → cross-provider regression suite)
+  # — see _bmad-output/planning-artifacts/epics.md and SP run 2026-04-19.
+  epic-9: backlog
+  9-1-rag-evaluation-harness: backlog
+  9-2-baseline-current-embeddings: backlog
+  9-3-embedding-model-comparison-spike: backlog
+  9-4-agentcore-bedrock-region-availability-spike: backlog
+  9-5a-llm-py-provider-routing-refactor: backlog
+  9-5b-add-bedrock-provider-path: backlog
+  9-5c-cross-provider-regression-suite: backlog
+  9-6-embedding-migration-conditional: backlog
+  9-7-bedrock-iam-observability: backlog
+  9-8-pipeline-orchestration-evaluation-spike: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10: Chat-with-Finances (AgentCore + AI Safety)
+  # Story numbering reflects delivery order. UX spec (10.3a/b) precedes Chat UI (10.7).
+  # Splits applied 2026-04-19 (SP run): 10.1 → 10.1a/b, 10.3 → 10.3a/b,
+  # 10.4 → 10.4a/b/c (rate-limit envelope de-duped → moved to 10.11),
+  # 10.6 → 10.6a/b, 10.8 → 10.8a/b. See _bmad-output/planning-artifacts/epics.md.
+  epic-10: backlog
+  10-1a-chat-processing-consent: backlog
+  10-1b-chat-sessions-messages-schema-cascade: backlog
+  10-2-bedrock-guardrails-configuration: backlog
+  10-3a-chat-ux-skeleton: backlog
+  10-3b-chat-ux-states-spec: backlog
+  10-4a-agentcore-session-handler-memory-bounds: backlog
+  10-4b-system-prompt-hardening-canaries: backlog
+  10-4c-tool-manifest-read-only: backlog
+  10-5-chat-streaming-api-sse: backlog
+  10-6a-grounding-enforcement-harness: backlog
+  10-6b-citation-payload-data-refs: backlog
+  10-7-chat-ui: backlog
+  10-8a-red-team-corpus-authoring: backlog
+  10-8b-safety-test-runner-ci-gate: backlog
+  10-9-safety-observability: backlog
+  10-10-chat-history-deletion: backlog
+  10-11-abuse-rate-limit-enforcement: backlog
+  epic-10-retrospective: optional

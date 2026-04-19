@@ -126,6 +126,22 @@ NFR29: Daily automated database backups with 30-day retention
 NFR30: LLM API calls retry with exponential backoff; circuit breaker after 3 consecutive failures
 NFR31: Monobank CSV parsing graceful degradation on format changes; partial parsing supported
 
+### Phase 2 NFRs (Epic 9 + Epic 10)
+
+NFR32: `llm.py` remains multi-provider (Anthropic / OpenAI / Bedrock); switching providers MUST require only an `LLM_PROVIDER` env var change, no code change (Epic 9)
+NFR33: RAG evaluation harness runs in CI with baseline metrics stored as a reference; any future embedding / retrieval change is measured against baseline before merge (Epic 9)
+NFR34: 100% of chat turns pass through AWS Bedrock Guardrails (input + output); bypass is a P0 regression (Epic 10)
+NFR35: Red-team corpus pass rate ≥ 95% before any chat / agent / prompt change merges to main; CI gate blocks merge on regression (Epic 10)
+NFR36: Red-team corpus covers OWASP LLM Top-10 (prompt injection, data leakage, unauthorized tool use) + Ukrainian-language adversarial prompts + known jailbreak patterns; reviewed and expanded quarterly (Epic 10)
+NFR37: Zero cross-user PII leakage in chat responses (measured by red-team probes + output-filter audits) (Epic 10)
+NFR38: Grounding rate ≥ 90% for data-specific claims, measured by LLM-as-judge sampled evaluation in the RAG harness (Epic 10)
+NFR39: Principled refusals MUST NOT leak filter rationale or internal state; verified by corpus review (Epic 10)
+NFR40: Bedrock `InvokeModel` calls retry with exponential backoff; Guardrails outage degrades to refusal, never unfiltered output (Epic 9/10)
+NFR41: AgentCore sessions are per-user-per-session isolated; session deletion cascades with account deletion (FR31 / FR70); runtime cost monitored via CloudWatch cost-allocation tags (Epic 10)
+NFR42: Embedding-model selection is data-driven — migration only if a candidate clearly beats the current baseline on Ukrainian + English retrieval quality in the RAG harness (Epic 9)
+NFR43: Chat rate limits — max 60 messages per user per hour; max 10 concurrent sessions per user; per-user daily token cap enforced in `llm.py` and chat rate-limit envelope (Epic 10)
+NFR44: Safety observability — CloudWatch metrics for Guardrails block rate, grounding-block rate, refusal rate, per-user token spend, chat latency, and `CanaryLeaked` count; alarms per thresholds in architecture § Observability & Alarms (Epic 10)
+
 ### Additional Requirements
 
 **From Architecture — Starter Template & Project Scaffolding:**
@@ -289,6 +305,15 @@ NFR31: Monobank CSV parsing graceful degradation on format changes; partial pars
 | FR61 | Epic 1 | Forgot-password flow via Cognito email reset |
 | FR62 | Epic 2 | Expanded CURRENCY_MAP (CHF, JPY, CZK, TRY) with unknown-currency flagging |
 | FR63 | Epic 2 | Upload summary payload (bank, tx count, date range) shown before Teaching Feed redirect |
+| FR64 | Epic 10 | Conversational chat interface grounded in the user's own financial data (UA + EN) |
+| FR65 | Epic 10 | Chat responses stream token-by-token via SSE |
+| FR66 | Epic 10 | View / resume / delete chat history across sessions; no cross-session context carry-over (TD-040) |
+| FR67 | Epic 10 | Grounded responses (no speculative claims; ungrounded claims refused, not regenerated) |
+| FR68 | Epic 10 | Citations back to underlying transactions / profile / RAG corpus for data-specific claims |
+| FR69 | Epic 10 | Principled refusal — neutral message, no filter-rationale leakage |
+| FR70 | Epic 10 | Chat-history deletion; cascades with account deletion (FR31) |
+| FR71 | Epic 10 | Separate `chat_processing` consent (distinct from `ai_processing`); chat blocked until granted |
+| FR72 | Epic 10 | Chat ships ungated; subscription gate deferred to payments-epic follow-up (TD-041) |
 
 ## Epic List
 
@@ -325,6 +350,19 @@ Users can provide feedback on Teaching Feed content through implicit behavioral 
 The 5-agent pipeline is complete. Users see insights ranked by financial severity (red/yellow/green), active subscriptions are surfaced with inactivity alerts, and month-over-month spending trends and anomalies are detected automatically.
 **FRs covered:** FR56, FR57, FR58, FR59, FR60
 **Dependencies:** Epic 2 (Ingestion Agent output), Epic 3 (Education Agent, Teaching Feed cards, insight severity field)
+
+### Epic 9: AI Infra Readiness (Bedrock Provider, RAG Eval Harness, Embedding Decision)
+Prepares the AI layer for Phase 2 conversational features: multi-provider `llm.py` (Bedrock + existing Anthropic/OpenAI), RAG evaluation harness as regression gate, embedding-model decision spike, AgentCore + Bedrock region validation, IAM/observability plumbing. No user-facing FRs — infrastructure prerequisite for Epic 10.
+**FRs covered:** None (infra epic)
+**NFRs covered:** NFR32, NFR33, NFR40, NFR42 (see NFR list below)
+**Dependencies:** Epic 8
+**Blocks:** Epic 10
+
+### Epic 10: Chat-with-Finances (AgentCore + AI Safety)
+Users can converse with an AI agent grounded in their own financial data, with defense-in-depth AI safety: Bedrock Guardrails, prompt-injection/jailbreak defenses, tool-use scoping, and a red-team safety test suite as a CI gate.
+**FRs covered:** FR64, FR65, FR66, FR67, FR68, FR69, FR70, FR71, FR72
+**NFRs covered:** NFR34, NFR35, NFR36, NFR37, NFR38, NFR39, NFR41 (see NFR list below)
+**Dependencies:** Epic 9 (especially 9.4 region gate, 9.5 multi-provider llm.py, 9.7 IAM)
 
 ## Epic 1: Project Foundation & User Authentication
 
@@ -1878,6 +1916,156 @@ So that I can immediately understand the urgency of each insight without reading
 **Given** a user with `prefers-reduced-motion` enabled
 **When** the Teaching Feed renders
 **Then** the severity badges display as static elements — no pulse, glow, or attention animation is applied even if one is added for critical emphasis
+
+---
+
+## Epic 9: AI Infra Readiness (Bedrock Provider, RAG Eval Harness, Embedding Decision)
+
+**Status:** Backlog — Phase 2 prerequisite for Epic 10 (Chat-with-Finances)
+**FRs covered:** None (infrastructure epic — success measured against NFRs)
+**NFRs covered:** NFR32 (multi-provider abstraction), NFR33 (RAG harness regression gate), NFR40 (Bedrock SDK reliability), NFR42 (embedding decision gate)
+**Depends on:** Epic 8 complete
+**Blocks:** Epic 10
+
+### Goal
+
+Prepare the AI layer for Phase 2 conversational features. Adds AWS Bedrock as a configurable LLM provider (without removing Anthropic/OpenAI), introduces a RAG evaluation harness to gate embedding-model decisions with data, validates Bedrock + AgentCore regional availability, and provisions IAM/observability plumbing. Optional time-boxed evaluation of Step Functions/AWS Batch as a future orchestration alternative to Celery.
+
+### Success Criteria
+
+- `llm.py` supports Anthropic / OpenAI / Bedrock via `LLM_PROVIDER` env var; Epic 3 & 8 agents pass regression on all three
+- RAG evaluation harness runs in CI with baseline metrics on current OpenAI text-embedding-3-small
+- Embedding-model decision is either "stay on current" or "migrate to <winner>" — backed by harness results
+- AgentCore + Bedrock availability confirmed in eu-central-1 (or a region pivot is planned)
+- IAM + CloudWatch cost tags in place for Bedrock / Guardrails / AgentCore resources
+
+### Stories
+
+- **9.1 — RAG Evaluation Harness**
+  Offline test suite: retrieval precision@k, LLM-as-judge for answer quality, per-corpus-topic breakdown, UA + EN coverage. Runnable locally + in CI. Baseline run against current OpenAI text-embedding-3-small stored as reference.
+
+- **9.2 — Baseline Current Embeddings Through Harness**
+  Run harness against production RAG corpus with current embeddings. Record baseline metrics. Any future embedding change is measured against this.
+
+- **9.3 — Embedding Model Comparison Spike (Decision Gate)**
+  Benchmark 4 candidates via harness: OpenAI `text-embedding-3-small` (baseline), `text-embedding-3-large`, Titan Text Embeddings V2, Cohere `embed-multilingual-v3`. Compare UA + EN retrieval quality, cost, latency. Produce recommendation. **Output: either "stay on 3-small" or "migrate to <winner>".**
+
+- **9.4 — AgentCore + Bedrock Region Availability Spike (Decision Gate)**
+  Validate Claude-on-Bedrock (haiku, sonnet) + AgentCore availability in eu-central-1. Document fallback: cross-region inference profile vs region pivot. **Blocks Epic 10 scope-lock.**
+
+- **9.5a — `llm.py` Provider-Routing Refactor (Anthropic + OpenAI only)**
+  Pure abstraction work: refactor `llm.py` to route by `LLM_PROVIDER` env var. Factory + provider-qualified model IDs in `models.yaml`. **No Bedrock yet** — retains existing Anthropic + OpenAI behavior bit-for-bit. Unblocks parallel work on 9.5b/c. Local dev stays on Anthropic/OpenAI by default.
+
+- **9.5b — Add Bedrock Provider Path + Smoke Test**
+  Wire `ChatBedrock` into the provider factory. Pin Bedrock model ARNs (haiku/sonnet) in `models.yaml`. Smoke-test against haiku + sonnet in `eu-central-1` (or fallback region per Story 9.4). Choose + document Bedrock-hosted fallback model (gpt-4o-mini is not on Bedrock). Depends on 9.5a, 9.4, 9.7.
+
+- **9.5c — Cross-Provider Regression Suite (Epic 3 + 8 agents × 3 providers)**
+  Build `backend/tests/agents/providers/` matrix runner. Epic 3 (categorization, RAG education) + Epic 8 (pattern, subscription, triage) agents must produce equivalent outputs on Anthropic / OpenAI / Bedrock. CI job exercises all three. Source of truth for provider equivalence. Depends on 9.5b.
+
+- **9.6 — Embedding Migration (Conditional)**
+  Only runs if Story 9.3 picks a non-current winner. Alembic migration: pgvector column dim change (if needed), re-seed corpus, rebuild HNSW index. Zero-downtime cutover plan. Re-run harness post-migration to confirm metrics match or beat baseline.
+
+- **9.7 — Bedrock IAM + Observability Plumbing**
+  Celery ECS task role: `bedrock:InvokeModel`, `bedrock:ApplyGuardrail`, `bedrock-agentcore:*` (scoped). CloudWatch cost-allocation tags (`feature=chat`, `epic=10`). Terraform + tfsec waivers if needed.
+
+- **9.8 — Pipeline Orchestration Evaluation (Optional, Time-Boxed Spike)**
+  Compare current Celery+Redis architecture to AWS Step Functions / AWS Batch for Epic 3/8 pipeline. Output: recommendation doc only — actual migration requires separate approval. **Default outcome: stay on Celery.**
+
+### Out of Scope
+
+- Any chat feature (belongs to Epic 10)
+- AgentCore integration beyond availability validation (belongs to Epic 10)
+- Guardrails configuration (belongs to Epic 10 — IAM only here)
+
+---
+
+## Epic 10: Chat-with-Finances (AgentCore + AI Safety)
+
+**Status:** Backlog — Phase 2
+**FRs covered:** FR64, FR65, FR66, FR67, FR68, FR69, FR70, FR71, FR72
+**NFRs covered:** NFR34 (Guardrails coverage), NFR35 (red-team pass rate), NFR36 (OWASP + UA adversarial corpus coverage), NFR37 (zero PII leakage in chat), NFR38 (grounding rate ≥ 90%), NFR39 (refusal correctness), NFR41 (AgentCore SDK reliability + per-user isolation)
+**Depends on:** Epic 9 complete (especially 9.4 region gate, 9.5 multi-provider llm.py, 9.7 IAM)
+**Does NOT depend on:** Payments/subscription (chat ships ungated; subscription gate tracked in TD-041 as a payments-epic follow-up)
+
+### Goal
+
+Deliver a conversational chat interface grounded in the user's own financial data, built on AWS Bedrock + AgentCore with defense-in-depth AI safety: Bedrock Guardrails, prompt-injection/jailbreak defenses, tool-use scoping, and a red-team safety test suite as a CI gate.
+
+### Success Criteria
+
+- Users can ask natural-language questions about their own transactions, categories, health score, and teaching-feed history (UA + EN)
+- Responses stream token-by-token, cite underlying data when making data-specific claims, and refuse out-of-scope/unsafe requests with neutral messaging
+- 100% of chat turns pass through Bedrock Guardrails (input + output)
+- Red-team corpus pass rate ≥ 95% as a merge-blocking CI gate
+- Chat sessions are per-user-isolated; deletion cascades with account deletion
+- `chat_processing` consent obtained on first use; revocation disables chat and deletes chat history
+
+### Stories
+
+_Story numbering reflects intended delivery order. The UX spec (Stories 10.3a + 10.3b) is a prerequisite for the Chat UI (Story 10.7); 10.3a (skeleton) must be scope-locked before UI scaffolding begins, 10.3b (states) before refusal/consent/rate-limit UX is finalized. Stories 10.4a–10.6b can proceed in parallel with 10.3._
+
+- **10.1a — `chat_processing` Consent (separate from `ai_processing`)**
+  Backend consent record + version field. Frontend gate blocks chat until granted. Consent-version-bump re-prompt flow: active sessions continue under captured version (`chat_sessions.consent_version_at_creation`); new sessions re-prompt. Revoke path defined here; cascade implementation lives in 10.1b.
+
+- **10.1b — `chat_sessions` / `chat_messages` Schema + Cascade Delete**
+  Alembic migration: `chat_sessions` (with `consent_version_at_creation`) + `chat_messages` tables. Cascade delete wired to account deletion (FR31) and consent revocation (10.1a). Cascade-delete tests required. Depends on 10.1a for the consent-version field shape.
+
+- **10.2 — AWS Bedrock Guardrails Configuration**
+  Guardrail definition in Terraform: input/output content filters, denied topics (illegal, self-harm, out-of-scope financial advice), PII redaction (emails, IBANs, card numbers), word filters, contextual grounding. CloudWatch alarm on block-rate anomaly.
+
+- **10.3a — Chat UX Skeleton (IA + Conversation/Composer/Streaming/Citations Layout)**
+  Update ux-design-specification.md with the happy-path chat-screen IA: conversation layout, composer, streaming render pattern, citation chips placement, mobile-first viewport, basic accessibility scaffold. Wireframes + flows. Unblocks Story 10.7 frontend scaffolding.
+
+- **10.3b — Chat UX States Spec (Refusals, Consent, Deletion, Rate-Limit, Edge Cases)**
+  Detailed states layered onto the 10.3a skeleton: principled-refusal UX with reason-specific copy + correlation-ID surface, consent first-use prompt + version-bump re-prompt, deletion flow, abuse/rate-limit soft-block UX, optional session-summarization UI, full WCAG 2.1 AA pass, UA + EN copy edge cases. Concurrent with 10.4a–10.6b; prerequisite for finalizing Story 10.7's refusal/consent/rate-limit UX.
+
+- **10.4a — AgentCore Session Handler + Memory/Session Bounds**
+  Bring up AgentCore session handler: lifecycle (create/resume/terminate), per-session memory window (20 turns or 8k tokens, whichever first) with server-side summarization of older turns, basic prompt → response loop. Minimum viable stateful agent — no tools, no hardening yet. (Rate-limit envelope is owned by Story 10.11.)
+
+- **10.4b — System-Prompt Hardening + Canary Tokens**
+  Role isolation, instruction anchoring, canary token insertion + leak detection wiring. Surfaces `CHAT_REFUSED` with `reason=prompt_leak_detected` when canaries are detected in model output. Depends on 10.4a.
+
+- **10.4c — Tool Manifest (Read-Only Data Tools)**
+  Define + implement read-only tool allowlist: transactions, profile, teaching-feed history, RAG corpus retrieval. Schema validation, allowlist enforcement, denial path. **No write-actions** (Phase 2 follow-up). Depends on 10.4a.
+
+- **10.5 — Chat Streaming API + SSE**
+  FastAPI endpoint + SSE streaming for token-by-token responses. Error envelope for Guardrails blocks / grounding / rate-limit / canary-leak (`CHAT_REFUSED` with `reason` enum + `correlation_id`). Per-turn Guardrails input + output gating wired in.
+
+- **10.6a — Grounding Enforcement + Harness Measurement**
+  Bedrock Guardrails contextual-grounding threshold tuned (initial target ≥ 0.85). Ungrounded data-specific claims blocked, not regenerated, per architecture § AI Safety — Chat Agent returns `CHAT_REFUSED` with `reason=ungrounded`. LLM-as-judge evaluation in the RAG harness (Story 9.1) tracks grounding rate ≥ 90%. Depends on 10.4a + 10.5.
+
+- **10.6b — Citation Payload + Data Refs in API**
+  Agent responses include structured citation payload referencing underlying user data (transaction IDs, categories, profile fields, RAG corpus source IDs) when making data-specific claims. API contract for citations defined here; FE chip rendering lives in Story 10.7. Depends on 10.4c.
+
+- **10.7 — Chat UI (Conversation, Composer, Streaming, Refusals)**
+  Chat screen in frontend: message list, composer, streaming rendering, citation chips, principled-refusal UX (reason-specific copy + correlation-ID, no leakage of filter rationale). WCAG 2.1 AA. UA + EN. Mobile-first. Consumes the UX spec produced in 10.3.
+
+- **10.8a — Red-Team Corpus Authoring (UA + EN)**
+  `backend/tests/ai_safety/corpus/` — author the seed red-team corpus: OWASP LLM Top-10 mapped, known jailbreak patterns, UA-language adversarial prompts, canary-token extraction attempts, cross-user data probes. Versioned + reviewable. Quarterly review cadence documented.
+
+- **10.8b — Safety Test Runner + CI Gate**
+  Runner that exercises the 10.8a corpus against the live agent (Guardrails + grounding enforced). Metrics: per-category pass rate, regression deltas. CI gate at ≥ 95% pass rate for any merge touching agent code, prompts, tools, or Guardrails config — merge-blocking. Depends on 10.8a + 10.4 series + 10.5 + 10.6a.
+
+- **10.9 — Safety Observability**
+  CloudWatch metrics (Guardrails block rate, grounding-block rate, refusal rate, `CanaryLeaked`, per-user token spend, chat P95 first-token latency). Alarms per architecture § Observability & Alarms thresholds. Operator runbook section (docs/operator-runbook.md): Guardrails violation triage, jailbreak incident response, chat abuse handling.
+
+- **10.10 — Chat History + Deletion**
+  Users can view and delete chat sessions/messages. Export path (FR35). Account-deletion cascade verified (FR31 + FR70).
+
+- **10.11 — Abuse & Rate-Limit Enforcement**
+  Single source of truth for chat throttling (envelope previously co-listed under Story 10.4 — consolidated here): **60 messages per hour per user** (soft-block with retry guidance), **10 concurrent sessions per user** (soft-block), per-user daily token cap (returns `CHAT_REFUSED` with `reason=rate_limited`), global per-IP cap at API-gateway layer (reuses existing limit). Token-spend anomaly detection + alarms (per architecture § Observability). Soft-block UX wired to the spec from Story 10.3b.
+
+### Out of Scope for Epic 10 (tracked as Phase 2 follow-ups)
+
+- **Voice input/output** — Phase 2 follow-up; separate epic once chat UX validates
+- **Chat-based transaction edits/actions** — Phase 2 follow-up; requires separate safety review (write-path tools change the threat model significantly). Epic 10 ships read-only.
+
+### Out of Scope (not tracked)
+
+- Payments / subscription dependency (chat ships ungated; subscription gate is a follow-up story after payments land)
+- Proactive chat notifications / push
+- Multi-language beyond UA + EN
+- New RAG corpus content creation (uses existing corpus)
 
 ---
 

@@ -1557,3 +1557,27 @@ kopiika-ai is designed mobile-first because the primary target (Monobank users) 
 - Skeleton loading prevents cumulative layout shift
 - Progressive card appearance uses `requestAnimationFrame` for smooth animation
 - Bundle size budget: < 200KB initial JS (critical for Ukrainian mobile networks)
+
+---
+
+## Chat-with-Finances (Epic 10) — Spec Placeholder
+
+This section is a placeholder. Full specification is split across **Story 10.3a** (chat UX skeleton — IA, conversation/composer/streaming/citation-chip layout, mobile-first viewport, basic accessibility scaffold) and **Story 10.3b** (chat UX states — refusals with reason enum + correlation-ID, consent first-use + version-bump re-prompt, deletion, rate-limit soft-block, optional session-summarization, full WCAG 2.1 AA, UA + EN edge cases). Story 10.3a is scope-locked before Story 10.7 frontend scaffolding begins; Story 10.3b is scope-locked before Story 10.7's refusal/consent/rate-limit UX is finalized. Stories 10.4a–10.6b can proceed in parallel.
+
+### Scope to be specified
+
+- Chat screen layout (conversation list + composer + active-conversation pane)
+- Message rendering: user messages, assistant messages, streaming tokens, citation chips, refusal state
+- `chat_processing` consent prompt — **first-use modal** (link to privacy explanation) AND **version-bump re-prompt** flow (active sessions continue under captured version; new sessions gated on current version)
+- Principled refusal UX — **reason-specific copy** keyed on the `reason` enum from the `CHAT_REFUSED` envelope (`guardrail_blocked` / `ungrounded` / `rate_limited` / `prompt_leak_detected`), neutral tone, no leakage of filter rationale
+- **Correlation-ID display** — refusal UI surfaces the `correlation_id` from the error envelope (copy-to-clipboard affordance) so users can reference it in a "contact support" flow
+- Abuse / rate-limit UX — soft-block with retry guidance when hourly cap or daily token cap hit
+- Chat history management (list sessions, delete single session, delete all chat history)
+- **Session-summarization UX (optional — decide during 10.3b design)** — when the per-session 20-turn / 8k-token memory window is reached, the agent summarizes older turns server-side; decide whether and how to surface this to the user (e.g., subtle "earlier messages summarized" affordance vs silent)
+- Mobile-first layout, UA + EN, WCAG 2.1 AA
+- Streaming response rendering pattern consistent with existing SSE pipeline-progress UX
+
+### Out of scope for initial chat UX
+
+- Voice input/output (Phase 2 follow-up to Epic 10)
+- Chat-based write actions UI (Phase 2 follow-up; requires separate safety review)

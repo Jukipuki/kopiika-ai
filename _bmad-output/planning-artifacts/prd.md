@@ -160,7 +160,7 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 - Basic predictive forecasts (next-month spending predictions)
 - Pre-built data queries (curated question set for querying financial data)
 - Supplementary dashboard with traditional spending charts
-- Natural language chat interface for querying financial data
+- **Natural language chat interface (Chat-with-Finances)** — conversational agent for querying personal financial data with cross-session memory, grounded in the user's categorized transactions, profile, and Teaching Feed history. Built on AWS Bedrock + AgentCore with AWS Guardrails for safety, prompt-injection/jailbreak defenses, and a red-team safety test suite as a CI gate. Initially ships ungated for demo/validation; subscription gating added when freemium payments land.
 - User correction feedback loop for categorization improvement
 - Monthly "mise en place" prep briefing
 
@@ -298,7 +298,8 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 - **Retention policy:** Indefinite retention of user financial data to support cumulative intelligence. User has full control — one-click data deletion (including derived embeddings and profile data).
 - **Right to erasure:** Complete deletion endpoint covering raw transactions, categorized data, vector embeddings, cumulative profile, Financial Health Score history, and user feedback data (votes, reason selections, free-text responses, issue reports).
 - **Data minimization:** Only collect and process data necessary for financial analysis and education delivery.
-- **Consent management:** Explicit user consent at signup for AI processing of uploaded financial data. Clear explanation of what the pipeline does with their data. Feedback data (votes, text responses) is user-generated content subject to the same data view and deletion rights.
+- **Consent management:** Explicit user consent at signup for AI processing of uploaded financial data (`ai_processing` consent — covers batch pipeline: ingestion, categorization, education, pattern detection, triage, subscription detection). Clear explanation of what the pipeline does with their data. Feedback data (votes, text responses) is user-generated content subject to the same data view and deletion rights.
+- **Chat processing consent (Epic 10):** A **separate** `chat_processing` consent is obtained on first chat use, distinct from `ai_processing`. Scope: conversation logging, cross-session memory, retention window, and use of anonymized conversation signals for chat-quality improvement. Narrower blast radius — revoking `chat_processing` disables chat only and triggers chat-history deletion without affecting batch pipeline access. Chat is blocked until this consent is granted.
 
 ### Security Requirements
 
@@ -310,10 +311,25 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 
 ### AI-Specific Security
 
-- **Prompt injection mitigation:** Input sanitization before LLM processing. Uploaded CSV/PDF content treated as untrusted input.
-- **Data leakage prevention:** Output filtering to prevent PII leakage in education responses. No cross-user data contamination in RAG retrieval.
-- **Knowledge base integrity:** Financial education content validated and provenance-tracked before ingestion into RAG corpus. Prevent model poisoning through content review.
+AI security is phased by feature maturity. The MVP batch pipeline (Epics 3/8) ships with input sanitization and output filtering; conversational AI (Epic 10) adds a full defense-in-depth layer backed by AWS Bedrock Guardrails and a red-team safety test suite.
+
+**MVP baseline (all AI features):**
+
+- **Input sanitization:** Uploaded CSV/PDF content treated as untrusted. Content is sanitized and length-capped before LLM processing. Indirect prompt injection via statement content is a known risk tracked in future-ideas §4.6.
+- **Output filtering:** PII and cross-user data redacted from education responses. No cross-user contamination in RAG retrieval.
+- **Knowledge base integrity:** Financial education content validated and provenance-tracked before ingestion into RAG corpus. Prevents model poisoning through content review.
 - **Embedding privacy:** Tenant-isolated pgvector queries prevent embedding inversion attacks across user boundaries.
+- **Multi-provider LLM abstraction:** `llm.py` supports configurable providers (Anthropic / OpenAI / Bedrock) so a compromised or degraded provider can be swapped without code changes.
+
+**Conversational AI (Chat-with-Finances, Epic 10):**
+
+- **AWS Bedrock Guardrails:** Input/output content filters, denied topics (illegal activity, self-harm, financial advice beyond educational scope), PII redaction, word filters, and contextual grounding checks applied to every chat turn.
+- **Prompt-injection defenses:** System-prompt hardening (role isolation, instruction anchoring), input validation before agent invocation, canary-token detection for system-prompt extraction attempts.
+- **Jailbreak resistance:** Red-team prompt corpus (OWASP LLM Top-10 coverage, known jailbreak patterns, Ukrainian-language adversarial inputs) runs as a CI gate for any agent/prompt change.
+- **Tool-use scoping:** AgentCore tool allowlist enforced at runtime; tools scoped to the authenticated user's data only; no filesystem/network/admin tools exposed to the agent.
+- **Session isolation:** Chat memory is per-user, per-session. No cross-user context leakage; session deletion cascades with user deletion (FR31).
+- **Safety observability:** CloudWatch metrics for Guardrails block rate, refusal rate, latency, and per-user token spend. Alarms on anomalous patterns.
+- **Principled refusal UX:** Blocked responses surface a neutral refusal message without leaking filter rationale or internal state.
 
 ### Payment Integration
 
@@ -338,6 +354,12 @@ The north star metric is **Education-to-Action Conversion Rate** — the percent
 | GDPR non-compliance | High | Build to GDPR standards from day one, implement full deletion pipeline, maintain processing records |
 | Payment provider failure | Medium | Webhook retry handling, grace periods, clear user communication on payment issues |
 | Monobank CSV format changes | Medium | Flexible parser architecture, format version detection, graceful degradation on unrecognized columns |
+| Prompt injection / jailbreak in chat (Epic 10) | High | AWS Bedrock Guardrails (input + output), system-prompt hardening, red-team corpus as CI gate (≥95% pass rate), canary-token detection for system-prompt extraction |
+| LLM tool misuse in chat (Epic 10) | High | AgentCore tool allowlist enforced at runtime; tools scoped to authenticated user's data only; no filesystem/network/admin tools exposed |
+| Conversation-history leakage across sessions/users | Critical | Per-user per-session isolation in AgentCore; session deletion cascades with account deletion (FR31/FR70); audit via red-team corpus |
+| LLM provider outage or degradation | Medium | Multi-provider `llm.py` (Anthropic / OpenAI / Bedrock) — env-var swap, no code change. Circuit breaker + graceful degradation |
+| Bedrock region unavailability (eu-central-1) | Medium | Epic 9 spike validates availability before Epic 10 commits; cross-region inference profile as fallback; region pivot plan if needed |
+| Embedding model change degrades RAG quality | High | RAG evaluation harness (Epic 9 Story 9.1) establishes baseline before any embedding migration; LLM-as-judge + retrieval precision@k regression gate |
 
 ## Innovation & Novel Patterns
 
@@ -513,7 +535,10 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 - Basic predictive forecasts
 - Pre-built data queries
 - Supplementary dashboard with charts
-- Natural language chat interface
+- **Chat-with-Finances (Epic 10):** conversational agent on Bedrock + AgentCore with Guardrails, prompt-injection/jailbreak defenses, and safety-test CI gate. Ships ungated initially; subscription gate added post-payments.
+- **AI Infra Readiness (Epic 9):** Bedrock provider integration in llm.py (multi-provider, env-driven), RAG evaluation harness, embedding model evaluation (OpenAI 3-small/3-large vs Titan v2 vs Cohere multilingual-v3), AgentCore region spike, optional Celery→Step Functions evaluation.
+- **Voice input/output for chat (Phase 2 follow-up to Epic 10):** speech-to-text on composer, optional text-to-speech on responses; separate epic after chat UX validates.
+- **Chat-based transaction edits/actions (Phase 2 follow-up to Epic 10):** write-path tools (re-categorize, annotate, flag) added to chat agent. Requires separate safety review — write actions change the threat model; read-only Epic 10 establishes the trust baseline first.
 - User correction feedback loop for categorization
 - Monthly "mise en place" prep briefing
 
@@ -536,6 +561,12 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 | LangGraph pipeline too slow (>60s) | High | Low-Medium | 3-agent pipeline is significantly faster than 5-agent. Profile and optimize during development. Async processing with SSE makes perceived wait acceptable. |
 | Monobank CSV parsing edge cases | Medium | Medium | Build parser against real Monobank exports. Handle encoding (Windows-1251), semicolons, embedded newlines. Test with multiple months and accounts. |
 | BGE-M3 Ukrainian embedding quality insufficient | Medium | Low | Benchmark retrieval quality on Ukrainian financial content early. Fallback: Jina-embeddings-v3 or Qwen3-Embedding as alternatives. |
+| Bedrock/AgentCore region availability in eu-central-1 | High (blocks Epic 10) | Medium | Epic 9 blocking spike validates availability + latency; cross-region inference profile or region pivot as fallbacks |
+| AgentCore runtime cost exceeds budget | Medium | Medium | CloudWatch cost-allocation tags + per-user token-spend monitoring; abuse rate limits (60 msg/hour); evaluate cost model during Epic 10 spike |
+| Titan / Cohere embedding quality on Ukrainian content | Medium | Medium | RAG evaluation harness (Story 9.1) benchmarks all candidates (OpenAI 3-small, 3-large, Titan v2, Cohere multilingual-v3) before migration; stay on OpenAI if no candidate wins |
+| Red-team corpus incomplete at launch — unknown jailbreaks land in production | High | Medium | Seed corpus from OWASP LLM Top-10 + published jailbreak datasets + Ukrainian adversarial prompts; quarterly review cadence; bug-bounty-style internal review before Epic 10 ships |
+| Chat conversations become an unexpected PII/regulatory hot-spot | High | Medium | Separate `chat_processing` consent (narrower blast radius); retention policy + deletion cascade (FR70); Guardrails PII redaction on output |
+| Celery→Step Functions migration overreach (if pursued) | Medium | Low | Time-boxed evaluation spike (Story 9.8) as a recommendation only; actual migration requires separate approval; default is stay on Celery |
 
 **Market Risks:**
 
@@ -635,6 +666,31 @@ Pattern Detection and Triage are deferred to Phase 1.5 (fast follow). Rationale:
 - **FR54:** System can enforce feedback card frequency caps: max 1 feedback card per session, max 1 per month, milestone cards never repeat once dismissed
 - **FR55:** System can auto-flag RAG topic clusters with >30% thumbs-down rate when a minimum of 10 votes has been reached on the cluster
 
+### Phase 1.5 — Pipeline Completion & Promoted Story Back-fills
+
+_FR56–FR60 cover the Phase 1.5 pipeline completion (Pattern Detection, Subscription Detection, Triage). FR61–FR63 back-fill promoted MVP stories (forgot-password, currency expansion, upload-summary) that shipped ahead of the PRD sync. All eight are tracked in the Epics document and in `sprint-status.yaml`._
+
+- **FR56:** System can detect recurring charges from transaction history and identify subscription services based on billing cadence (monthly ± 3 days, annual ± 7 days) and amount consistency (within 5% tolerance).
+- **FR57:** System can identify month-over-month spending trends and anomalies per category (% delta and UAH delta) when two or more months of data are available.
+- **FR58:** System can score each insight or pattern finding by financial severity (critical / warning / info) based on UAH impact relative to the user's monthly income.
+- **FR59:** Teaching Feed displays insight cards sorted by triage severity (critical first, then warning, then info); each card carries a severity badge with colour, icon, and text label (color independence per NFR — WCAG AA).
+- **FR60:** System can generate subscription alert cards showing service name, monthly cost, billing frequency, and inactivity status.
+- **FR61:** Users can reset their password via a forgot-password email flow (Cognito ForgotPassword / ConfirmForgotPassword).
+- **FR62:** Statement parsers support expanded currency codes (CHF, JPY, CZK, TRY) with unknown currencies flagged as warnings rather than silently defaulted to UAH.
+- **FR63:** After pipeline completion, system returns an upload summary payload (detected bank name, transaction count, date range, total insights) displayed to the user before they navigate to the Teaching Feed.
+
+### Chat-with-Finances (Phase 2)
+
+- **FR64:** Users can open a conversational chat interface to ask questions about their own financial data (transactions, categories, health score, teaching feed history) in natural language (Ukrainian or English).
+- **FR65:** Chat responses stream token-by-token to the UI (perceived responsiveness parity with modern chat UX).
+- **FR66:** Users can view, resume, and delete their chat history across sessions within the retention window. The agent does not carry conversational *context* across sessions — each new session starts with a fresh context window; prior sessions are accessible as transcripts, not re-hydrated memory. Persistent per-user cross-session memory is deferred (see tech-debt register TD-040).
+- **FR67:** Chat responses are grounded in the user's own data and the RAG financial literacy corpus — no speculative claims about transactions or balances that aren't in the user's profile.
+- **FR68:** Chat responses include citations back to the underlying data (e.g., "based on your January upload, transaction on 2026-01-15") when making data-specific claims.
+- **FR69:** System can refuse out-of-scope, unsafe, or guardrail-blocked requests with a neutral, user-friendly message that does not leak filter rationale.
+- **FR70:** Users can delete their chat history; deletion cascades with account deletion (FR31 applies).
+- **FR71:** System can obtain a separate explicit consent (`chat_processing`) on first chat use — distinct from the `ai_processing` consent — covering conversation logging, retention, and use for chat-quality improvements. Chat is blocked until this consent is granted.
+- **FR72:** Chat is ungated at initial launch (available to all authenticated users). A subscription gate is added in a follow-up story once freemium payments integration lands.
+
 ### Operational Monitoring (MVP)
 
 - **FR41:** System can produce structured logs with correlation IDs (job_id, user_id) across all pipeline agents
@@ -665,6 +721,20 @@ All security requirements from the Domain-Specific Requirements section (encrypt
 - **Rate limiting:** Max 10 login attempts per IP per 15 minutes; max 20 file uploads per user per hour
 - **Input validation:** All uploaded file content treated as untrusted; sanitized before AI pipeline processing
 - **Dependency security:** Automated vulnerability scanning for Python and Node.js dependencies
+- **Chat rate limiting (Epic 10):** Max 60 chat messages per user per hour; max 10 concurrent sessions per user; abusive patterns (repeated refusals, token-spend anomalies) surface alarms
+- **LLM provider abstraction:** `llm.py` MUST remain multi-provider (Anthropic / OpenAI / Bedrock) — swapping providers must require only env-var change, not code change
+
+### AI Safety (Epic 10 onward)
+
+Applies to conversational AI. Batch-pipeline AI security targets live in the Domain-Specific Requirements → AI-Specific Security section.
+
+- **Guardrails coverage:** 100% of chat turns pass through AWS Bedrock Guardrails (input + output). Bypass is a P0 regression.
+- **Jailbreak test pass rate:** Red-team corpus pass rate ≥ 95% before any chat/agent/prompt change merges to main. CI gate blocks merge on regression.
+- **Red-team corpus coverage:** OWASP LLM Top-10 mapped (prompt injection, data leakage, unauthorized tool use, etc.) + Ukrainian-language adversarial prompts + known jailbreak patterns. Corpus reviewed and expanded quarterly.
+- **PII leakage rate:** Zero cross-user PII leakage in chat responses (measured by red-team probes + output-filter audits).
+- **Grounding rate:** Data-specific claims cite underlying transactions/profile fields ≥ 90% of the time (sampled evaluation via LLM-as-judge in the RAG harness from Epic 9).
+- **Refusal correctness:** Principled refusals do not leak filter rationale or internal state; verified by corpus review.
+- **Safety observability:** CloudWatch metrics (Guardrails block rate, refusal rate, per-user token spend) with alarms on ≥ 3σ anomalies.
 
 ### Scalability
 
@@ -698,8 +768,10 @@ All security requirements from the Domain-Specific Requirements section (encrypt
 | Monobank API (future Phase 2+) | REST + webhook | Not in MVP scope; architecture should not preclude future integration |
 | Fondy payments (Phase 2) | Webhook | Idempotent processing; 3-retry tolerance before flagging |
 | LemonSqueezy payments (Phase 2) | Webhook | Same as Fondy |
-| LLM API (Claude/GPT) | REST API | Retry with exponential backoff; circuit breaker after 3 consecutive failures; graceful error to user |
-| BGE-M3 embedding model | Local inference or API | Self-hosted preferred for cost and latency; fallback to API-based embedding |
+| LLM API (multi-provider: Anthropic / OpenAI / AWS Bedrock) | REST / AWS SDK | Retry with exponential backoff; circuit breaker after 3 consecutive failures; graceful error to user. Provider selection is env-var driven (`LLM_PROVIDER`); switching providers must not require code changes |
+| AWS Bedrock Guardrails (Epic 10) | AWS SDK | 100% of chat turns gated (input + output); Guardrails outage degrades to refusal, never to unfiltered response |
+| AWS Bedrock AgentCore (Epic 10) | AWS SDK / event-driven | Per-user per-session isolation; runtime cost monitored via CloudWatch cost-allocation tags; session store durable across region failover |
+| Embedding model (OpenAI text-embedding-3-small today; candidates: 3-large / Titan v2 / Cohere multilingual-v3) | REST API / AWS SDK | Decision gate in Epic 9 Story 9.3 based on RAG eval harness results; migration only if a candidate clearly wins on Ukrainian + English benchmarks |
 
 ### Reliability
 

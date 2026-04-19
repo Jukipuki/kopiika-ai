@@ -58,17 +58,13 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 
 ### 4.1 Infrastructure / platform
 
-**Bedrock migration of LLM clients**
+**Bedrock migration of LLM clients** ✅ _Promoted to Epic 9 (2026-04-18)_
 - **Source:** [sprint-status.yaml](../implementation-artifacts/sprint-status.yaml) lines 78–99, Epic 3 retro Item #7
-- **Decision:** Deferred until the chat-with-finances epic. Direct Anthropic/OpenAI works today; GDPR argument alone is weak; AgentCore (which requires Bedrock) is the real driver.
-- **Trigger to revisit:** Any conversational/chat-with-finances feature enters planning.
-- **Scope when triggered:** swap `ChatAnthropic` / `ChatOpenAI` for `ChatBedrock` in `backend/app/agents/llm.py` (single file); pick a Bedrock-hosted fallback (gpt-4o-mini is not on Bedrock); replace `text-embedding-3-small` with Titan Text Embeddings V2 (1536 → 1024 dims, re-seed RAG, new Alembic migration for pgvector column + HNSW index); add `bedrock:InvokeModel` IAM to Celery ECS task role; verify claude-haiku availability in eu-central-1 (may need cross-region inference profile).
+- **Status:** Promoted to epics.md → Epic 9 (AI Infra Readiness). Scope evolved: `llm.py` becomes multi-provider (Anthropic / OpenAI / Bedrock configurable via `LLM_PROVIDER` env var — not a swap). Embedding migration decoupled and now data-driven via RAG evaluation harness (Story 9.1/9.3). AgentCore + Bedrock regional availability validated by blocking spike (Story 9.4). See PRD "AI-Specific Security" + architecture "Bedrock Migration & AgentCore Architecture" sections.
 
-**AWS AgentCore adoption**
+**AWS AgentCore adoption** ✅ _Promoted to Epic 10 (2026-04-18)_
 - **Source:** [sprint-status.yaml](../implementation-artifacts/sprint-status.yaml) lines 101–118
-- **Decision:** Not for Epic 3 batch agents. AgentCore solves stateful, multi-turn session agents; Epic 3 is batch LangGraph via Celery.
-- **Trigger to revisit:** A genuinely interactive feature — "chat with your finances", proactive coach, multi-step advisor with cross-session memory.
-- **Prerequisites:** Bedrock migration done first; agents rewritten as session handlers; Celery orchestration replaced by event-driven invocations. Adds runtime cost on top of tokens. High refactor — only justified for real interactive agent features.
+- **Status:** Promoted to epics.md → Epic 10 (Chat-with-Finances + AI Safety). Depends on Epic 9. Read-only agent scope; write-path tools deferred to Phase 2 follow-up for separate safety review. Guardrails + red-team corpus CI gate baked into the epic.
 
 **PostgreSQL Row-Level Security (tenant isolation layer 3)**
 - **Source:** [1-5-protected-routes-tenant-isolation.md](../implementation-artifacts/1-5-protected-routes-tenant-isolation.md) line 76

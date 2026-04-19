@@ -645,6 +645,62 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
+### TD-039 — Runtime multi-provider LLM failover not implemented [MEDIUM]
+
+**Where:** [backend/app/agents/llm.py](backend/app/agents/llm.py), [_bmad-output/planning-artifacts/architecture.md](_bmad-output/planning-artifacts/architecture.md) — "Bedrock Migration & AgentCore Architecture" § Provider Strategy
+
+**Problem:** `LLM_PROVIDER` is static per deployment. A Bedrock-region outage or throttling incident surfaces as pipeline / chat failures with no automatic fallback to Anthropic or OpenAI, even though `llm.py` supports all three providers. The MVP posture is deliberate (doubling the error surface + observability cost is not justified before real availability data exists), but if the chat / pipeline availability SLO (see AI Safety Architecture § Observability & Alarms) is breached in prod, runtime failover becomes load-bearing.
+
+**Why deferred:** Story 9.5 scope deliberately excluded failover — the architecture commits to "MVP: none." Implementing it cleanly requires: (1) per-provider health probes, (2) circuit-breaker state shared across ECS tasks (likely via Redis — extends the existing `backend/app/agents/circuit_breaker.py`), (3) per-turn fallback semantics for chat that don't break AgentCore session continuity, (4) tests that actually exercise provider degradation. Easier to build once we have production telemetry showing where it matters.
+
+**Fix shape:**
+1. Extend `circuit_breaker.py` to track per-provider error rate and open-circuit state in Redis (cross-task visibility).
+2. In `llm.py`, wrap the active provider with a circuit-aware dispatcher that falls over to a declared secondary when the circuit opens.
+3. For the Chat Agent on AgentCore: failover is NOT per-turn — the whole session pins to its start-time provider (switching mid-session reshapes memory semantics). Decide whether degraded sessions are forcibly ended (`CHAT_REFUSED` with `reason=provider_degraded`) or continue on the impaired provider.
+4. Add dashboards + alarms for circuit-open events (reuse the existing safety-observability pipeline).
+5. Update the regression suite in `backend/tests/agents/providers/` with a fault-injection mode.
+
+**Surfaced in:** Sprint change proposal 2026-04-18 architecture review
+
+---
+
+### TD-040 — Persistent cross-session chat memory [MEDIUM]
+
+**Where:** [_bmad-output/planning-artifacts/architecture.md](_bmad-output/planning-artifacts/architecture.md) — "AI Safety Architecture" § Memory & Session Bounds, FR66
+
+**Problem:** Epic 10 ships chat with durable per-session history (viewable, resumable, deletable) but no cross-session *context carry-over* — each new session starts with a fresh context window. FR66 ("chat maintains cross-session memory per user") is satisfied by history, not by persistent memory. Users starting a second session don't benefit from the agent "remembering" prior clarifications / preferences / named entities — they have to restate context.
+
+**Why deferred:** Persistent per-user memory amplifies every safety concern in the section above: (1) prompt-injection payloads persist and re-fire across sessions, (2) canary-leak blast radius grows, (3) PII redaction decisions from one session must be re-validated in another, (4) deletion semantics under consent revoke get harder (delete history AND derived memory), (5) AgentCore's memory primitives need a policy layer on top. None of this is impossible; it is materially more complex than the read-only history that Epic 10 already ships.
+
+**Fix shape:**
+1. Pick the memory representation: (a) summarized prior-session digest re-prepended at new-session start, (b) AgentCore-native long-term memory, or (c) external vector store keyed by `user_id`. Option (a) is the cheapest first step.
+2. Extend the red-team corpus in `backend/tests/ai_safety/` with cross-session attacks (payload planted in session 1 → re-fires in session 2) before enabling memory in prod.
+3. Extend consent-revoke cascade to also delete derived memory artifacts, not only `chat_sessions` / `chat_messages`.
+4. Extend canary detection to cover memory output, not just per-turn output.
+5. Tune the Observability & Alarms thresholds to distinguish per-session vs cross-session block-rate anomalies.
+
+**Surfaced in:** Sprint change proposal 2026-04-18 architecture review
+
+---
+
+### TD-041 — Chat subscription gate pending payments epic [LOW]
+
+**Where:** [_bmad-output/planning-artifacts/prd.md](_bmad-output/planning-artifacts/prd.md) — FR72, [_bmad-output/planning-artifacts/epics.md](_bmad-output/planning-artifacts/epics.md) — Epic 10 "Does NOT depend on: Payments/subscription"
+
+**Problem:** FR72 commits to shipping chat ungated at initial launch and adding a subscription gate as a follow-up "once freemium payments integration lands." No story or epic currently owns this follow-up. If chat reaches commercial launch before the payments epic is scoped, the gate will be retro-fitted under time pressure rather than designed in.
+
+**Why deferred:** Intentional. The payments epic itself is still unscoped, and gating chat before there is a paywall to gate it against makes no sense. The tech debt is purely organizational — we need a ticket so the follow-up isn't lost when the payments epic eventually lands.
+
+**Fix shape:**
+1. When the payments epic is scoped, add a story covering the chat subscription gate: FastAPI middleware that checks subscription tier on `POST /chat/messages` endpoints; 402 or similar on free-tier over-quota; frontend surface with upgrade CTA.
+2. Decide the free-tier allowance at product level (e.g., first N messages / first N sessions / first month free). Not a tech decision.
+3. Update FR72 wording to reference the new story instead of this TD entry.
+4. Close this TD entry.
+
+**Surfaced in:** Implementation Readiness assessment 2026-04-19
+
+---
+
 ## Resolved
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]

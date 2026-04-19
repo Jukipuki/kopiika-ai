@@ -1519,7 +1519,7 @@ All technology choices work together without conflicts:
 
 | # | Gap | Priority | Resolution |
 |---|---|---|---|
-| 1 | **Embedding model hosting** — resolved | Resolved | **Decision:** Using OpenAI text-embedding-3-small via OpenAI API (1536 dimensions). No self-hosting needed. Will migrate to Amazon Titan Text Embeddings V2 on Bedrock when chat-with-finances epic triggers Bedrock migration |
+| 1 | **Embedding model hosting** — resolved for MVP; re-evaluated in Epic 9 | Resolved | **MVP decision:** OpenAI text-embedding-3-small via OpenAI API (1536 dimensions). **Phase 2 re-evaluation (Epic 9 Story 9.3):** RAG evaluation harness benchmarks 3-small vs 3-large vs Titan v2 vs Cohere multilingual-v3. Decision gate — migrate only if a candidate clearly wins on the Ukrainian + English retrieval benchmark. Embeddings are decoupled from LLM-provider migration; staying on OpenAI is a valid outcome. See Bedrock Migration & AgentCore Architecture section below. |
 | 2 | **LLM provider** not explicitly chosen — Claude vs GPT vs both | Critical | **Recommended:** Claude (Anthropic) as primary LLM for all 5 agents. GPT-4o as fallback provider. Provider abstraction via LangChain's LLM interface allows easy switching |
 | 3 | **Database migration workflow** not detailed — who runs migrations, when | Important | **Recommended:** Alembic migrations run as a pre-deployment step in CI/CD pipeline. `alembic upgrade head` executed before new API version starts. Never auto-migrate in app startup |
 | 4 | **APM/monitoring tooling** deferred but observability is a day-one NFR | Nice-to-have | **Recommended:** Start with structured JSON logging to CloudWatch (free with AWS). Add Sentry for error tracking in MVP. Evaluate Datadog/New Relic post-MVP |
@@ -1572,11 +1572,231 @@ All technology choices work together without conflicts:
 **Areas for Future Enhancement:**
 
 1. GraphQL evaluation post-MVP if Teaching Feed queries become complex
-2. Migration to AWS Bedrock (embeddings + LLM) when chat-with-finances epic requires AgentCore
+2. ~~Migration to AWS Bedrock (embeddings + LLM) when chat-with-finances epic requires AgentCore~~ — **Promoted to Epic 9 (AI Infra Readiness) and Epic 10 (Chat-with-Finances + AI Safety). See "Bedrock Migration & AgentCore Architecture" and "AI Safety Architecture" sections below.**
 3. CDN/edge caching for AI-generated insights that don't change frequently
 4. Multi-region deployment for latency optimization
 5. Advanced APM (Datadog/New Relic) for production observability
-6. MamayLM fine-tuning for Ukrainian financial domain (per RAG research recommendations)
+
+## Bedrock Migration & AgentCore Architecture (Phase 2)
+
+This section replaces the prior "migration deferred" note. Scope is driven by Epic 9 (infra readiness) and Epic 10 (chat + AI safety).
+
+### Provider Strategy — Multi-Provider, Env-Driven
+
+[backend/app/agents/llm.py](../../backend/app/agents/llm.py) remains the single LLM abstraction point. It becomes multi-provider, selected via `LLM_PROVIDER` env var:
+
+- `anthropic` — direct Anthropic API (kept for local-dev fallback and cost comparison; preserved by Story 9.5a's refactor and added alongside Bedrock in Story 9.5b)
+- `openai` — direct OpenAI API (kept for regression parity; not a prod runtime target)
+- `bedrock` — AWS Bedrock (Claude on Bedrock; **prod runtime target**; required for AgentCore and Guardrails)
+
+**Pinned model IDs** live in `backend/app/agents/models.yaml` (created in Story 9.5a), versioned in git. The file maps a logical role (e.g. `agent_default`, `agent_cheap`, `chat_default`) to a provider-qualified model ID, so agent code never hardcodes a model. Exact Bedrock model ARNs for `eu-central-1` are confirmed by Story 9.4 before Story 9.5b pins them; updates go through ordinary PR review.
+
+**Runtime failover policy (MVP): none.** `LLM_PROVIDER` is static per deployment. Provider outages surface as pipeline / chat failures (user-visible retry in chat; existing retry/backoff in Celery for batch). Cross-provider runtime failover is rejected for MVP because it doubles the error surface and complicates observability — revisit only if availability SLOs (see *Observability & Alarms* in AI Safety section) are breached in prod. Tracked as **TD-039** in the tech-debt register.
+
+Switching providers requires an env flip + redeploy, not a code change. The regression suite at `backend/tests/agents/providers/` (Story 9.5c) runs Epic 3 + 8 agents on all three providers and is the source of truth for provider equivalence.
+
+### Local-Dev Provider Policy
+
+Local dev **prefers Bedrock** when developer AWS credentials + region access are available — matches prod behavior and catches provider-specific regressions earliest. Developers without Bedrock access (onboarding, offline, sandbox) fall back to `LLM_PROVIDER=anthropic` with their own API key. CI exercises all three providers via Story 9.5c's regression job. Staging and prod pin `LLM_PROVIDER=bedrock`.
+
+### Region Strategy
+
+Primary region: `eu-central-1` (aligns with existing infra + GDPR posture). **Epic 9 Story 9.4 is a blocking spike** — validates Bedrock model availability (Claude haiku/sonnet class) and AgentCore availability in eu-central-1. Outcomes:
+
+- If available → proceed
+- If model gap only → cross-region inference profile (e.g., invoke via us-east-1 with a formal data-residency review — see below)
+- If AgentCore unavailable → either wait, or pivot region with cost/latency/residency trade-off analysis
+
+**Data-residency review for cross-region inference.** Owner: DPO + Legal (not Dev Team). Criteria: (1) whether the inference payload contains raw user PII or only pseudonymized/aggregated content; (2) whether the target region offers an equivalent data-protection regime or a lawful transfer mechanism (SCC, adequacy); (3) retention and logging posture at the model endpoint. Decision logged as an ADR under `docs/adr/` and referenced from this section. No cross-region inference traffic ships before the ADR is signed off.
+
+### AgentCore Deployment Model
+
+The Chat Agent runs on **AWS-managed AgentCore runtime**, not on ECS Celery workers. Rationale: session state, multi-turn memory, and tool orchestration are AgentCore's native primitives; reimplementing them on Celery is non-trivial and throws away the main reason Epic 10 pulled the Bedrock migration forward. Boundary:
+
+- **Celery ECS workers** — batch agents (Epics 3/8), invoked via `llm.py` → Bedrock `InvokeModel`
+- **AgentCore runtime (AWS-managed)** — Chat Agent only; invoked via `bedrock-agentcore:*` from FastAPI handlers
+
+VPC attachment, IAM, and observability plumbing for AgentCore are provisioned in Stories 9.7 and 10.4a.
+
+### IAM & Infrastructure
+
+**Celery ECS task role** (batch agents):
+
+- `bedrock:InvokeModel` on allowlisted model ARNs (sourced from `models.yaml`)
+- `bedrock:ApplyGuardrail` on the configured Guardrail ID
+
+**FastAPI ECS task role** (new scope for chat):
+
+- `bedrock-agentcore:InvokeAgent` / `GetSession` / `DeleteSession` scoped to the Chat Agent's AgentCore identifier
+- No direct `bedrock:InvokeModel` — chat model calls flow through AgentCore
+
+**Config surface:** Non-secret config (model ARNs, region, Guardrail ID, AgentCore runtime ID) lives in ECS task-definition env vars, managed via Terraform. Provider API keys continue to use the existing `kopiika-ai/<env>/llm-api-keys` Secrets Manager entry.
+
+CloudWatch cost-allocation tags on all Bedrock / AgentCore resources: `feature=chat`, `epic=10`, `env=<env>`.
+
+### Cost Controls
+
+Tags alone are visibility, not control. Minimum cost guardrails for Phase 2:
+
+- **AWS Budgets** — monthly budget per `feature` tag (chat, batch) with 50 / 80 / 100% alerts routed to email + Slack. Defined in Terraform, reviewed on PR.
+- **Per-user daily token cap** — enforced in `llm.py` for batch agents (tokens/user/day) and in the Chat Agent's rate-limit envelope (see *Rate Limits* in AI Safety section). Exceeding the cap triggers a principled refusal (`CHAT_REFUSED` with `reason=rate_limited`), not a silent throttle.
+- **CloudWatch anomaly detection** on `feature=chat` cost metric — ≥ 3σ over trailing 7-day baseline → page on-call. Tuned after first 30 days of prod data.
+
+Advanced cost governance (org-level cost dashboards, per-tenant chargeback) is tracked as tech debt.
+
+### Embedding Model — Decision Deferred
+
+Embeddings are decoupled from LLM migration (they run at ingestion + query time, not inside agent execution). No re-seed until the RAG eval harness (Story 9.1) has a baseline on current OpenAI 3-small, and Story 9.3 compares candidates. If the winner differs from 3-small, Story 9.6 runs the Alembic migration (pgvector dim change, HNSW rebuild, re-seed).
+
+### Pipeline Orchestration — Celery vs Step Functions (Optional Evaluation)
+
+Epic 9 Story 9.8 is a time-boxed evaluation spike comparing the current Celery+Redis broker architecture with AWS Step Functions or AWS Batch for the Epic 3/8 pipeline (categorize → pattern detection → triage → education → write). Outcome is a recommendation doc only — any actual migration requires separate approval and a dedicated epic. Default: stay on Celery.
+
+### Related Artifacts
+
+- Epic 9 (Stories 9.1–9.8): [epics.md](epics.md)
+- Sprint change proposal: [sprint-change-proposal-2026-04-18.md](sprint-change-proposal-2026-04-18.md)
+- Tech-debt register: [../../docs/tech-debt.md](../../docs/tech-debt.md) — **TD-039** (runtime failover), advanced cost governance, cross-region inference ADR
+- AI Safety Architecture (below) — consumes the provider, IAM, and cost plumbing defined here
+
+## AI Safety Architecture (Epic 10)
+
+**Scope — phased.** Applies Epic 10 onward (conversational AI). Batch-pipeline AI security lives in the earlier Security section and is unchanged by Phase 2; this section supersedes it for the Chat Agent and any future conversational surface.
+
+### Threat Model
+
+Attacker profile: authenticated user (self or via account takeover) interacting through chat. Defense prioritizes the following attacker goals, each mapped to the layers below:
+
+| Attacker goal | Primary defenses |
+|---|---|
+| Cross-user data exfiltration via prompt manipulation | Agent layer (tool allowlist + user-scoped data access), System-prompt layer, Guardrails output |
+| System-prompt / policy extraction | System-prompt layer (anchoring, canaries), Guardrails output, *Canary Detection* loop |
+| Unsafe or out-of-scope advice (illegal activity, self-harm, unauthorized financial-advice scope) | Guardrails input + output (denied topics) |
+| Tool abuse (write, admin, network, filesystem) | Agent layer — no such tools exposed; allowlist enforced at AgentCore |
+| PII leakage in output | Guardrails output PII redaction; output scan |
+| Cost exhaustion / denial-of-wallet | *Rate Limits*, per-user token caps, cost observability (see Bedrock section) |
+| Refusal bypass via jailbreak / role-play / translation | Input blocklist, Guardrails, system-prompt anchoring, safety harness as regression gate |
+
+Trust boundary: everything the user sends is hostile input; everything the model emits is untrusted output until Guardrails + grounding have cleared it.
+
+### Defense-in-Depth Layers
+
+1. **Input layer** — Validator (length caps, character-class allowlist, known-jailbreak-pattern blocklist) runs before agent invocation. Blocklist lives at `backend/app/agents/chat/jailbreak_patterns.yaml`, PR-reviewed, covered by the safety harness.
+2. **Guardrails layer (input)** — AWS Bedrock Guardrails: content filters, denied topics (illegal activity, self-harm, unauthorized financial-advice scope), PII redaction, word filters.
+3. **System-prompt layer** — Role isolation ("You are a read-only advisor..."), instruction anchoring, canary tokens to detect extraction attempts (see *Canary Detection*).
+4. **Agent layer** — AgentCore tool allowlist enforced at runtime; tools scoped to the authenticated user's data only; no filesystem / network / admin / write tools exposed. Session isolation is AgentCore-native (per-user session IDs).
+5. **Guardrails layer (output)** — Output content filters, PII redaction, contextual grounding checks.
+6. **Grounding enforcement** — Bedrock Guardrails contextual-grounding threshold (initial target ≥ 0.85; tuned via Story 10.6a harness). Ungrounded data-specific claims are **blocked, not regenerated** — the Chat Agent returns a principled refusal (`CHAT_REFUSED` with `reason=ungrounded`). Regenerating through the filter has historically laundered hallucinations past grounding checks; we intentionally avoid that pattern.
+7. **Observability layer** — CloudWatch metrics + alarms (thresholds in *Observability & Alarms*).
+
+### Canary Detection
+
+Canary tokens are high-entropy strings injected into the system prompt and rotated monthly via Secrets Manager (`kopiika-ai/<env>/chat-canaries`). Every model output passes a regex scan before streaming to the client. Any canary match:
+
+- Blocks the turn (`CHAT_REFUSED` with `reason=prompt_leak_detected`)
+- Emits the `CanaryLeaked` CloudWatch metric
+- Pages on-call via the severity-1 security alarm path
+- Triggers a post-incident corpus update in Story 10.8a
+
+### Memory & Session Bounds
+
+- **Per-session context window:** 20 turns or 8k tokens, whichever is first. Older turns are summarized server-side, not dropped silently.
+- **Per-user cross-session memory:** not implemented in Epic 10. Each session starts fresh. Persistent per-user memory is tracked as **TD-040** — FR66 is satisfied by durable chat *history* (viewable, resumable, deletable), not by cross-session *context carry-over*.
+- **Concurrency:** 10 concurrent sessions per user (matches *Rate Limits*).
+
+### Rate Limits
+
+Single source of truth for chat throttling — implemented in Story 10.11 (rate-limit envelope previously co-listed under 10.4 was consolidated into 10.11 to remove the duplication):
+
+- **60 messages per hour per user** (soft-block with retry guidance)
+- **10 concurrent sessions per user** (soft-block)
+- **Per-user daily token cap** — see Bedrock *Cost Controls*; exceeding returns `CHAT_REFUSED` with `reason=rate_limited`
+- **Global per-IP cap** at the API-gateway layer (reuses existing limit) — abuse scenario only
+
+### Consent Drift Policy
+
+`chat_sessions.consent_version_at_creation` captures the `chat_processing` consent version that authorized the session. Policy:
+
+- **Active sessions continue under their captured version** (in-flight conversations aren't interrupted mid-turn by a consent bump).
+- **New sessions require the current version** — frontend gate re-prompts if the user's consent is stale.
+- **Consent revoke** terminates active sessions, cancels in-flight streaming turns, and triggers the deletion cascade (`chat_sessions` → `chat_messages`) per FR70 / FR71.
+
+### Safety Test Harness — CI Gate
+
+`backend/tests/ai_safety/` contains the red-team prompt corpus:
+
+- OWASP LLM Top-10 mapped (prompt injection, data leakage, unauthorized tool use, etc.)
+- Known jailbreak patterns (DAN-style, role-play bypass, translation-based)
+- Ukrainian-language adversarial prompts
+- Canary-token extraction attempts
+- Cross-user data probes
+
+Runner invokes the Chat Agent with each prompt and validates refusal / block / grounding behavior. **CI gate: ≥ 95% pass rate required for any merge touching agent code, prompts, tools, or Guardrails config.** Corpus reviewed and expanded quarterly.
+
+### Observability & Alarms
+
+Baseline thresholds (implemented in Story 10.9; tuned after 30 days of prod data):
+
+| Metric | Warn | Page |
+|---|---|---|
+| Guardrails input-block rate (5-min window) | ≥ 5% sustained 15m | ≥ 15% sustained 5m |
+| Grounding-block rate (5-min window) | ≥ 10% sustained 15m | ≥ 25% sustained 5m |
+| `CanaryLeaked` count | — | any (sev-1) |
+| Refusal rate (all causes, 30m window) | ≥ 20% | — |
+| Per-user token-spend anomaly | ≥ 3σ vs trailing 7-day | ≥ 5σ |
+| P95 streaming first-token latency | ≥ 2s | ≥ 5s |
+
+Incident-response runbook for each metric lives in [../../docs/operator-runbook.md](../../docs/operator-runbook.md) (Chat section, owned by Story 10.9).
+
+### Chat Agent Component
+
+New component alongside the existing batch agents (see [backend/app/agents/](../../backend/app/agents/) for the authoritative list):
+
+- Session handler on AgentCore (stateful, multi-turn, per-user session isolation)
+- Tool manifest (read-only allowlist): user transactions, user profile, teaching-feed history, RAG corpus
+- Memory policy: per *Memory & Session Bounds* above; retention aligned with `chat_processing` consent
+- Guardrails attachment: input + output, with grounding threshold configured
+- Rate-limit envelope: per *Rate Limits* above
+
+### Success Metrics (SLO)
+
+- 100% of chat turns traverse Bedrock Guardrails (input + output)
+- Red-team corpus pass rate ≥ 95% (CI gate)
+- Grounding rate ≥ 90% measured by LLM-as-judge in the RAG harness (Story 10.6a)
+
+### Data Model Additions
+
+New tables (Alembic migration in Epic 10):
+
+- `chat_sessions` — `id` UUID PK, `user_id` UUID FK (cascade delete), `created_at` timestamptz, `last_active_at` timestamptz, `consent_version_at_creation` text
+- `chat_messages` — `id` UUID PK, `session_id` UUID FK (cascade delete), `role` enum(`user` | `assistant` | `system`), `content` text, `redaction_flags` JSONB (shape: `{"pii_types": ["email" | "iban" | "card" | ...], "filter_source": "input" | "output"}`), `guardrail_action` enum(`none` | `blocked` | `modified`), `created_at` timestamptz
+
+Deletion cascade aligned with FR31 + FR70: account deletion → `chat_sessions` deletion → `chat_messages` deletion.
+
+Operational indexes: `chat_sessions(user_id, last_active_at desc)` for session list; `chat_messages(session_id, created_at)` for transcript render; partial index on `chat_messages(guardrail_action) WHERE guardrail_action != 'none'` for safety-monitoring queries.
+
+### API Pattern — Chat Streaming
+
+Chat uses server-sent events (SSE) for token streaming, consistent with the existing SSE pattern for pipeline progress. Error envelope on Guardrails block, grounding refusal, or rate-limit:
+
+```json
+{
+  "error": "CHAT_REFUSED",
+  "reason": "guardrail_blocked | ungrounded | rate_limited | prompt_leak_detected",
+  "correlation_id": "<uuid>",
+  "retry_after_seconds": null
+}
+```
+
+`correlation_id` surfaces in the frontend refusal UX so support can triage an incident without the user knowing the internal rationale. `reason` is intentionally coarse — no leakage of specific filter matches.
+
+### Related Artifacts
+
+- Epic 10 (Stories 10.1–10.11): [epics.md](epics.md)
+- Bedrock Migration & AgentCore section (above) — provider, cost, IAM plumbing consumed here
+- Sprint change proposal: [sprint-change-proposal-2026-04-18.md](sprint-change-proposal-2026-04-18.md)
+- Tech-debt register: [../../docs/tech-debt.md](../../docs/tech-debt.md) — **TD-040** (persistent cross-session memory), **TD-039** (runtime failover)
+- Operator runbook: [../../docs/operator-runbook.md](../../docs/operator-runbook.md) — Chat section
 
 ### Implementation Handoff
 
