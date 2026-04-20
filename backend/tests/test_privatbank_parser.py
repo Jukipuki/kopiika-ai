@@ -320,3 +320,26 @@ class TestPrivatBankParserCurrencyExtended:
             assert txn.currency_code == 980
             assert txn.currency_alpha == "UAH"
             assert txn.currency_unknown_raw is None
+
+
+
+# ==================== Story 11.6: Decode fallback on misdetected encoding ====================
+
+
+class TestPrivatBankDecodeFallback:
+    """AC #3: If bytes can't be decoded under detected encoding, fall back to
+    utf-8 with errors='replace' rather than raising an unhandled exception."""
+
+    def test_invalid_bytes_for_encoding_fall_back_instead_of_raising(self):
+        from app.agents.ingestion.parsers.privatbank import PrivatBankParser
+
+        header = (
+            "Дата операції,Опис операції,Категорія,Сума,Валюта\n"
+        ).encode("utf-8")
+        bad_row = b"01.01.2026 10:00:00,\xff\xfe Bad Byte,Groceries,-100.00,UAH\n"
+        file_bytes = header + bad_row
+
+        parser = PrivatBankParser()
+        result = parser.parse(file_bytes, encoding="utf-8", delimiter=",")
+        assert result.parsed_count == 1
+        assert "\ufffd" in result.transactions[0].description

@@ -97,6 +97,9 @@ MCC_TO_CATEGORY: dict[int, str] = {
     5947: "shopping",   # Gift, Card, Novelty, and Souvenir Shops
     5999: "shopping",   # Miscellaneous and Specialty Retail Shops
 
+    # Courier / Delivery
+    4215: "shopping",   # Courier Services (Nova Poshta, Meest, Justin, etc.)
+
     # Travel
     4511: "travel",   # Airlines, Air Carriers
     4722: "travel",   # Travel Agencies and Tour Operators
@@ -119,8 +122,13 @@ MCC_TO_CATEGORY: dict[int, str] = {
     6011: "atm_cash",   # Automated Cash Disbursements (ATM)
     6012: "atm_cash",   # Financial Institutions – Merchandise and Services
 
-    # Transfers (inter-account and P2P — excluded from spending analysis)
-    4829: "transfers",  # Wire Transfer Money Orders
+    # Note: MCC 4829 (Wire Transfer / Money Order) is intentionally NOT mapped
+    # here — it is semantically ambiguous (charity donations, P2P jar payments,
+    # inter-account transfers all share this MCC). It falls through to the LLM
+    # pass for description-aware classification per Story 11.2.
+
+    # Charity / Social
+    8398: "charity",    # Charitable and Social Service Organizations
 
     # Finance
     6099: "finance",   # Financial Institutions – Other

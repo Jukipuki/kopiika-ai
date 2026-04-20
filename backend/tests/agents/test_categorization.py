@@ -179,8 +179,9 @@ def test_categorization_node_all_mcc_mapped_no_llm_called():
 
     for txn in transactions:
         entry = cats[txn["id"]]
-        assert entry["confidence_score"] == 1.0
+        assert entry["confidence_score"] == 0.95
         assert entry["flagged"] is False
+        assert entry["transaction_kind"] == "spending"
 
     assert cats[transactions[0]["id"]]["category"] == "groceries"
     assert cats[transactions[1]["id"]]["category"] == "restaurants"
@@ -401,7 +402,7 @@ def test_categorization_node_mixed_mcc_and_llm():
 
     cats = {c["transaction_id"]: c for c in result["categorized_transactions"]}
     assert cats[mcc_txn["id"]]["category"] == "groceries"
-    assert cats[mcc_txn["id"]]["confidence_score"] == 1.0
+    assert cats[mcc_txn["id"]]["confidence_score"] == 0.95
     assert cats[mcc_txn["id"]]["flagged"] is False
     assert cats[llm_txn["id"]]["category"] == "subscriptions"
 
@@ -437,7 +438,7 @@ def test_financial_pipeline_invoke_with_mocked_node():
 
     assert len(result["categorized_transactions"]) == 1
     assert result["categorized_transactions"][0]["category"] == "groceries"
-    assert result["categorized_transactions"][0]["confidence_score"] == 1.0
+    assert result["categorized_transactions"][0]["confidence_score"] == 0.95
 
 
 # ---------------------------------------------------------------------------
@@ -873,7 +874,8 @@ def test_process_upload_categorization_updates_transaction_in_db(
         txns = s.exec(select(Transaction).where(Transaction.upload_id == upload_id)).all()
         assert len(txns) == 1
         assert txns[0].category == "groceries"
-        assert txns[0].confidence_score == pytest.approx(1.0)
+        assert txns[0].confidence_score == pytest.approx(0.95)
+        assert txns[0].transaction_kind == "spending"
         assert txns[0].is_flagged_for_review is False
 
 

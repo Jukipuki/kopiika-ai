@@ -754,6 +754,56 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
+### TD-045 — Pooled mojibake rate dilutes single-row corruption [MEDIUM]
+
+**Where:** [backend/app/services/format_detector.py:80-92](../backend/app/services/format_detector.py#L80-L92)
+
+**Problem:** `detect_mojibake()` divides total U+FFFD count by *total chars across all descriptions*. One fully-garbled row (100% `\ufffd`) inside 500 clean rows rounds to ~0.2% and never trips the 5% threshold, so targeted encoding corruption on a single merchant name goes undetected even though that description will be unusable for categorization downstream.
+
+**Why deferred:** AC #2 wording ("across transaction description fields") supports the pooled calculation, so Story 11.6 passes as-specified. Story 11.6 review surfaced this as a signal-loss risk, not a bug.
+
+**Fix shape:**
+1. Alongside the pooled rate, track `rows_with_any_replacement_char: int` (count rows with ≥1 `\ufffd`).
+2. Optionally return `max_per_row_rate: float` so an isolated ≥5% row also trips the flag.
+3. Update `ParseAndStoreResult` + observability events to include the new signal; leave the pooled rate in place for backwards compatibility.
+
+**Surfaced in:** Story 11-6-encoding-detection-with-mojibake-flagging code review (2026-04-20)
+
+---
+
+### TD-046 — `parser.decode_fallback` log lacks upload/user correlation [MEDIUM]
+
+**Where:** [backend/app/agents/ingestion/parsers/monobank.py:72-75](../backend/app/agents/ingestion/parsers/monobank.py#L72-L75), [backend/app/agents/ingestion/parsers/privatbank.py:59-62](../backend/app/agents/ingestion/parsers/privatbank.py#L59-L62), [backend/app/agents/ingestion/parsers/generic.py:72-75](../backend/app/agents/ingestion/parsers/generic.py#L72-L75)
+
+**Problem:** When a parser falls back from the detected encoding to UTF-8 with `errors="replace"`, it logs `parser.decode_fallback` with only `{encoding, parser}`. No `upload_id` or `user_id`. In production, triaging which upload tripped a decode fallback requires correlating timestamps — an SRE papercut, and a real gap if fallback rate ever spikes.
+
+**Why deferred:** `AbstractParser.parse(file_bytes, encoding, delimiter)` has no upload context in its signature. Threading it through requires either an API change or a `contextvars.ContextVar`-based pattern — both larger than Story 11.6's scope.
+
+**Fix shape:**
+1. Add a `contextvars.ContextVar[UploadContext]` set in `_parse_and_build_records` before calling `parser.parse()`.
+2. Read it inside the fallback `except` block and include `upload_id`/`user_id` in the `extra=` dict.
+3. Alternative: move the fallback warn up one level to `_parse_and_build_records` by letting the parsers surface a `decode_fallback_used: bool` on `ParseResult`.
+
+**Surfaced in:** Story 11-6-encoding-detection-with-mojibake-flagging code review (2026-04-20)
+
+---
+
+### TD-047 — `_decode_content()` helper lacks `errors="replace"` safety net [LOW]
+
+**Where:** [backend/app/services/format_detector.py:107-109](../backend/app/services/format_detector.py#L107-L109)
+
+**Problem:** `_decode_content(file_bytes, encoding)` calls `file_bytes.decode(encoding)` with no error-handling flag. Safe *today* because the only caller (`detect_format`) wraps it in `try/except (UnicodeDecodeError, LookupError)` at lines 182-187. But the helper is attractive nuisance — any future caller (or a refactor that inlines it elsewhere) silently inherits the un-safe version and can raise mid-pipeline.
+
+**Why deferred:** Purely defensive; no current caller is unsafe. Story 11.6 opted to leave the helper untouched rather than change a shared utility.
+
+**Fix shape:**
+1. Either inline `_decode_content` into its single caller and delete the helper, OR
+2. Add `errors="replace"` inside the helper (changing all callers' behaviour — verify `detect_format` is still happy with replacement chars in its sniff pass).
+
+**Surfaced in:** Story 11-6-encoding-detection-with-mojibake-flagging code review (2026-04-20)
+
+---
+
 ## Resolved
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]

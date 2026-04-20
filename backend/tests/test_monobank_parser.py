@@ -818,3 +818,28 @@ class TestMonobankParserCurrency:
             assert txn.currency_code == 980
             assert txn.currency_alpha == "UAH"
             assert txn.currency_unknown_raw is None
+
+
+# ==================== Story 11.6: Decode fallback on misdetected encoding ====================
+
+
+class TestMonobankDecodeFallback:
+    """AC #3: If bytes can't be decoded under detected encoding, fall back to
+    utf-8 with errors='replace' rather than raising an unhandled exception."""
+
+    def test_invalid_bytes_for_encoding_fall_back_instead_of_raising(self):
+        # Construct a Windows-1251 header (Monobank legacy) but inject a byte
+        # sequence (0xFF 0xFE) that is invalid under utf-8; then ask the parser
+        # to decode under "utf-8". Without the fallback this raises UnicodeDecodeError.
+        header = (
+            "Дата і час операції;Опис операції;MCC;"
+            "Сума в валюті картки (UAH);Залишок на рахунку (UAH)\n"
+        ).encode("utf-8")
+        bad_row = b"01.01.2026 10:00:00;\xff\xfe Bad Byte Row;5411;-10000.00;50000.00\n"
+        file_bytes = header + bad_row
+
+        parser = MonobankParser()
+        # Should NOT raise; fallback kicks in and U+FFFD appears in description.
+        result = parser.parse(file_bytes, encoding="utf-8", delimiter=";")
+        assert result.parsed_count == 1
+        assert "\ufffd" in result.transactions[0].description

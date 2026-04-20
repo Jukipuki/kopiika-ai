@@ -74,6 +74,24 @@ class FormatDetectionResult:
     amount_sign_convention: str | None = None
 
 
+_MOJIBAKE_THRESHOLD = 0.05
+
+
+def detect_mojibake(descriptions: list[str]) -> tuple[bool, float]:
+    """Detect mojibake (encoding corruption) by counting U+FFFD replacement chars.
+
+    Returns (is_mojibake, replacement_char_rate). Threshold: rate > 5% flags mojibake.
+    """
+    if not descriptions:
+        return False, 0.0
+    total_chars = sum(len(d) for d in descriptions)
+    if total_chars == 0:
+        return False, 0.0
+    replacement_count = sum(d.count("\ufffd") for d in descriptions)
+    rate = replacement_count / total_chars
+    return rate > _MOJIBAKE_THRESHOLD, rate
+
+
 def detect_encoding(file_bytes: bytes) -> tuple[str, float]:
     """Detect file encoding using charset-normalizer."""
     result = from_bytes(file_bytes).best()
@@ -191,6 +209,8 @@ def detect_format(
         extra={
             "bank_format": bank_format,
             "encoding": encoding,
+            "encoding_coherence": encoding_confidence,
+            "encoding_chaos": max(0.0, 1.0 - encoding_confidence),
             "delimiter": repr(delimiter),
             "column_count": len(header),
             "confidence": confidence,

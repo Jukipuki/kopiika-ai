@@ -319,3 +319,22 @@ class TestGenericParserCurrency:
             assert txn.currency_code == 980
             assert txn.currency_alpha is None
             assert txn.currency_unknown_raw is None
+
+
+# ==================== Story 11.6: Decode fallback on misdetected encoding ====================
+
+
+class TestGenericDecodeFallback:
+    """AC #3: Fall back to utf-8 with errors='replace' instead of raising."""
+
+    def test_invalid_bytes_for_encoding_fall_back_instead_of_raising(self):
+        from app.agents.ingestion.parsers.generic import GenericParser
+
+        header = b"Date,Amount,Description\n"
+        bad_row = b"01.01.2026,-100.00,\xff\xfe Bad Byte\n"
+        file_bytes = header + bad_row
+
+        parser = GenericParser()
+        result = parser.parse(file_bytes, encoding="utf-8", delimiter=",")
+        assert result.parsed_count == 1
+        assert "\ufffd" in result.transactions[0].description

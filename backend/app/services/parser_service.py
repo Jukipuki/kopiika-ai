@@ -11,7 +11,7 @@ from app.agents.ingestion.parsers.monobank import MonobankParser
 from app.agents.ingestion.parsers.privatbank import PrivatBankParser
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.transaction import Transaction
-from app.services.format_detector import FormatDetectionResult
+from app.services.format_detector import FormatDetectionResult, detect_mojibake
 from app.services.parse_validator import validate_parsed_rows
 from app.services.transaction_service import compute_dedup_hash
 
@@ -34,6 +34,8 @@ class ParseAndStoreResult:
     validation_warnings_count: int = 0
     rejected_rows: list[dict] = field(default_factory=list)
     warnings: list[dict] = field(default_factory=list)
+    mojibake_detected: bool = False
+    mojibake_replacement_rate: float = 0.0
 
 
 class UnsupportedFormatError(Exception):
@@ -83,6 +85,17 @@ def _parse_and_build_records(
     )
     if validation.wholesale_rejected:
         raise WholesaleRejectionError(validation.wholesale_rejection_reason or "unknown")
+
+    descriptions = [txn.description or "" for txn in validation.accepted]
+    mojibake_flag, mojibake_rate = detect_mojibake(descriptions)
+    if mojibake_flag:
+        logger.warning(
+            "encoding.mojibake_detected",
+            extra={
+                "replacement_char_rate": mojibake_rate,
+                "transaction_count": len(validation.accepted),
+            },
+        )
 
     transactions = [
         Transaction(
@@ -152,6 +165,8 @@ def _parse_and_build_records(
         validation_warnings_count=len(validation.warnings),
         rejected_rows=rejected_rows_payload,
         warnings=warnings_payload,
+        mojibake_detected=mojibake_flag,
+        mojibake_replacement_rate=mojibake_rate,
     )
 
     return transactions, flagged_records, store_result

@@ -156,6 +156,30 @@ class TestParserServiceValidation:
         # flagged_count in the result reflects parser + validator rejections
         assert result.flagged_count == 2
 
+    def test_mojibake_detected_when_descriptions_have_replacement_chars(self):
+        # 8 descriptions × 10 chars (=80 chars total), 5 U+FFFD → 6.25% > 5%
+        rows = [
+            _txn(description=f"CLEAN-TXN{i}", amount=-100 * (i + 1), date=datetime(2026, 2, i + 1))
+            for i in range(7)
+        ]
+        rows.append(
+            _txn(
+                description="\ufffd" * 5 + "XYZAB",
+                amount=-999,
+                date=datetime(2026, 2, 9),
+            )
+        )
+        txns, _, result = _run_with_parsed(rows)
+        assert len(txns) == 8
+        assert result.mojibake_detected is True
+        assert result.mojibake_replacement_rate > 0.05
+
+    def test_mojibake_not_detected_for_clean_utf8(self):
+        rows = [_txn(description=f"CLEAN-{i}", date=datetime(2026, 3, i + 1)) for i in range(3)]
+        _, _, result = _run_with_parsed(rows)
+        assert result.mojibake_detected is False
+        assert result.mojibake_replacement_rate == 0.0
+
     def test_rejected_rows_payload_shape(self):
         rows = [_txn(description="", mcc=None), _txn(description="GOOD")]
         _, _, result = _run_with_parsed(rows)

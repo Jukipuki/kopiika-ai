@@ -9,6 +9,7 @@ from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy.exc import OperationalError
 from sqlmodel import func, select
 
+from app.agents.categorization.node import kind_by_sign, validate_kind_category
 from app.agents.checkpointer import get_checkpointer
 from app.agents.circuit_breaker import CircuitBreakerOpenError
 from app.agents.pipeline import build_pipeline, resume_pipeline
@@ -232,12 +233,37 @@ def process_upload(self, job_id: str) -> dict:
                 for txn in txns:
                     cat = cat_lookup.get(str(txn.id))
                     if cat:
-                        txn.category = cat["category"]
-                        txn.confidence_score = cat["confidence_score"]
+                        category = cat["category"]
+                        kind = cat.get("transaction_kind", "spending")
+                        confidence = cat["confidence_score"]
+                        mismatch = not validate_kind_category(kind, category)
+                        if mismatch:
+                            # Spec §2.3 fallback: invalid (kind, category) pair →
+                            # (uncategorized, <by-sign>, confidence=0.0). Chosen over
+                            # raising so one bad LLM pair doesn't abort the whole upload.
+                            logger.warning(
+                                "kind_category_mismatch_fallback",
+                                extra={
+                                    "job_id": job_id,
+                                    "transaction_id": str(txn.id),
+                                    "kind": kind,
+                                    "category": category,
+                                },
+                            )
+                            category = "uncategorized"
+                            kind = kind_by_sign(txn.amount)
+                            confidence = 0.0
+                        txn.category = category
+                        txn.confidence_score = confidence
+                        txn.transaction_kind = kind
                         # Preserve parser-side pre-flag (e.g. currency_unknown).
                         if txn.uncategorized_reason is None:
-                            txn.is_flagged_for_review = cat.get("flagged", False)
-                            txn.uncategorized_reason = cat.get("uncategorized_reason")
+                            if mismatch:
+                                txn.is_flagged_for_review = True
+                                txn.uncategorized_reason = "kind_category_mismatch"
+                            else:
+                                txn.is_flagged_for_review = cat.get("flagged", False)
+                                txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
                 session.commit()
 
@@ -397,8 +423,19 @@ def process_upload(self, job_id: str) -> dict:
                 "rejected_rows": result.rejected_rows,
                 "warnings": result.warnings,
                 "schema_detection_source": schema_detection_source,
-                "mojibake_detected": False,
+                "mojibake_detected": result.mojibake_detected,
             }
+
+            if result.mojibake_detected:
+                logger.warning(
+                    "parser.mojibake_detected",
+                    extra={
+                        "upload_id": str(upload.id),
+                        "encoding": format_result.encoding,
+                        "replacement_char_rate": result.mojibake_replacement_rate,
+                    },
+                )
+
             job.updated_at = _utcnow()
             session.add(job)
             session.commit()
@@ -416,7 +453,7 @@ def process_upload(self, job_id: str) -> dict:
                 "rejectedRows": result.rejected_rows,
                 "warnings": result.warnings,
                 "schemaDetectionSource": schema_detection_source,
-                "mojibakeDetected": False,
+                "mojibakeDetected": result.mojibake_detected,
             })
 
             logger.info(
@@ -645,12 +682,34 @@ def resume_upload(self, job_id: str) -> dict:
                 for txn in txns:
                     cat = cat_lookup.get(str(txn.id))
                     if cat and txn.category in (None, "uncategorized"):
-                        txn.category = cat["category"]
-                        txn.confidence_score = cat["confidence_score"]
+                        category = cat["category"]
+                        kind = cat.get("transaction_kind", "spending")
+                        confidence = cat["confidence_score"]
+                        mismatch = not validate_kind_category(kind, category)
+                        if mismatch:
+                            logger.warning(
+                                "kind_category_mismatch_fallback",
+                                extra={
+                                    "job_id": job_id,
+                                    "transaction_id": str(txn.id),
+                                    "kind": kind,
+                                    "category": category,
+                                },
+                            )
+                            category = "uncategorized"
+                            kind = kind_by_sign(txn.amount)
+                            confidence = 0.0
+                        txn.category = category
+                        txn.confidence_score = confidence
+                        txn.transaction_kind = kind
                         # Preserve parser-side pre-flag (e.g. currency_unknown).
                         if txn.uncategorized_reason is None:
-                            txn.is_flagged_for_review = cat.get("flagged", False)
-                            txn.uncategorized_reason = cat.get("uncategorized_reason")
+                            if mismatch:
+                                txn.is_flagged_for_review = True
+                                txn.uncategorized_reason = "kind_category_mismatch"
+                            else:
+                                txn.is_flagged_for_review = cat.get("flagged", False)
+                                txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
                 session.commit()
 

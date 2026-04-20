@@ -66,7 +66,14 @@ def _parse_amount_kopiykas(value: str) -> int:
 class GenericParser(AbstractParser):
     def parse(self, file_bytes: bytes, encoding: str, delimiter: str) -> ParseResult:
         """Attempt to parse a CSV with unrecognized format using column heuristics."""
-        text = file_bytes.decode(encoding)
+        try:
+            text = file_bytes.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            logger.warning(
+                "parser.decode_fallback",
+                extra={"encoding": encoding, "parser": "generic"},
+            )
+            text = file_bytes.decode("utf-8", errors="replace")
         if text.startswith("\ufeff"):
             text = text[1:]
         reader = csv.reader(io.StringIO(text), delimiter=delimiter)

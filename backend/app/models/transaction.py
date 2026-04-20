@@ -28,3 +28,4 @@ class Transaction(SQLModel, table=True):
     confidence_score: Optional[float] = Field(default=None)
     is_flagged_for_review: bool = Field(default=False)
     uncategorized_reason: Optional[str] = Field(default=None, max_length=50)
+    transaction_kind: str = Field(default="spending", max_length=16)

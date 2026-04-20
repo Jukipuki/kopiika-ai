@@ -20,6 +20,37 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+VALID_KINDS: frozenset[str] = frozenset({"spending", "income", "savings", "transfer"})
+
+# Per tech spec §2.3 — which categories are valid for each transaction_kind.
+# `spending` is a catch-all *except* `savings` (savings transfers are their own kind).
+# `income` only ever lands in `other` or `uncategorized` (incoming flows aren't
+# bucketed by merchant category). `savings` and `transfer` are 1:1 with their
+# eponymous categories.
+KIND_CATEGORY_RULES: dict[str, frozenset[str]] = {
+    "spending": VALID_CATEGORIES - frozenset({"savings"}),
+    "income": frozenset({"other", "uncategorized"}),
+    "savings": frozenset({"savings"}),
+    "transfer": frozenset({"transfers"}),
+}
+
+
+def kind_by_sign(amount: int) -> str:
+    """Sign-based default for `transaction_kind` until the LLM emits one (Story 11.3)."""
+    return "income" if amount > 0 else "spending"
+
+
+def validate_kind_category(kind: str, category: str) -> bool:
+    """Return True if (kind, category) is a valid combination per the matrix.
+
+    Does not raise — callers decide whether to raise or fall back.
+    """
+    allowed = KIND_CATEGORY_RULES.get(kind)
+    if allowed is None:
+        return False
+    return category in allowed
+
+
 def _build_prompt(transactions: list[dict]) -> str:
     """Build the categorization prompt for a batch of transactions."""
     categories = (
@@ -65,10 +96,14 @@ def _parse_llm_response(
             if r:
                 raw_category = r.get("category", "other")
                 category = raw_category if raw_category in VALID_CATEGORIES else "other"
+                raw_kind = r.get("transaction_kind")
+                transaction_kind = raw_kind if raw_kind in VALID_KINDS else kind_by_sign(txn["amount"])
                 parsed.append({
                     "transaction_id": txn["id"],
                     "category": category,
                     "confidence_score": float(r.get("confidence", 0.0)),
+                    "transaction_kind": transaction_kind,
+                    "flagged": False,
                     "uncategorized_reason": None,
                 })
             else:
@@ -76,6 +111,8 @@ def _parse_llm_response(
                     "transaction_id": txn["id"],
                     "category": "other",
                     "confidence_score": 0.0,
+                    "transaction_kind": kind_by_sign(txn["amount"]),
+                    "flagged": False,
                     "uncategorized_reason": None,
                 })
         return parsed
@@ -86,6 +123,8 @@ def _parse_llm_response(
                 "transaction_id": txn["id"],
                 "category": "uncategorized",
                 "confidence_score": 0.0,
+                "transaction_kind": kind_by_sign(txn["amount"]),
+                "flagged": True,
                 "uncategorized_reason": "parse_failure",
             }
             for txn in transactions
@@ -144,7 +183,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
             categorized.append({
                 "transaction_id": txn["id"],
                 "category": category,
-                "confidence_score": 1.0,
+                "confidence_score": 0.95,
+                "transaction_kind": "spending",
                 "flagged": False,
                 "uncategorized_reason": None,
             })
@@ -193,6 +233,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                                 "transaction_id": txn["id"],
                                 "category": "uncategorized",
                                 "confidence_score": 0.0,
+                                "transaction_kind": kind_by_sign(txn["amount"]),
+                                "flagged": True,
                                 "uncategorized_reason": "llm_unavailable",
                             })
         except CircuitBreakerOpenError:
@@ -218,6 +260,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                                 "transaction_id": txn["id"],
                                 "category": "uncategorized",
                                 "confidence_score": 0.0,
+                                "transaction_kind": kind_by_sign(txn["amount"]),
+                                "flagged": True,
                                 "uncategorized_reason": "llm_unavailable",
                             })
             except CircuitBreakerOpenError:
@@ -229,6 +273,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         "transaction_id": txn["id"],
                         "category": "uncategorized",
                         "confidence_score": 0.0,
+                        "transaction_kind": kind_by_sign(txn["amount"]),
+                        "flagged": True,
                         "uncategorized_reason": "llm_unavailable",
                     })
 

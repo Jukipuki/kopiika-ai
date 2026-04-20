@@ -226,11 +226,11 @@ development_status:
   # Story 11.4 is CONDITIONAL — implement only if Story 11.3 golden-set accuracy < 90%.
   epic-11: in-progress
   11-1-golden-set-evaluation-harness-for-categorization: done
-  11-2-transaction-kind-field-expanded-category-taxonomy: backlog
+  11-2-transaction-kind-field-expanded-category-taxonomy: done
   11-3-enriched-llm-categorization-prompt-kind-category-mcc-signed-amount: backlog
   11-4-description-pattern-pre-pass-conditional: backlog
   11-5-post-parse-validation-layer-partial-import-semantics: done
-  11-6-encoding-detection-with-mojibake-flagging: backlog
+  11-6-encoding-detection-with-mojibake-flagging: done
   11-7-ai-assisted-schema-detection-bank-format-registry: backlog
   11-8-low-confidence-categorization-review-queue: backlog
   11-9-observability-signals-for-ingestion-categorization: backlog
