@@ -1,4 +1,4 @@
-# generated: 2026-04-19
+# generated: 2026-04-19 (updated: 2026-04-19 — added Epic 11 + Story 4.9 from architectural session)
 # project: kopiika-ai
 # project_key: NOKEY
 # tracking_system: file-system
@@ -132,6 +132,7 @@ development_status:
   4-6-health-score-history-trends: done
   4-7-month-over-month-spending-comparison: done
   4-8-category-spending-breakdown: done
+  4-9-savings-ratio-wired-to-transaction-kind: backlog
   epic-4-retrospective: optional
 
   # Epic 5: Data Privacy, Trust & Consent
@@ -216,3 +217,21 @@ development_status:
   10-10-chat-history-deletion: backlog
   10-11-abuse-rate-limit-enforcement: backlog
   epic-10-retrospective: optional
+
+  # Epic 11: Ingestion & Categorization Hardening
+  # ADRs: ADR-0001 (transaction-kind-first-class), ADR-0002 (ai-assisted-schema-detection)
+  # Sprint 1 (parallel): 11.1 → 11.2 → 11.3 (categorization track); 11.5 + 11.6 (parsing track)
+  # Sprint 2: 11.4 (conditional on 11.3 accuracy < 90%), 11.7, 11.8
+  # Sprint 3: 11.9, then Story 4.9 (cross-epic, depends on 11.2 + 11.3)
+  # Story 11.4 is CONDITIONAL — implement only if Story 11.3 golden-set accuracy < 90%.
+  epic-11: backlog
+  11-1-golden-set-evaluation-harness-for-categorization: backlog
+  11-2-transaction-kind-field-expanded-category-taxonomy: backlog
+  11-3-enriched-llm-categorization-prompt-kind-category-mcc-signed-amount: backlog
+  11-4-description-pattern-pre-pass-conditional: backlog
+  11-5-post-parse-validation-layer-partial-import-semantics: backlog
+  11-6-encoding-detection-with-mojibake-flagging: backlog
+  11-7-ai-assisted-schema-detection-bank-format-registry: backlog
+  11-8-low-confidence-categorization-review-queue: backlog
+  11-9-observability-signals-for-ingestion-categorization: backlog
+  epic-11-retrospective: optional

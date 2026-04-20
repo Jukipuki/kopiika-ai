@@ -24,7 +24,7 @@ def _build_prompt(transactions: list[dict]) -> str:
     """Build the categorization prompt for a batch of transactions."""
     categories = (
         "groceries, restaurants, transport, entertainment, utilities, healthcare, "
-        "shopping, travel, education, finance, subscriptions, fuel, atm_cash, government, other"
+        "shopping, travel, education, finance, subscriptions, fuel, atm_cash, government, transfers, other"
     )
     lines = []
     for i, txn in enumerate(transactions, start=1):

@@ -7,7 +7,7 @@ shopping, travel, education, finance, subscriptions, fuel, atm_cash, government,
 VALID_CATEGORIES: frozenset[str] = frozenset({
     "groceries", "restaurants", "transport", "entertainment", "utilities",
     "healthcare", "shopping", "travel", "education", "finance",
-    "subscriptions", "fuel", "atm_cash", "government", "other",
+    "subscriptions", "fuel", "atm_cash", "government", "transfers", "other",
     "uncategorized",
 })
 
@@ -116,6 +116,9 @@ MCC_TO_CATEGORY: dict[int, str] = {
     # ATM / Cash
     6011: "atm_cash",   # Automated Cash Disbursements (ATM)
     6012: "atm_cash",   # Financial Institutions – Merchandise and Services
+
+    # Transfers (inter-account and P2P — excluded from spending analysis)
+    4829: "transfers",  # Wire Transfer Money Orders
 
     # Finance
     6099: "finance",   # Financial Institutions – Other

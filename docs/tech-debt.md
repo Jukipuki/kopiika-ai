@@ -701,6 +701,24 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
+### TD-042 — Epic 11 Story 11.4 (description-pattern pre-pass) deferred pending Story 11.3 measurement [MEDIUM]
+
+**Where:** [_bmad-output/planning-artifacts/epics.md](_bmad-output/planning-artifacts/epics.md) — Epic 11 Story 11.4, [_bmad-output/planning-artifacts/tech-spec-ingestion-categorization.md](_bmad-output/planning-artifacts/tech-spec-ingestion-categorization.md) §3.5
+
+**Problem:** Story 11.4 introduces a deterministic description-pattern pre-pass (self-transfer, deposit top-up, Cyrillic-name P2P) to catch categorization failures the LLM can't reliably handle on its own. It is scoped as **conditional**: implemented only if Story 11.3's golden-set run reports `category_accuracy < 0.90` or `kind_accuracy < 0.90` on either axis. If the enriched prompt (Story 11.3) clears 90% on both axes, the pre-pass is not built — but the need could re-emerge later as the transaction mix shifts (new banks, new merchant patterns, drift in LLM behavior after model upgrades).
+
+**Why deferred:** Measurement-first decision. Building pre-pass rules without evidence that they're needed would add permanent maintenance burden (every rule needs test fixtures, every bank quirk tempts a new rule, rules drift silently as merchant naming changes). Deferring until measured is deliberate. This TD exists so that if the measurement flips in a future run — or if post-launch production data shows accuracy regression — the story is trackable and scopes are already drafted.
+
+**Fix shape:**
+1. Re-run the golden-set harness after any of: (a) new bank format onboarding, (b) LLM provider/model swap (see Epic 9), (c) significant prompt change, (d) user-reported mis-categorizations clustering on a specific pattern.
+2. If measured accuracy falls below 90% on either axis: scope in Story 11.4 per the draft ACs already in epics.md. Rules are limited to the *demonstrated* failure patterns — no speculative additions.
+3. After 11.4 lands, re-run the harness to confirm the threshold is met.
+4. Close this TD entry.
+
+**Surfaced in:** Epic 11 planning session 2026-04-19 (architect review of parsing-and-categorization-issues.md)
+
+---
+
 ## Resolved
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]

@@ -212,6 +212,8 @@ def _upsert_profile(
 
     category_totals: dict[str, int] = {}
     for t in transactions:
+        if t.amount >= 0:
+            continue  # only accumulate expenses; income/transfers skew category totals
         cat = t.category or "uncategorized"
         category_totals[cat] = category_totals.get(cat, 0) + t.amount
 

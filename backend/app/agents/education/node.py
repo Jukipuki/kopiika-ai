@@ -31,10 +31,11 @@ def _build_spending_summary(
 
     totals: dict[str, int] = defaultdict(int)
     for txn in transactions:
+        amount = txn.get("amount", 0)
+        if amount >= 0:
+            continue  # skip income and zero-value entries
         category = cat_lookup.get(txn.get("id", ""), "other")
-        # Amounts are in kopiykas (cents), negative = spending
-        amount = abs(txn.get("amount", 0))
-        totals[category] += amount
+        totals[category] += abs(amount)
 
     # Sort by total spend descending, take top 3
     top_categories = sorted(totals.items(), key=lambda x: x[1], reverse=True)[:3]

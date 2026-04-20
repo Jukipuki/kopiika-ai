@@ -314,6 +314,11 @@ NFR44: Safety observability — CloudWatch metrics for Guardrails block rate, gr
 | FR70 | Epic 10 | Chat-history deletion; cascades with account deletion (FR31) |
 | FR71 | Epic 10 | Separate `chat_processing` consent (distinct from `ai_processing`); chat blocked until granted |
 | FR72 | Epic 10 | Chat ships ungated; subscription gate deferred to payments-epic follow-up (TD-041) |
+| FR73 | Epic 11 | Classify every transaction on a `transaction_kind` axis (spending/income/savings/transfer) alongside category (ADR-0001) |
+| FR74 | Epic 11 | Expanded category taxonomy (`savings`, `transfers_p2p`) with kind-category compatibility enforced at persistence |
+| FR75 | Epic 11 | Low-confidence transaction review queue with resolve/dismiss actions and categorization overrides |
+| FR76 | Epic 11 | Partial-import on parse with per-row rejection reasons and mojibake flagging surfaced in upload UX |
+| FR77 | Epic 11 | AI-assisted schema detection for unknown bank formats with fingerprint cache and operator-editable registry (ADR-0002) |
 
 ## Epic List
 
@@ -363,6 +368,14 @@ Users can converse with an AI agent grounded in their own financial data, with d
 **FRs covered:** FR64, FR65, FR66, FR67, FR68, FR69, FR70, FR71, FR72
 **NFRs covered:** NFR34, NFR35, NFR36, NFR37, NFR38, NFR39, NFR41 (see NFR list below)
 **Dependencies:** Epic 9 (especially 9.4 region gate, 9.5 multi-provider llm.py, 9.7 IAM)
+
+### Epic 11: Ingestion & Categorization Hardening
+Structural fixes to the parsing and categorization pipeline identified in the April 2026 incident analysis: `transaction_kind` as a first-class field (enabling Savings Ratio and eliminating abs()-on-income bug class), expanded categories (`savings`, `transfers_p2p`), enriched LLM prompt (description + signed amount + MCC + direction), golden-set accuracy gate, AI-assisted schema detection for unknown bank formats, post-parse validation layer, encoding detection, and a low-confidence review queue.
+**FRs covered:** FR73, FR74, FR75, FR76, FR77
+**ADRs:** ADR-0001 (transaction kind first-class), ADR-0002 (AI-assisted schema detection)
+**Tech spec:** `tech-spec-ingestion-categorization.md`
+**Dependencies:** Epic 2 (ingestion pipeline), Epic 3 (categorization agent)
+**Cross-epic consumer:** Story 4.9 (Savings Ratio wiring) in Epic 4
 
 ## Epic 1: Project Foundation & User Authentication
 
@@ -1226,6 +1239,44 @@ So that I understand my spending distribution.
 **When** data is fetching
 **Then** TanStack Query manages all requests with proper loading skeletons and error boundaries
 
+### Story 4.9: Savings Ratio wired to `transaction_kind`
+
+As a **user**,
+I want my Financial Health Score's Savings Ratio component to reflect what I actually save each month,
+So that the score becomes a trustworthy signal of my financial health rather than a constant zero.
+
+**Context:** The Savings Ratio component currently renders `0/100` for every user because the categorization pipeline has no reliable way to distinguish capital retention (savings) from consumption (spending). Epic 11 introduces `transaction_kind` as a first-class field (ADR-0001). This story is the downstream wiring — the Savings Ratio calculator reads `transaction_kind` directly instead of inferring it from category heuristics.
+
+**Depends on:** Story 11.2 (schema migration) and Story 11.3 (enriched prompt emits `transaction_kind`)
+
+**Acceptance Criteria:**
+
+**Given** a user has categorized transactions for a period with at least one `transaction_kind = savings` entry and at least one `transaction_kind = income` entry
+**When** the Savings Ratio is computed for that period
+**Then** the ratio equals `sum(abs(amount) where kind='savings') / sum(abs(amount) where kind='income')`, clamped to `[0.0, 1.0]`, and rendered as a 0–100 integer in the Health Score panel
+
+**Given** a user has no `transaction_kind = income` entries in the period
+**When** the Savings Ratio is computed
+**Then** the Savings Ratio sub-score is `null` and the UI displays "Not enough data yet" rather than `0/100`
+
+**Given** a user has `transaction_kind = income` entries but no `transaction_kind = savings` entries
+**When** the Savings Ratio is computed
+**Then** the sub-score is `0/100` and the UI indicates this is a real zero (not a "no data" state)
+
+**Given** Epic 11 Story 11.2 has landed and transactions have `transaction_kind` populated
+**When** the Savings Ratio calculator runs
+**Then** it reads `transaction_kind` directly from transactions; it does NOT infer kind from category labels, amount signs, or MCC
+
+**Given** a Health Score integration test fixture containing a deposit top-up and a salary inflow
+**When** the Health Score is computed
+**Then** Savings Ratio reports a non-zero value that matches the expected `savings/income` ratio to within 1% (tolerance accounts for rounding)
+
+**Given** a user who was onboarded before Epic 11 and has no categorized historical data with `transaction_kind`
+**When** they view the Health Score
+**Then** the Savings Ratio sub-score displays "Not enough data yet" — greenfield assumption applies (no backfill scope in this story)
+
+---
+
 ## Epic 5: Data Privacy, Trust & Consent
 
 Users can understand how their data is used, consent to AI processing, view stored data, delete all their data, and see appropriate disclaimers — building the trust foundation for a financial product.
@@ -2066,6 +2117,330 @@ _Story numbering reflects intended delivery order. The UX spec (Stories 10.3a + 
 - Proactive chat notifications / push
 - Multi-language beyond UA + EN
 - New RAG corpus content creation (uses existing corpus)
+
+---
+
+## Epic 11: Ingestion & Categorization Hardening
+
+**Status:** Backlog
+**FRs covered:** FR73, FR74, FR75, FR76, FR77
+**ADRs:** ADR-0001 (transaction kind first-class), ADR-0002 (AI-assisted schema detection)
+**Tech spec:** [tech-spec-ingestion-categorization.md](./tech-spec-ingestion-categorization.md)
+**Source analysis:** [parsing-and-categorization-issues.md](../implementation-artifacts/parsing-and-categorization-issues.md)
+**Depends on:** Epic 2 (ingestion pipeline), Epic 3 (categorization agent)
+**Cross-epic consumer:** Story 4.9 (Savings Ratio wiring)
+
+### Goal
+
+Fix structural weaknesses in the ingestion + categorization pipeline identified in the April 2026 incident analysis. Two independent tracks delivered in parallel:
+
+- **Categorization track (measurement-first):** Introduce `transaction_kind` as a first-class field, extend the category taxonomy (`savings`, `transfers_p2p`), enrich the LLM prompt with MCC + signed amount + direction, and gate further rule-based work behind a golden-set accuracy measurement.
+- **Parsing track:** Replace brittle heuristic column detection with AI-assisted schema detection for unknown formats (cached by header fingerprint), add a post-parse validation layer with partial-import semantics, and handle encoding variations.
+
+### Success Criteria
+
+- Categorization accuracy on the golden set ≥ 90% on **both** `category` and `transaction_kind` axes (independently measured)
+- Savings Ratio in the Health Score produces non-zero values for users with deposit transactions (validated via Story 4.9)
+- New bank formats can be uploaded without a code change; header-fingerprint cache hit rate ≥ 95% after the second upload
+- Parse errors surface as structured partial-import warnings rather than silent corruption (validation layer catches all rules in tech spec §5.1)
+- `transfer`-kind transactions no longer inflate or hide the `finance` category
+
+### Delivery Order
+
+**Sprint 1 (parallel):**
+- Story 11.1 (golden-set harness), Story 11.2 (schema), Story 11.3 (enriched prompt) — categorization track, sequenced
+- Story 11.5 (validation), Story 11.6 (encoding) — parsing track, parallel with categorization
+
+**Sprint 2:**
+- Story 11.4 (pre-pass rules) — **only if 11.3 measurement < 90%**
+- Story 11.7 (AI schema detection + registry)
+- Story 11.8 (review queue)
+
+**Sprint 3:**
+- Story 11.9 (observability)
+- Story 4.9 (Savings Ratio wiring — owned by Epic 4 but enabled here)
+
+### Stories
+
+### Story 11.1: Golden-Set Evaluation Harness for Categorization
+
+As a **developer**,
+I want a labeled golden set of real Monobank transactions with a pytest-driven accuracy harness,
+So that every categorization pipeline change is measured against a known ground truth before merge.
+
+**Acceptance Criteria:**
+
+**Given** real Monobank statements redacted to remove PII
+**When** the golden set is authored
+**Then** `backend/tests/fixtures/categorization_golden_set/golden_set.jsonl` contains at least 50 labeled transactions, each with `id`, `description`, `amount_kopiykas`, `mcc`, `expected_category`, `expected_kind`, `edge_case_tag`, and `notes` fields per the schema in tech spec §4.1
+
+**Given** the edge-case coverage checklist in tech spec §4.2
+**When** the golden set is reviewed
+**Then** every listed edge case category is represented by the minimum number of examples specified (self-transfers ≥ 3, deposit top-up ≥ 3, P2P ≥ 3, salary ≥ 2, refunds ≥ 2, standard spending ≥ 10, MCC 4829 ambiguous ≥ 5, large outliers ≥ 3, mojibake ≥ 2, non-UAH currency ≥ 2)
+
+**Given** the pytest harness at `backend/tests/agents/categorization/test_golden_set.py`
+**When** it runs against the current categorization pipeline
+**Then** it computes per-axis accuracy (category, kind, joint), writes a JSON run report to `runs/<timestamp>.json`, and asserts `kind_accuracy >= 0.90 AND category_accuracy >= 0.90` — failing either fails CI
+
+**Given** the harness is run immediately after Story 11.1 lands (before Story 11.3)
+**When** it executes against the *pre-change* pipeline
+**Then** it produces the **baseline** accuracy report that Story 11.3 will be measured against; baseline numbers are captured in the Story 11.3 story file
+
+**Given** the golden set fixture is checked into version control
+**When** future pipeline changes are proposed
+**Then** a run report diff (previous vs current) is part of the PR review artifact
+
+### Story 11.2: `transaction_kind` Field + Expanded Category Taxonomy
+
+As the **system**,
+I want `transaction_kind` stored as a first-class field on every transaction, alongside an expanded category taxonomy,
+So that downstream consumers (health score, spending breakdowns, pattern detection) can filter by cash-flow semantics without re-deriving them from ad-hoc rules.
+
+**Acceptance Criteria:**
+
+**Given** the Alembic migration for Epic 11
+**When** it runs
+**Then** the `transactions` table gains `transaction_kind VARCHAR(16) NOT NULL DEFAULT 'spending' CHECK (transaction_kind IN ('spending','income','savings','transfer'))` per tech spec §2.1
+
+**Given** the categorization module at `backend/app/agents/categorization/mcc_mapping.py`
+**When** `VALID_CATEGORIES` is updated
+**Then** it includes `savings`, `transfers_p2p`, and `charity` in addition to the existing categories, per tech spec §2.2; MCC 8398 (Charitable and Social Service Organizations) is also added to `MCC_TO_CATEGORY` with value `"charity"`
+
+**Given** a transaction is being persisted with a `(transaction_kind, category)` pair that violates the compatibility matrix in tech spec §2.3
+**When** the repository layer validates it
+**Then** it raises `ValueError("kind/category mismatch: …")` and the caller must either retry with a valid pair or fall back to `(category='uncategorized', kind=<by-sign>, confidence=0.0)`
+
+**Given** the MCC-pass stage encounters MCC 4829 (Wire Transfer / Money Order)
+**When** it runs
+**Then** it emits `(category='uncategorized', kind=null, confidence=0.0)` to force the LLM pass to resolve the ambiguity — it does NOT default to `finance`
+
+**Given** any other MCC with a deterministic mapping
+**When** the MCC pass runs
+**Then** it emits `(category=<mapped>, kind='spending', confidence=0.95)` — all MCC-classifiable merchant categories are consumption outflows
+
+### Story 11.3: Enriched LLM Categorization Prompt (Kind + Category + MCC + Signed Amount)
+
+As the **system**,
+I want the LLM categorization prompt to receive signed amounts, MCC, and direction, and to emit both `category` and `transaction_kind` with confidence,
+So that categorization accuracy on the golden set meets the 90% threshold for both axes without needing rule-based pre-passes.
+
+**Depends on:** Story 11.1 (baseline measurement), Story 11.2 (schema + VALID_CATEGORIES).
+
+**Acceptance Criteria:**
+
+**Given** the batch prompt builder in `backend/app/agents/categorization/node.py`
+**When** it constructs the prompt for a transaction batch
+**Then** each transaction line includes: `id`, `description`, **signed amount in UAH** (negative for outflow, positive for inflow), **MCC code** when available, and **direction** (`debit`/`credit`) — per tech spec §3.3
+
+**Given** the prompt template
+**When** it is rendered
+**Then** it includes the two-axis instruction block defining `transaction_kind` (spending/income/savings/transfer) with explicit rules (transfers_p2p is always spending, savings requires kind=savings, transfers requires kind=transfer) and 3–5 hand-authored few-shot examples covering self-transfer, deposit top-up, P2P to individual, salary inflow, and an ambiguous case
+
+**Given** the LLM response parser
+**When** it processes the JSON array response
+**Then** it accepts `{"id", "category", "transaction_kind", "confidence"}` per row; missing `transaction_kind` falls back to sign-based default (`kind='spending'` for negative amounts, `kind='income'` for positive); invalid category → `category='other'`; kind/category mismatch → `category='uncategorized'`, `kind=<by-sign>`, `confidence=0.0`
+
+**Given** the golden-set harness from Story 11.1
+**When** it runs against this story's pipeline changes
+**Then** both `category_accuracy` and `kind_accuracy` meet or exceed `0.90` — if either is below, Story 11.4 (pre-pass rules) is triggered; if both pass, Story 11.4 is deferred to tech-debt
+
+**Given** the run report from the above harness execution
+**When** the story is closed
+**Then** baseline vs. post-change accuracy is recorded in the story file and linked in the Epic 11 retrospective
+
+**Given** the enriched prompt is finalized
+**When** the golden-set harness runs
+**Then** it executes the batch against **both** Claude Haiku (current production model) **and** Claude Sonnet, and the run report records per-axis accuracy, median latency, and token cost for each — so the Haiku-vs-Sonnet choice is a measured decision, not a speculative one. Model swap (if any) remains out of scope for this story; decision and follow-up story are captured in the Epic 11 retrospective.
+
+### Story 11.4: Description-Pattern Pre-Pass (Conditional)
+
+As the **system**,
+I want a deterministic description-pattern pre-pass for the transaction types the LLM demonstrably mis-classifies,
+So that golden-set accuracy clears the 90% threshold without forever increasing LLM cost or reasoning load.
+
+**This story is CONDITIONAL.** It is implemented only if Story 11.3's golden-set run reports `category_accuracy < 0.90` or `kind_accuracy < 0.90`. Otherwise it is deferred to tech-debt (`TD-NNN`) and closed as "not needed."
+
+**Acceptance Criteria (if triggered):**
+
+**Given** the failure patterns identified in Story 11.3's run report
+**When** pre-pass rules are authored
+**Then** only rules for *demonstrated* failure patterns are added — no speculative rules, and the rule count is capped at 5 to limit maintenance burden (per tech spec §3.5)
+
+**Given** a transaction description matching the self-transfer pattern `/(З|From|To|На) (гривневого|UAH|EUR|USD) рахунк[уа]/i` with both legs visible in the same batch
+**When** the pre-pass runs
+**Then** it emits `(category='transfers', kind='transfer', confidence=0.9)` and the LLM pass is skipped for this transaction
+
+**Given** a transaction description matching `/Поповнення (депозиту|вкладу)/i`
+**When** the pre-pass runs
+**Then** it emits `(category='savings', kind='savings', confidence=0.9)`
+
+**Given** a transaction description matching the Cyrillic full-name pattern `/^[А-ЯЁЇІЄҐ][а-яёїієґ]+ [А-ЯЁЇІЄҐ][а-яёїієґ]+$/` with a debit amount
+**When** the pre-pass runs
+**Then** it emits `(category='transfers_p2p', kind='spending', confidence=0.85)`
+
+**Given** the golden-set harness from Story 11.1
+**When** it runs with Story 11.4's pre-pass enabled
+**Then** both `category_accuracy` and `kind_accuracy` now meet or exceed `0.90` — if they still don't, the story is not complete; add more targeted rules or revisit prompt design
+
+### Story 11.5: Post-Parse Validation Layer with Partial-Import Semantics
+
+As a **user**,
+I want invalid or suspect rows in my uploaded statement to be surfaced as warnings rather than silently imported as corrupt data,
+So that I can trust that imported transactions are real and that anything unreliable is flagged for my review.
+
+**Acceptance Criteria:**
+
+**Given** any parser (monobank, privatbank, generic, or AI-schema-detected) returns rows
+**When** the validation layer runs per tech spec §5.1
+**Then** it applies the rules: date plausibility (`[today - 5y, today + 1d]`), amount presence (non-null, non-zero), amount type (numeric after cleanup), sign convention consistency, description-or-identifier presence, and duplicate-rate threshold (reject wholesale if > 20% identical)
+
+**Given** individual row violations (date out of range, null amount, non-numeric amount, no identifying info)
+**When** the validation layer encounters them
+**Then** those rows are **rejected** (not persisted) with a `reason` tag; the rest of the upload proceeds
+
+**Given** sign-convention violations on individual rows
+**When** the validation layer encounters them
+**Then** the row is **flagged with a warning but still persisted** (sign is less likely to be catastrophically wrong than missing amounts)
+
+**Given** the suspicious-duplicate-rate threshold is exceeded
+**When** the validation layer runs
+**Then** the parser's output is **rejected wholesale** — no rows persisted — and the upload returns a structured error requesting the user re-export or contact support
+
+**Given** a completed (or partially-completed) upload
+**When** the ingestion API responds
+**Then** the response matches tech spec §5.2: `{upload_id, imported_transaction_count, rejected_rows: [{row_number, reason, raw_row}], warnings: [{row_number, reason}], mojibake_detected, schema_detection_source}`
+
+**Given** the upload completion UI (existing Story 2.8 component)
+**When** the response contains `rejected_rows` or `warnings`
+**Then** the UI displays a "couldn't process N rows" expandable section listing the row numbers and reasons — the user can continue to the Teaching Feed regardless
+
+### Story 11.6: Encoding Detection with Mojibake Flagging
+
+As a **user uploading a statement with unusual encoding**,
+I want the pipeline to auto-detect the file encoding and surface a warning if descriptions look corrupted,
+So that merchant names used for categorization aren't silently reduced to garbage strings.
+
+**Acceptance Criteria:**
+
+**Given** a raw uploaded file
+**When** ingestion begins
+**Then** `charset-normalizer` is invoked on the bytes to detect encoding; the detected encoding and chaos score are logged per tech spec §7
+
+**Given** decoding produces more than 5% U+FFFD replacement characters across transaction description fields
+**When** the partial-import response is constructed
+**Then** `mojibake_detected: true` is set in the response and the upload is tagged in observability for alerting
+
+**Given** decoding fails under the detected encoding
+**When** the pipeline runs
+**Then** it falls back to UTF-8 with `errors="replace"` rather than raising an unhandled exception; the upload proceeds with `mojibake_detected: true` flagged
+
+**Given** the detected encoding is UTF-8 with high confidence
+**When** ingestion runs
+**Then** no warning is emitted and no observability flag is set (happy-path behavior unchanged)
+
+### Story 11.7: AI-Assisted Schema Detection + `bank_format_registry`
+
+As a **user uploading a statement from a bank the system has never seen**,
+I want the upload to work without a developer writing a new parser,
+So that I can use the product with statements from any reasonable bank export format.
+
+**Acceptance Criteria:**
+
+**Given** an upload arrives with a header row the system hasn't seen before
+**When** the ingestion flow runs
+**Then** the header row is normalized (NFKC, lowercase, whitespace-collapsed), a SHA-256 fingerprint is computed (tech spec §6.1), and `bank_format_registry` is queried for a matching row
+
+**Given** a fingerprint miss
+**When** the AI schema-detection path runs
+**Then** the LLM is called with the header row and up to 5 sample data rows; it returns the JSON mapping defined in tech spec §2.4 plus a `confidence` and `bank_hint`; the result is persisted as a new `bank_format_registry` row
+
+**Given** a fingerprint hit with only `detected_mapping` (no override)
+**When** the ingestion flow runs
+**Then** `detected_mapping` is used to parse; `use_count` is incremented and `last_used_at` updated; no LLM call occurs
+
+**Given** a fingerprint hit with `override_mapping` populated by an operator
+**When** the ingestion flow runs
+**Then** `override_mapping` takes precedence over `detected_mapping`; no LLM call occurs
+
+**Given** a detected schema produces a partial-import with > 30% of rows rejected by the validation layer
+**When** the result is evaluated
+**Then** the detection is logged as suspect (`parser.schema_detection` event with a suspect flag), the partial import still proceeds, and the row remains in `bank_format_registry` with its original `detection_confidence` — operator review is needed but not automatic
+
+**Given** known-bank parsers (Monobank, PrivatBank) in `backend/app/agents/ingestion/parsers/`
+**When** their fingerprint matches the statement header
+**Then** they continue to run as the happy path — no LLM call and no registry interaction for known formats unless the parser fails validation (in which case the AI path is the fallback)
+
+**Given** the AI schema-detection path fails (LLM unreachable, invalid JSON response)
+**When** this occurs
+**Then** the pipeline falls back to `generic.py`; a `parser.schema_detection` event logs the fallback; validation layer applies normally to the generic parser's output
+
+### Story 11.8: Low-Confidence Categorization Review Queue
+
+As a **user**,
+I want transactions the system wasn't confident about categorizing to surface in a review queue,
+So that I can correct them and the pipeline stops silently marking them as "uncategorized."
+
+**Acceptance Criteria:**
+
+**Given** a transaction's categorization confidence is below `0.6`
+**When** categorization completes
+**Then** a `uncategorized_review_queue` row is inserted (per tech spec §2.5) with `suggested_category`, `suggested_kind`, `status='pending'`; the transaction itself is persisted with `category='uncategorized'`
+
+**Given** a transaction's categorization confidence is between `0.6` and `0.85`
+**When** categorization completes
+**Then** the transaction is auto-applied with its LLM-suggested category/kind, and a soft-flag event is logged (`categorization.confidence_tier` with `tier=soft-flag`); no review queue entry is created
+
+**Given** a transaction's categorization confidence is `0.85` or above
+**When** categorization completes
+**Then** the transaction is auto-applied silently (no review queue, no soft-flag log)
+
+**Given** the review queue API
+**When** a client calls `GET /api/v1/transactions/review-queue?status=pending`
+**Then** it returns a paginated list of queue entries with transaction context (description, amount, date), `suggested_category`, `suggested_kind`, and `categorization_confidence`
+
+**Given** a user resolves a queue entry via `POST /api/v1/transactions/review-queue/{id}/resolve` with `{category, kind}`
+**When** the API validates the payload
+**Then** the `(kind, category)` pair is checked against the compatibility matrix (tech spec §2.3); invalid pairs return 400; valid pairs update the underlying transaction and set `status='resolved'`
+
+**Given** a user dismisses a queue entry via `POST /api/v1/transactions/review-queue/{id}/dismiss`
+**When** the API runs
+**Then** the entry's `status` becomes `dismissed`, the transaction remains as `uncategorized`, and it no longer appears in `status=pending` listings
+
+**Given** the account settings page
+**When** the user views it and there are pending queue entries
+**Then** a "Review uncategorized transactions (N)" link is shown; clicking it opens `/settings/review-queue` which lists entries with resolve/dismiss actions per tech spec §8.2
+
+### Story 11.9: Observability Signals for Ingestion & Categorization
+
+As an **operator**,
+I want dashboards and alerts for the categorization confidence distribution, schema-detection outcomes, validation rejection rate, and mojibake rate,
+So that silent degradation of the ingestion pipeline is detected before users complain.
+
+**Acceptance Criteria:**
+
+**Given** the structured log events defined in tech spec §9
+**When** the ingestion and categorization pipelines run
+**Then** `categorization.confidence_tier`, `categorization.kind_mismatch`, `parser.schema_detection`, `parser.validation_rejected`, and `parser.mojibake_detected` are emitted with the fields specified (correlation IDs already present per Story 6.4)
+
+**Given** the operator dashboard (existing Grafana deployment per Story 6.5)
+**When** new panels are added
+**Then** it displays: categorization confidence distribution (histogram), golden-set accuracy trend (last-run value + history), unknown-format detection rate + cache hit rate, validation rejection rate by reason, mojibake rate per upload
+
+**Given** alert rules are configured
+**When** thresholds are breached
+**Then** the following trigger operator notifications: categorization confidence **median < 0.7 over 24h** (warning), validation rejection rate **> 15% of rows over 24h** (warning); AI-schema-detection fallback to `generic.py` is **info-only, no page**
+
+**Given** the operator runbook (docs/operator-runbook.md)
+**When** Story 11.9 lands
+**Then** it includes a new section covering: how to read the confidence distribution panel, how to inspect `bank_format_registry` rows and apply `override_mapping`, how to triage a high validation-rejection alert
+
+### Out of Scope for Epic 11
+
+- **Backfill of historical transactions** — greenfield; not needed
+- **Operator UI for bank_format_registry overrides** — DB-only for now; full UI deferred to a future story
+- **Split transactions** (one transaction → multiple kind events) — revisit only when product need emerges
+- **Multi-leg transfer matching** (pairing outbound and inbound legs of the same self-transfer) — an insight-layer concern, not categorization
+- **Deletion of `generic.py`** — sunset criteria defined in tech spec, execution is a future story after ≥ 2 quarters of clean AI-detection metrics
 
 ---
 

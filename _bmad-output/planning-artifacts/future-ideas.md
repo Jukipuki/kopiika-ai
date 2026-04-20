@@ -99,6 +99,9 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 - **Status:** Promoted to epics.md → Story 2.9. See FR62. Decision: unknown currencies flagged as warnings + stored with raw code, not silently defaulted to UAH.
 - **Scope:** Add CHF, JPY, CZK, TRY and other common currencies users are likely to see.
 
+**Exclude cancelled/refunded payments**
+- **Context:** There are cases when some transaction were cancelled/refunded afterwards. Currently, we count debit transaction as spending, and a following cancellation - a an income. This is not correct, and will inflate totals. Instead, we need need to spot such transactions and exclude them from any calculations. This must be done in scope a single statement file (easy), and when cancellation appeared in a following uploaded period (not so easy, probably will require a recalculation of previous periods or different, more granular data model).
+
 ### 4.4 AI pipeline quality
 
 **Finer-grained literacy level detection via engagement tracking**

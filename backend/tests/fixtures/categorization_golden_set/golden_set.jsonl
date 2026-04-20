@@ -1,0 +1,820 @@
+{
+    "id": "gs-001",
+    "description": "Переказ на картку",
+    "amount_kopiykas": -5000000,
+    "mcc": 4829,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "self_transfer",
+    "notes": "Ukrainian-locale outbound leg of an own-to-own card move; paired with the 'З гривневого рахунку ФОП' inflow at the same timestamp. Hand-labeled."
+}
+{
+    "id": "gs-002",
+    "description": "Transfer to card",
+    "amount_kopiykas": -5000000,
+    "mcc": 4829,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "self_transfer",
+    "notes": "English-locale outbound leg of an own-to-own card move; paired with a 'From UAH account' inflow at the same timestamp. Hand-labeled."
+}
+{
+    "id": "gs-003",
+    "description": "Top up «На Авто!»",
+    "amount_kopiykas": -33300,
+    "mcc": 4829,
+    "expected_category": "charity",
+    "expected_kind": "spending",
+    "edge_case_tag": "charity_via_4829",
+    "notes": "Monobank jar top-up for a military vehicle fundraiser ('На Авто' = for a vehicle); confirmed charity, not personal savings. Hand-labeled."
+}
+{
+    "id": "gs-004",
+    "description": "Deposit top-up",
+    "amount_kopiykas": -19998054,
+    "mcc": 4829,
+    "expected_category": "savings",
+    "expected_kind": "savings",
+    "edge_case_tag": "deposit_top_up",
+    "notes": "Large outbound USD deposit opening; English-locale canonical deposit marker. Large outlier ~200k UAH. Hand-labeled."
+}
+{
+    "id": "gs-005",
+    "description": "Поповнення депозиту",
+    "amount_kopiykas": -19998054,
+    "mcc": 4829,
+    "expected_category": "savings",
+    "expected_kind": "savings",
+    "edge_case_tag": "deposit_top_up",
+    "notes": "Large outbound USD deposit opening; Ukrainian-locale canonical deposit marker. Large outlier ~200k UAH. Hand-labeled."
+}
+{
+    "id": "gs-006",
+    "description": "Поповнення «На детектор FPV»",
+    "amount_kopiykas": -10000,
+    "mcc": 4829,
+    "expected_category": "charity",
+    "expected_kind": "spending",
+    "edge_case_tag": "charity_via_4829",
+    "notes": "Monobank jar top-up for an FPV drone-detector fundraiser — military charity jar, not a merchant purchase. Hand-labeled."
+}
+{
+    "id": "gs-007",
+    "description": "ФОП Політило Ніна Володимирівна",
+    "amount_kopiykas": -177900,
+    "mcc": 4829,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Direct outbound transfer to a Ukrainian sole proprietor (ФОП) on MCC 4829; underlying activity is a service/product purchase from an individual trader. Hand-labeled."
+}
+{
+    "id": "gs-008",
+    "description": "Олександр Б.",
+    "amount_kopiykas": -239000,
+    "mcc": 4829,
+    "expected_category": "transfers_p2p",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Outbound MCC 4829 transfer where counterparty is a person's name with initial — no merchant context, treated as P2P. Hand-labeled."
+}
+{
+    "id": "gs-009",
+    "description": "Oksana Medovoi",
+    "amount_kopiykas": -500000,
+    "mcc": 4829,
+    "expected_category": "transfers_p2p",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Outbound MCC 4829 transfer where counterparty is a full personal name (English locale). Hand-labeled."
+}
+{
+    "id": "gs-010",
+    "description": "LIQPAY*FOP Lutsenko Ev",
+    "amount_kopiykas": -122200,
+    "mcc": 5977,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "LIQPAY-rail payment to a named ФОП; MCC 5977 (cosmetics) indicates a merchant purchase rather than a pure P2P transfer. Hand-labeled."
+}
+{
+    "id": "gs-011",
+    "description": "FOP Ruban Olha Heorhii",
+    "amount_kopiykas": -53900,
+    "mcc": 5200,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Payment to a Ukrainian ФОП where MCC 5200 (home improvement) points to a retail category — merchant purchase. Hand-labeled."
+}
+{
+    "id": "gs-012",
+    "description": "V P.",
+    "amount_kopiykas": -500000,
+    "mcc": 4829,
+    "expected_category": "transfers_p2p",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Outbound MCC 4829 where counterparty is initials only — ambiguous but treated as P2P with no merchant context. Hand-labeled."
+}
+{
+    "id": "gs-013",
+    "description": "Кукушкін Роман Олексійович",
+    "amount_kopiykas": -156000,
+    "mcc": 4829,
+    "expected_category": "transfers_p2p",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Outbound MCC 4829 transfer where counterparty is a Cyrillic full name (first + patronymic). Hand-labeled."
+}
+{
+    "id": "gs-014",
+    "description": "FOP FETSYCH OLEKSANDR YUR",
+    "amount_kopiykas": -300000,
+    "mcc": 8021,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "Payment to a ФОП where MCC 8021 (dental) points to a specific service — merchant purchase not P2P. Hand-labeled."
+}
+{
+    "id": "gs-015",
+    "description": "LIQPAY*Dzikovskyy V.V.",
+    "amount_kopiykas": -165500,
+    "mcc": 5812,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "p2p_individual",
+    "notes": "LIQPAY-rail payment where the counterparty name looks personal but MCC 5812 (restaurants) indicates a food purchase. Hand-labeled."
+}
+{
+    "id": "gs-016",
+    "description": "З гривневого рахунку ФОП",
+    "amount_kopiykas": 1000000,
+    "mcc": 4829,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "salary_inflow",
+    "notes": "Ukrainian-locale inbound top-up from FOP business account — the payroll-equivalent income rail for a Ukrainian sole proprietor. Hand-labeled."
+}
+{
+    "id": "gs-017",
+    "description": "From UAH account",
+    "amount_kopiykas": 1000000,
+    "mcc": 4829,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "salary_inflow",
+    "notes": "English-locale inbound top-up from own UAH (FOP) account to personal card — income rail. Hand-labeled."
+}
+{
+    "id": "gs-018",
+    "description": "Скасування. Bolt Food",
+    "amount_kopiykas": 123300,
+    "mcc": 5811,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "refund",
+    "notes": "Ukrainian-locale reversal; 'Скасування.' prefix is the canonical cancellation marker. Hand-labeled."
+}
+{
+    "id": "gs-019",
+    "description": "Скасування. Oksana Medovoi",
+    "amount_kopiykas": 500000,
+    "mcc": 4829,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "refund",
+    "notes": "Ukrainian-locale reversal of a P2P debit; 'Скасування.' prefix on MCC 4829. Hand-labeled."
+}
+{
+    "id": "gs-020",
+    "description": "Cancellation. Bolt Food",
+    "amount_kopiykas": 107900,
+    "mcc": 5811,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "refund",
+    "notes": "English-locale reversal; 'Cancellation.' prefix is the canonical cancellation marker. Hand-labeled."
+}
+{
+    "id": "gs-021",
+    "description": "Cancellation. LIQPAY*TOV ASHAN UKRAY,KIYIV,UA",
+    "amount_kopiykas": 43800,
+    "mcc": 5399,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "refund",
+    "notes": "English-locale reversal of an Auchan purchase via LIQPAY; 'Cancellation.' prefix. Hand-labeled."
+}
+{
+    "id": "gs-022",
+    "description": "Cancellation. Oksana Medovoi",
+    "amount_kopiykas": 500000,
+    "mcc": 4829,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "refund",
+    "notes": "English-locale reversal of a P2P debit; 'Cancellation.' prefix on MCC 4829. Hand-labeled."
+}
+{
+    "id": "gs-023",
+    "description": "Повернення платежу КТС - monomarket",
+    "amount_kopiykas": 666650,
+    "mcc": 4829,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "refund",
+    "notes": "Ukrainian-locale refund ('Повернення платежу') crediting back a prior KTS/monomarket BNPL debit. Hand-labeled."
+}
+{
+    "id": "gs-024",
+    "description": "ГУДПС у Львівській області/71040000",
+    "amount_kopiykas": -528000,
+    "mcc": 4829,
+    "expected_category": "government",
+    "expected_kind": "spending",
+    "edge_case_tag": "mcc_4829_ambiguous",
+    "notes": "Government/tax-authority debit via MCC 4829 — description is a Ukrainian treasury/tax identifier. Hand-labeled."
+}
+{
+    "id": "gs-025",
+    "description": "ГУК Львiв/Львівська тг/18050400",
+    "amount_kopiykas": -8804225,
+    "mcc": 4829,
+    "expected_category": "government",
+    "expected_kind": "spending",
+    "edge_case_tag": "mcc_4829_ambiguous",
+    "notes": "Large government debit via MCC 4829 — Ukrainian treasury identifier. Large outlier ~88k UAH. Hand-labeled."
+}
+{
+    "id": "gs-026",
+    "description": "ГУК Львiв/Львів. обл/11011700",
+    "amount_kopiykas": -1760845,
+    "mcc": 4829,
+    "expected_category": "government",
+    "expected_kind": "spending",
+    "edge_case_tag": "mcc_4829_ambiguous",
+    "notes": "Government debit via MCC 4829 — Ukrainian regional treasury identifier. Hand-labeled."
+}
+{
+    "id": "gs-027",
+    "description": "ПУ УНПТ",
+    "amount_kopiykas": -2035125,
+    "mcc": 4829,
+    "expected_category": "education",
+    "expected_kind": "spending",
+    "edge_case_tag": "mcc_4829_ambiguous",
+    "notes": "MCC 4829 debit whose description is an institutional abbreviation; confirmed as a university tuition payment. Hand-labeled."
+}
+{
+    "id": "gs-028",
+    "description": "Платіж КТС - monomarket",
+    "amount_kopiykas": -666650,
+    "mcc": 4829,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "bnpl_instalment",
+    "notes": "Ukrainian-locale Monobank BNPL instalment — these payments ARE the purchase record; no separate merchant charge exists. Hand-labeled."
+}
+{
+    "id": "gs-029",
+    "description": "Payment KTC - monomarket",
+    "amount_kopiykas": -666650,
+    "mcc": 4829,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "bnpl_instalment",
+    "notes": "English-locale Monobank BNPL instalment — same semantic as gs-028, English export. Hand-labeled."
+}
+{
+    "id": "gs-030",
+    "description": "Bolt",
+    "amount_kopiykas": -22800,
+    "mcc": 4121,
+    "expected_category": "transport",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Bolt ride-hailing on taxi/limousine MCC; typical small-ticket ride fare."
+}
+{
+    "id": "gs-031",
+    "description": "Uklon",
+    "amount_kopiykas": -15800,
+    "mcc": 4121,
+    "expected_category": "transport",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Uklon ride-hailing on taxi/limousine MCC; core Ukrainian taxi app."
+}
+{
+    "id": "gs-032",
+    "description": "Нова пошта",
+    "amount_kopiykas": -9000,
+    "mcc": 4215,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "delivery_fee",
+    "notes": "Nova Poshta standard delivery fee on courier MCC 4215."
+}
+{
+    "id": "gs-033",
+    "description": "Нова пошта",
+    "amount_kopiykas": -115150,
+    "mcc": 4215,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "delivery_cod",
+    "notes": "Nova Poshta cash-on-delivery payment on courier MCC 4215 — amount includes goods price + delivery fee bundled."
+}
+{
+    "id": "gs-034",
+    "description": "Vodafone +380501234567",
+    "amount_kopiykas": -30000,
+    "mcc": 4814,
+    "expected_category": "utilities",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Vodafone mobile top-up keyed by MSISDN; telco MCC 4814 is canonical utilities."
+}
+{
+    "id": "gs-035",
+    "description": "PayPal",
+    "amount_kopiykas": -21976,
+    "mcc": 4816,
+    "expected_category": "subscriptions",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "PayPal debit on computer-network-services MCC; small recurring USD amount — foreign subscription passthrough."
+}
+{
+    "id": "gs-036",
+    "description": "Інтернет і ТБ",
+    "amount_kopiykas": -35000,
+    "mcc": 4900,
+    "expected_category": "utilities",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Internet & TV bill on utilities MCC."
+}
+{
+    "id": "gs-037",
+    "description": "Газ",
+    "amount_kopiykas": -269516,
+    "mcc": 4900,
+    "expected_category": "utilities",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Natural gas bill on utilities MCC — canonical home utility."
+}
+{
+    "id": "gs-038",
+    "description": "Електроенергія",
+    "amount_kopiykas": -101736,
+    "mcc": 4900,
+    "expected_category": "utilities",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Electricity bill on utilities MCC — canonical home utility."
+}
+{
+    "id": "gs-039",
+    "description": "Холодна вода",
+    "amount_kopiykas": -4330,
+    "mcc": 4900,
+    "expected_category": "utilities",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Cold water bill on utilities MCC — canonical home utility."
+}
+{
+    "id": "gs-040",
+    "description": "Allegro",
+    "amount_kopiykas": -285814,
+    "mcc": 5262,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Allegro Polish marketplace on MCC 5262; cross-border retail purchase in PLN."
+}
+{
+    "id": "gs-041",
+    "description": "AliExpress",
+    "amount_kopiykas": -76760,
+    "mcc": 5310,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "AliExpress cross-border shopping on discount-store MCC."
+}
+{
+    "id": "gs-042",
+    "description": "Rozetka",
+    "amount_kopiykas": -79500,
+    "mcc": 5399,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Rozetka — Ukraine's largest general-merchandise e-retailer — on misc-general-merchandise MCC."
+}
+{
+    "id": "gs-043",
+    "description": "prom.ua",
+    "amount_kopiykas": -50000,
+    "mcc": 5399,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "prom.ua marketplace on general-merchandise MCC; multi-vendor product-focused."
+}
+{
+    "id": "gs-044",
+    "description": "Ашан",
+    "amount_kopiykas": -43800,
+    "mcc": 5399,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Auchan hypermarket; MCC 5399 rather than canonical 5411 but the merchant is primarily groceries."
+}
+{
+    "id": "gs-045",
+    "description": "MauDau",
+    "amount_kopiykas": -243200,
+    "mcc": 5411,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "MauDau is a Ukrainian pet-supplies retailer; MCC 5411 hints at grocery-category items (pet food) but the retailer is pet-specific — shopping."
+}
+{
+    "id": "gs-046",
+    "description": "My Water Shop",
+    "amount_kopiykas": -210300,
+    "mcc": 5411,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Drinking-water vendor on grocery MCC; edible consumable staple fits groceries."
+}
+{
+    "id": "gs-047",
+    "description": "АТБ",
+    "amount_kopiykas": -251556,
+    "mcc": 5411,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "ATB — Ukraine's largest grocery chain — on grocery MCC."
+}
+{
+    "id": "gs-048",
+    "description": "Сільпо",
+    "amount_kopiykas": -388481,
+    "mcc": 5411,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Silpo supermarket chain on grocery MCC — canonical groceries."
+}
+{
+    "id": "gs-049",
+    "description": "SVIZHE MIASO 65",
+    "amount_kopiykas": -17300,
+    "mcc": 5422,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "'Свіже м'ясо' (fresh meat) shop on meat/fish/dairy MCC — groceries."
+}
+{
+    "id": "gs-050",
+    "description": "Molochni lani",
+    "amount_kopiykas": -52046,
+    "mcc": 5451,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Молочні лани dairy brand on dairy MCC — canonical groceries."
+}
+{
+    "id": "gs-051",
+    "description": "Cash withdrawal Близенько",
+    "amount_kopiykas": -100000,
+    "mcc": 5499,
+    "expected_category": "atm_cash",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "English-locale cashback-at-till at Близенько convenience chain; description explicitly marks cash withdrawal."
+}
+{
+    "id": "gs-052",
+    "description": "LIQPAY*PravDyvoMed",
+    "amount_kopiykas": -80000,
+    "mcc": 5499,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Honey vendor (правдивий мед = true honey) settled via LIQPAY on food MCC — groceries."
+}
+{
+    "id": "gs-053",
+    "description": "OVOCHI TA FRUKTY",
+    "amount_kopiykas": -31700,
+    "mcc": 5499,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "'Овочі та фрукти' (vegetables and fruits) vendor on food MCC — groceries."
+}
+{
+    "id": "gs-054",
+    "description": "Близенько",
+    "amount_kopiykas": -90218,
+    "mcc": 5499,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Близенько convenience-store chain on food MCC — neighbourhood grocery."
+}
+{
+    "id": "gs-055",
+    "description": "Видача готівки Близенько",
+    "amount_kopiykas": -500000,
+    "mcc": 5499,
+    "expected_category": "atm_cash",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Ukrainian-locale cashback-at-till at Близенько; 'Видача готівки' = cash issuance."
+}
+{
+    "id": "gs-056",
+    "description": "Овочі та фрукти",
+    "amount_kopiykas": -21450,
+    "mcc": 5499,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Same veg-and-fruit vendor in Cyrillic locale — groceries."
+}
+{
+    "id": "gs-057",
+    "description": "Sinsay",
+    "amount_kopiykas": -86500,
+    "mcc": 5651,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Sinsay fast-fashion chain on family-clothing MCC — apparel shopping."
+}
+{
+    "id": "gs-058",
+    "description": "Apple",
+    "amount_kopiykas": -4636740,
+    "mcc": 5732,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Apple on electronics-store MCC with large ticket (~46k UAH) — hardware purchase, not subscription."
+}
+{
+    "id": "gs-059",
+    "description": "WYZE LABS* TRIAL OVER",
+    "amount_kopiykas": -88377,
+    "mcc": 5732,
+    "expected_category": "subscriptions",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Wyze Labs smart-home; 'TRIAL OVER' descriptor signals trial-to-paid subscription conversion despite electronics MCC."
+}
+{
+    "id": "gs-060",
+    "description": "Фокстрот",
+    "amount_kopiykas": -341100,
+    "mcc": 5732,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Foxtrot electronics retail chain on electronics MCC — canonical electronics shopping."
+}
+{
+    "id": "gs-061",
+    "description": "Claude",
+    "amount_kopiykas": -106152,
+    "mcc": 5734,
+    "expected_category": "subscriptions",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Claude.ai subscription on computer-software MCC — fixed recurring USD billing."
+}
+{
+    "id": "gs-062",
+    "description": "Bolt Food",
+    "amount_kopiykas": -120700,
+    "mcc": 5811,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Bolt Food delivery on caterers MCC — canonical food-delivery spending."
+}
+{
+    "id": "gs-063",
+    "description": "LIQPAY*Amerikano",
+    "amount_kopiykas": -220702,
+    "mcc": 5812,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "'Amerikano' café settled via LIQPAY on restaurants MCC."
+}
+{
+    "id": "gs-064",
+    "description": "LIQPAY*Restoran Ahali",
+    "amount_kopiykas": -406100,
+    "mcc": 5812,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Restaurant 'Ahali' settled via LIQPAY on restaurants MCC."
+}
+{
+    "id": "gs-065",
+    "description": "Lviv Croissants",
+    "amount_kopiykas": -40700,
+    "mcc": 5814,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Lviv Croissants café chain on fast-food MCC."
+}
+{
+    "id": "gs-066",
+    "description": "NOA",
+    "amount_kopiykas": -102200,
+    "mcc": 5814,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "NOA café/fast-casual venue on fast-food MCC."
+}
+{
+    "id": "gs-067",
+    "description": "SHOco.",
+    "amount_kopiykas": -180000,
+    "mcc": 5814,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "SHOco. café on fast-food MCC."
+}
+{
+    "id": "gs-068",
+    "description": "Apple",
+    "amount_kopiykas": -12668,
+    "mcc": 5818,
+    "expected_category": "subscriptions",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Apple on digital-goods MCC 5818 with small recurring USD amount — App Store / iCloud subscription."
+}
+{
+    "id": "gs-069",
+    "description": "APTEKA",
+    "amount_kopiykas": -17300,
+    "mcc": 5912,
+    "expected_category": "healthcare",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Generic pharmacy label on drug-store MCC."
+}
+{
+    "id": "gs-070",
+    "description": "Аптека 3i",
+    "amount_kopiykas": -15200,
+    "mcc": 5912,
+    "expected_category": "healthcare",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Pharmacy '3i' on drug-store MCC."
+}
+{
+    "id": "gs-071",
+    "description": "Аптека 9-1-1",
+    "amount_kopiykas": -294600,
+    "mcc": 5912,
+    "expected_category": "healthcare",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Аптека 9-1-1 pharmacy chain on drug-store MCC."
+}
+{
+    "id": "gs-072",
+    "description": "MAKEUP",
+    "amount_kopiykas": -170400,
+    "mcc": 5977,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "makeup.com.ua cosmetics retailer on cosmetics MCC."
+}
+{
+    "id": "gs-073",
+    "description": "Novoderm",
+    "amount_kopiykas": -290000,
+    "mcc": 5977,
+    "expected_category": "healthcare",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Novoderm is a Ukrainian dermatology/cosmetic clinic — clinic context leans healthcare despite cosmetics MCC."
+}
+{
+    "id": "gs-074",
+    "description": "City24",
+    "amount_kopiykas": -500000,
+    "mcc": 6010,
+    "expected_category": "finance",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "City24 Ukrainian money-transfer/exchange service; MCC 6010 (manual cash disbursement) supports finance classification."
+}
+{
+    "id": "gs-075",
+    "description": "Банкомат DN00",
+    "amount_kopiykas": -900000,
+    "mcc": 6011,
+    "expected_category": "atm_cash",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "ATM withdrawal on automated-cash-disbursement MCC — canonical atm_cash."
+}
+{
+    "id": "gs-076",
+    "description": "OLX",
+    "amount_kopiykas": -45500,
+    "mcc": 6012,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "OLX classifieds payment on financial-institution MCC (OLX Pay routing); underlying activity is shopping."
+}
+{
+    "id": "gs-077",
+    "description": "TOVFPARODENTTZOV",
+    "amount_kopiykas": -66000,
+    "mcc": 8071,
+    "expected_category": "healthcare",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Dental/medical-lab provider on MCC 8071 (medical labs)."
+}
+{
+    "id": "gs-078",
+    "description": "FIZIO360",
+    "amount_kopiykas": -45000,
+    "mcc": 8099,
+    "expected_category": "healthcare",
+    "expected_kind": "spending",
+    "edge_case_tag": "standard",
+    "notes": "Physiotherapy clinic FIZIO360 on health-services MCC."
+}
+{
+    "id": "gs-079",
+    "description": "Поповнення «Святковий збір моно»",
+    "amount_kopiykas": -26400,
+    "mcc": 8398,
+    "expected_category": "charity",
+    "expected_kind": "spending",
+    "edge_case_tag": "charity_known_mcc",
+    "notes": "Monobank charity jar top-up on MCC 8398 (Charitable and Social Service Organizations). Hand-labeled."
+}
+{
+    "id": "gs-080",
+    "description": "Поповнення «Тотальний Русоріз»",
+    "amount_kopiykas": -90000,
+    "mcc": 8398,
+    "expected_category": "charity",
+    "expected_kind": "spending",
+    "edge_case_tag": "charity_known_mcc",
+    "notes": "Monobank military charity jar ('Total Russian-cutter') top-up on MCC 8398. Hand-labeled."
+}
+{
+    "id": "gs-081",
+    "description": "Ð Ðµ\x81Ñ‚Ð¾Ñ€Ð°Ð½",
+    "amount_kopiykas": -102200,
+    "mcc": 5814,
+    "expected_category": "restaurants",
+    "expected_kind": "spending",
+    "edge_case_tag": "mojibake",
+    "notes": "Synthetic mojibake — Cyrillic text decoded with wrong encoding (CP1251 as Windows-1252). MCC alone should carry categorization; description is unreadable. Tests pipeline resilience to encoding failures."
+}
+{
+    "id": "gs-082",
+    "description": "Ð¡Ñ–Ð»ÑŒÐ¿Ð¾",
+    "amount_kopiykas": -388481,
+    "mcc": 5411,
+    "expected_category": "groceries",
+    "expected_kind": "spending",
+    "edge_case_tag": "mojibake",
+    "notes": "Synthetic mojibake — Cyrillic text decoded with wrong encoding (CP1251 as Windows-1252). MCC alone should carry categorization; description is unreadable. Tests pipeline resilience to encoding failures."
+}
