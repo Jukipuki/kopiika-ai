@@ -800,7 +800,7 @@
 }
 {
     "id": "gs-081",
-    "description": "Ð Ðµ\x81Ñ‚Ð¾Ñ€Ð°Ð½",
+    "description": "Ð Ðµ\u0081Ñ‚Ð¾Ñ€Ð°Ð½",
     "amount_kopiykas": -102200,
     "mcc": 5814,
     "expected_category": "restaurants",
@@ -817,4 +817,84 @@
     "expected_kind": "spending",
     "edge_case_tag": "mojibake",
     "notes": "Synthetic mojibake — Cyrillic text decoded with wrong encoding (CP1251 as Windows-1252). MCC alone should carry categorization; description is unreadable. Tests pipeline resilience to encoding failures."
+}
+{
+    "id": "gs-083",
+    "description": "Переказ між власними рахунками",
+    "amount_kopiykas": -1500000,
+    "mcc": 4829,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "self_transfer",
+    "notes": "Third self-transfer example to satisfy §4.2 minimum (≥3). Explicit 'between own accounts' wording leaves no ambiguity; classic Monobank UA-locale own-to-own move."
+}
+{
+    "id": "gs-084",
+    "description": "Поповнення депозиту «Скарбничка»",
+    "amount_kopiykas": -2500000,
+    "mcc": 4829,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "deposit_top_up",
+    "notes": "Third deposit top-up example to satisfy §4.2 minimum (≥3). Named savings product ('Skarbnychka') — funds remain user-owned; classified as transfer not spending."
+}
+{
+    "id": "gs-085",
+    "description": "ПУ ЦНАП",
+    "amount_kopiykas": -28500,
+    "mcc": 4829,
+    "expected_category": "government",
+    "expected_kind": "spending",
+    "edge_case_tag": "mcc_4829_ambiguous",
+    "notes": "Fifth MCC 4829 ambiguous example to satisfy §4.2 minimum (≥5). 'ПУ ЦНАП' = administrative-services centre fee; MCC alone is uninformative — description carries the categorization."
+}
+{
+    "id": "gs-086",
+    "description": "BMW Service",
+    "amount_kopiykas": -8500000,
+    "mcc": 7538,
+    "expected_category": "transport",
+    "expected_kind": "spending",
+    "edge_case_tag": "large_outlier",
+    "notes": "Large outlier (~85k UAH) auto-repair bill; tests that single high-value spend on a known-MCC merchant still categorizes correctly without being mislabeled as transfer/refund."
+}
+{
+    "id": "gs-087",
+    "description": "Епіцентр",
+    "amount_kopiykas": -12500000,
+    "mcc": 5200,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "large_outlier",
+    "notes": "Large outlier (~125k UAH) home-improvement purchase at Epicentre; verifies large-amount shopping is not mistakenly flagged as a transfer or salary."
+}
+{
+    "id": "gs-088",
+    "description": "Авіаквитки KLM Amsterdam",
+    "amount_kopiykas": -7500000,
+    "mcc": 4511,
+    "expected_category": "travel",
+    "expected_kind": "spending",
+    "edge_case_tag": "large_outlier",
+    "notes": "Large outlier (~75k UAH) airline ticket on travel MCC; ensures large international travel spend is classified as travel, not transfer."
+}
+{
+    "id": "gs-089",
+    "description": "Booking.com Amsterdam NL",
+    "amount_kopiykas": -450000,
+    "mcc": 7011,
+    "expected_category": "travel",
+    "expected_kind": "spending",
+    "edge_case_tag": "non_uah_currency",
+    "notes": "Foreign-currency hotel booking (EUR-denominated, Monobank converted to ~4500 UAH at posting). Tests that non-UAH origin transactions still categorize from MCC + merchant cues."
+}
+{
+    "id": "gs-090",
+    "description": "Amazon.com Seattle WA",
+    "amount_kopiykas": -320000,
+    "mcc": 5942,
+    "expected_category": "shopping",
+    "expected_kind": "spending",
+    "edge_case_tag": "non_uah_currency",
+    "notes": "Foreign-currency purchase (USD-denominated, ~3200 UAH equivalent). Verifies USD shopping categorization on book/retail MCC; no currency conversion happens in the categorizer."
 }

@@ -1,6 +1,6 @@
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
@@ -12,6 +12,7 @@ from app.agents.ingestion.parsers.privatbank import PrivatBankParser
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.transaction import Transaction
 from app.services.format_detector import FormatDetectionResult
+from app.services.parse_validator import validate_parsed_rows
 from app.services.transaction_service import compute_dedup_hash
 
 logger = logging.getLogger(__name__)
@@ -29,10 +30,22 @@ class ParseAndStoreResult:
     flagged_count: int
     persisted_count: int
     duplicates_skipped: int = 0
+    validation_rejected_count: int = 0
+    validation_warnings_count: int = 0
+    rejected_rows: list[dict] = field(default_factory=list)
+    warnings: list[dict] = field(default_factory=list)
 
 
 class UnsupportedFormatError(Exception):
     """Raised when no parser is available for the detected bank format."""
+
+
+class WholesaleRejectionError(Exception):
+    """Raised when validation rejects the entire parser output (e.g. suspicious_duplicate_rate)."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(f"Wholesale rejection: {reason}")
 
 
 def _parse_and_build_records(
@@ -64,6 +77,13 @@ def _parse_and_build_records(
                 "Currently supported: Monobank CSV, PrivatBank CSV."
             )
 
+    validation = validate_parsed_rows(
+        rows=result.transactions,
+        amount_sign_convention=format_result.amount_sign_convention,
+    )
+    if validation.wholesale_rejected:
+        raise WholesaleRejectionError(validation.wholesale_rejection_reason or "unknown")
+
     transactions = [
         Transaction(
             user_id=user_id,
@@ -83,10 +103,21 @@ def _parse_and_build_records(
                 "currency_unknown" if txn_data.currency_unknown_raw is not None else None
             ),
         )
-        for txn_data in result.transactions
+        for txn_data in validation.accepted
     ]
 
-    flagged_records = [
+    validation_flagged = [
+        FlaggedImportRow(
+            user_id=user_id,
+            upload_id=upload_id,
+            row_number=fr.row_number,
+            raw_data=fr.raw_data if isinstance(fr.raw_data, dict) else {"raw": fr.raw_data},
+            reason=fr.reason,
+        )
+        for fr in validation.rejected_rows
+    ]
+
+    parser_flagged = [
         FlaggedImportRow(
             user_id=user_id,
             upload_id=upload_id,
@@ -96,13 +127,31 @@ def _parse_and_build_records(
         )
         for flagged in result.flagged_rows
     ]
+    flagged_records = parser_flagged + validation_flagged
+
+    rejected_rows_payload = [
+        {
+            "row_number": fr.row_number,
+            "reason": fr.reason,
+            "raw_row": fr.raw_data if isinstance(fr.raw_data, dict) else {"raw": fr.raw_data},
+        }
+        for fr in validation.rejected_rows
+    ]
+    warnings_payload = [
+        {"row_number": fr.row_number, "reason": fr.reason}
+        for fr in validation.warnings
+    ]
 
     persisted_count = len(transactions) + len(flagged_records)
     store_result = ParseAndStoreResult(
         total_rows=result.total_rows,
         parsed_count=result.parsed_count,
-        flagged_count=result.flagged_count,
+        flagged_count=result.flagged_count + len(validation.rejected_rows),
         persisted_count=persisted_count,
+        validation_rejected_count=len(validation.rejected_rows),
+        validation_warnings_count=len(validation.warnings),
+        rejected_rows=rejected_rows_payload,
+        warnings=warnings_payload,
     )
 
     return transactions, flagged_records, store_result
@@ -165,6 +214,8 @@ async def parse_and_store_transactions(
             "flagged": result.flagged_count,
             "persisted": result.persisted_count,
             "duplicates_skipped": duplicates_skipped,
+            "validation_rejected": result.validation_rejected_count,
+            "validation_warnings": result.validation_warnings_count,
         },
     )
 
@@ -207,6 +258,8 @@ def sync_parse_and_store_transactions(
             "flagged": result.flagged_count,
             "persisted": result.persisted_count,
             "duplicates_skipped": duplicates_skipped,
+            "validation_rejected": result.validation_rejected_count,
+            "validation_warnings": result.validation_warnings_count,
         },
     )
 

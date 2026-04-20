@@ -5,7 +5,7 @@ import { CheckCircle2, History, ArrowRight } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Link } from "@/i18n/navigation";
 import { formatDateLong } from "@/lib/format/date";
-import type { DateRange } from "../types";
+import type { DateRange, RejectedRow, UploadWarning } from "../types";
 
 interface UploadSummaryCardProps {
   bankName: string | null;
@@ -15,8 +15,17 @@ interface UploadSummaryCardProps {
   duplicatesSkipped: number;
   newTransactions: number;
   fallbackBankLabel?: string | null;
+  rejectedRows?: RejectedRow[];
+  warnings?: UploadWarning[];
   onUploadAnother: () => void;
 }
+
+const REJECTION_REASON_KEYS = new Set([
+  "date_out_of_range",
+  "zero_or_null_amount",
+  "no_identifying_info",
+  "sign_convention_mismatch",
+]);
 
 export default function UploadSummaryCard({
   bankName,
@@ -26,11 +35,20 @@ export default function UploadSummaryCard({
   duplicatesSkipped,
   newTransactions,
   fallbackBankLabel,
+  rejectedRows = [],
+  warnings = [],
   onUploadAnother,
 }: UploadSummaryCardProps) {
   const t = useTranslations("upload");
   const summaryT = useTranslations("upload.summary");
   const locale = useLocale();
+
+  const reasonLabel = (reason: string): string => {
+    const key = REJECTION_REASON_KEYS.has(reason)
+      ? `rejectedReason_${reason}`
+      : "rejectedReason_unknown";
+    return summaryT(key);
+  };
 
   const bankDetectedLabel =
     bankName && bankName.length > 0
@@ -74,6 +92,36 @@ export default function UploadSummaryCard({
             newCount: newTransactions,
             skippedCount: duplicatesSkipped,
           })}
+        </p>
+      )}
+
+      {rejectedRows.length > 0 && (
+        <details
+          className="w-full rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-left dark:border-amber-700/40 dark:bg-amber-950/30"
+          data-testid="rejected-rows-section"
+        >
+          <summary className="cursor-pointer text-xs font-medium text-amber-900 dark:text-amber-200">
+            {summaryT("rejectedRowsTitle", { count: rejectedRows.length })}
+          </summary>
+          <ul className="mt-2 flex flex-col gap-1 text-xs text-amber-900/90 dark:text-amber-200/90">
+            {rejectedRows.map((row) => (
+              <li key={row.row_number}>
+                {summaryT("rejectedRowsRow", {
+                  row: row.row_number,
+                  reason: reasonLabel(row.reason),
+                })}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {warnings.length > 0 && (
+        <p
+          className="text-xs text-amber-700 dark:text-amber-300"
+          data-testid="upload-warnings-note"
+        >
+          {summaryT("warningsTitle", { count: warnings.length })}
         </p>
       )}
 

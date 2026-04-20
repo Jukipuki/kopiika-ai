@@ -129,7 +129,9 @@ class TestBuildOrUpdateProfile:
 
         assert profile.total_income == 50000
         assert profile.total_expenses == -20000
-        assert profile.category_totals["salary"] == 50000
+        # category_totals aggregates expenses only — income/transfers would skew
+        # per-category spend analysis, so positive-amount rows are intentionally excluded.
+        assert "salary" not in profile.category_totals
         assert profile.category_totals["food"] == -15000
         assert profile.category_totals["transport"] == -5000
         assert profile.period_start == datetime(2026, 1, 15)
@@ -208,7 +210,8 @@ class TestBuildOrUpdateProfile:
 
         assert profile.category_totals["food"] == -15000
         assert profile.category_totals["transport"] == -3000
-        assert profile.category_totals["salary"] == 80000
+        # Income categories are excluded from category_totals (expenses-only aggregate).
+        assert "salary" not in profile.category_totals
 
 
 # ==================== Async Service Tests ====================

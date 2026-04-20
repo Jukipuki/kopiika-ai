@@ -185,23 +185,28 @@ Each transaction has TWO axes:
 1. category — merchant/activity classification, one of:
    groceries, restaurants, transport, entertainment, utilities, healthcare,
    shopping, travel, education, finance, subscriptions, fuel, atm_cash,
-   government, transfers, transfers_p2p, savings, other
+   government, transfers, transfers_p2p, savings, charity, other
 
 2. transaction_kind — cash-flow classification, one of:
-   - spending: consumption outflow (groceries, rent, restaurants)
-   - income: inflow (salary, refund, interest, reimbursement)
+   - spending: consumption outflow (groceries, rent, restaurants, donations)
+   - income: inflow (salary, refund, interest, reimbursement) — always paired with category=other
    - savings: outflow to the user's own deposit/investment account
    - transfer: movement between the user's own current accounts
 
 Rules:
 - transfers_p2p is ALWAYS kind=spending (P2P payments reduce net worth)
+- charity is ALWAYS kind=spending (donations reduce net worth)
 - savings category requires kind=savings
 - transfers category requires kind=transfer
+- Inflows (positive amounts) are kind=income with category=other
 - Negative amounts with no clear category → "other", kind inferred from context
 
 Few-shot examples:
-[3–5 hand-labeled examples covering: self-transfer, deposit top-up,
- P2P to individual, salary inflow, ambiguous case]
+[5–7 hand-labeled examples covering: self-transfer (UA + EN locale),
+ deposit top-up (UA + EN locale), P2P to individual, salary inflow,
+ charity via MCC 4829 (military fund / Monobank jar),
+ BNPL instalment (KTS / Monomarket — IS the purchase record),
+ cash-on-delivery ("накладений платіж" — looks like a transfer without context)]
 
 Transactions:
 1. [id] "description" -1234.56 UAH (debit, MCC: 5411)

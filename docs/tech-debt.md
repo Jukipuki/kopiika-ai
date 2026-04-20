@@ -719,6 +719,41 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
+### TD-043 — Upload summary warnings list is count-only, not itemized [LOW]
+
+**Where:** [frontend/src/features/upload/components/UploadSummaryCard.tsx:119-126](../frontend/src/features/upload/components/UploadSummaryCard.tsx#L119-L126)
+
+**Problem:** Rejected rows render as an expandable `<details>` listing row number + reason, but the warnings list (currently only `sign_convention_mismatch`) surfaces as a single "N rows imported with warnings" sentence. A user with one flagged row in a 500-row file cannot locate it. Story 11.5 AC #6 wording implies per-row visibility for `warnings` as well as `rejected_rows`.
+
+**Why deferred:** Warnings today are a single soft-signal rule with low-severity practical impact; the cosmetic parity with the rejections block wasn't worth blocking the story. Revisit if additional warning types are added (e.g. Story 11.6 mojibake warnings) or if users report confusion.
+
+**Fix shape:**
+1. Mirror the `<details>`/`<ul>` structure used for `rejectedRows`, reusing `reasonLabel`.
+2. Add i18n strings `warningsRow`, `warningReason_sign_convention_mismatch` (en + uk).
+3. Extend the card's Vitest coverage with a warnings-list case.
+
+**Surfaced in:** Story 11-5-post-parse-validation-layer code review (2026-04-20)
+
+---
+
+### TD-044 — Rejection/warning reason strings are hand-mirrored between backend and frontend [LOW]
+
+**Where:** [backend/app/services/parse_validator.py:68,74,82,88](../backend/app/services/parse_validator.py#L68) ↔ [frontend/src/features/upload/components/UploadSummaryCard.tsx:23-28](../frontend/src/features/upload/components/UploadSummaryCard.tsx#L23-L28)
+
+**Problem:** Reason codes (`date_out_of_range`, `zero_or_null_amount`, `no_identifying_info`, `sign_convention_mismatch`) live as Python string literals on the backend and as a hard-coded `Set` on the frontend. Any new reason silently falls back to `rejectedReason_unknown` in the UI until someone remembers to update `REJECTION_REASON_KEYS` and both locale files. This will drift as Stories 11.6 (`mojibake_detected`) and 11.7 (schema-detection surfacing) add reasons.
+
+**Why deferred:** Story 11.5 shipped only four reasons, all mapped by hand — the drift cost today is zero. Cost grows as Epic 11 adds more reasons.
+
+**Fix shape:**
+1. Centralize reasons in a single backend enum (e.g. `ValidationReason` `StrEnum`).
+2. Either (a) expose the enum in the OpenAPI schema and codegen a TypeScript union, or (b) publish a JSON constants file consumed by both sides.
+3. Replace the frontend `REJECTION_REASON_KEYS` Set with the generated type, and enforce exhaustive `reasonLabel` mapping via TS.
+4. Delete the per-locale `rejectedReason_unknown` fallback once exhaustiveness is enforced at build time.
+
+**Surfaced in:** Story 11-5-post-parse-validation-layer code review (2026-04-20)
+
+---
+
 ## Resolved
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]

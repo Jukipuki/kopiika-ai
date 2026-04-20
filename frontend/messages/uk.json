@@ -197,7 +197,15 @@
       "transactionCount": "{count, plural, one {# транзакцію} few {# транзакції} many {# транзакцій} other {# транзакцій}} проаналізовано",
       "dateRange": "{start} – {end}",
       "insightCount": "{count, plural, one {# картку інсайтів} few {# картки інсайтів} many {# карток інсайтів} other {# карток інсайтів}} згенеровано",
-      "viewInsights": "Переглянути інсайти"
+      "viewInsights": "Переглянути інсайти",
+      "rejectedRowsTitle": "Не вдалося обробити {count, plural, one {# рядок} few {# рядки} many {# рядків} other {# рядків}}",
+      "rejectedRowsRow": "Рядок {row} — {reason}",
+      "rejectedReason_date_out_of_range": "дата поза очікуваним діапазоном",
+      "rejectedReason_zero_or_null_amount": "нульова або відсутня сума",
+      "rejectedReason_no_identifying_info": "немає опису чи ідентифікатора",
+      "rejectedReason_sign_convention_mismatch": "несподіваний знак суми",
+      "rejectedReason_unknown": "невідома проблема",
+      "warningsTitle": "{count, plural, one {# рядок імпортовано з попередженням} few {# рядки імпортовано з попередженнями} many {# рядків імпортовано з попередженнями} other {# рядків імпортовано з попередженнями}}"
     }
   },
   "settings": {

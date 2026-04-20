@@ -31,6 +31,23 @@ export interface DateRange {
   end: string;
 }
 
+export interface RejectedRow {
+  row_number: number;
+  reason: string;
+  raw_row: Record<string, unknown>;
+}
+
+export interface UploadWarning {
+  row_number: number;
+  reason: string;
+}
+
+export type SchemaDetectionSource =
+  | "known_bank_parser"
+  | "generic_fallback"
+  | "cached_fingerprint"
+  | "llm_detected";
+
 export interface JobCompleteEvent {
   event: "job-complete";
   jobId: string;
@@ -41,6 +58,10 @@ export interface JobCompleteEvent {
   bankName?: string | null;
   transactionCount?: number;
   dateRange?: DateRange | null;
+  rejectedRows?: RejectedRow[];
+  warnings?: UploadWarning[];
+  schemaDetectionSource?: SchemaDetectionSource;
+  mojibakeDetected?: boolean;
 }
 
 export interface JobFailedEvent {
@@ -73,6 +94,10 @@ export interface JobStatusResult {
   bankName?: string | null;
   transactionCount?: number;
   dateRange?: DateRange | null;
+  rejectedRows?: RejectedRow[];
+  warnings?: UploadWarning[];
+  schemaDetectionSource?: SchemaDetectionSource;
+  mojibakeDetected?: boolean;
 }
 
 export interface JobStatusState {

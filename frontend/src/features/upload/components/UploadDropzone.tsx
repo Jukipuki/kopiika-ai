@@ -278,6 +278,8 @@ export default function UploadDropzone() {
                 duplicatesSkipped={jobStatus.result.duplicatesSkipped ?? 0}
                 newTransactions={jobStatus.result.newTransactions ?? 0}
                 fallbackBankLabel={formatFallbackLabel}
+                rejectedRows={jobStatus.result.rejectedRows}
+                warnings={jobStatus.result.warnings}
                 onUploadAnother={handleUploadAnother}
               />
             </div>

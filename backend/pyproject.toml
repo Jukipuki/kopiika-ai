@@ -31,8 +31,10 @@ dependencies = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "-m 'not integration'"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: hits live external services (LLMs, APIs); excluded from default sweep, run with '-m integration'",
 ]
 
 [dependency-groups]

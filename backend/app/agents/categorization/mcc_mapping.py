@@ -1,13 +1,15 @@
 """MCC (Merchant Category Code) to spending category mapping.
 
 Categories: groceries, restaurants, transport, entertainment, utilities, healthcare,
-shopping, travel, education, finance, subscriptions, fuel, atm_cash, government, other.
+shopping, travel, education, finance, subscriptions, fuel, atm_cash, government,
+transfers, transfers_p2p, savings, charity, other.
 """
 
 VALID_CATEGORIES: frozenset[str] = frozenset({
     "groceries", "restaurants", "transport", "entertainment", "utilities",
     "healthcare", "shopping", "travel", "education", "finance",
-    "subscriptions", "fuel", "atm_cash", "government", "transfers", "other",
+    "subscriptions", "fuel", "atm_cash", "government", "transfers",
+    "transfers_p2p", "savings", "charity", "other",
     "uncategorized",
 })
 

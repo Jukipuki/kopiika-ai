@@ -49,6 +49,19 @@ def get_bank_display_name(detected_format: str | None) -> str | None:
     return BANK_DISPLAY_NAMES.get(detected_format)
 
 
+_SIGN_CONVENTIONS: dict[str, str] = {
+    "monobank": "negative_is_outflow",
+    "privatbank": "negative_is_outflow",
+}
+
+
+def get_sign_convention(detected_format: str | None) -> str | None:
+    """Return the amount sign convention for a detected format, or None if unknown."""
+    if not detected_format:
+        return None
+    return _SIGN_CONVENTIONS.get(detected_format)
+
+
 @dataclass
 class FormatDetectionResult:
     bank_format: str  # "monobank" | "privatbank" | "unknown"
@@ -57,6 +70,8 @@ class FormatDetectionResult:
     column_count: int
     confidence_score: float  # 0.0 - 1.0
     header_row: list[str]
+    # Known-bank sign semantic; None for unknown formats (validator skips Rule 4 then).
+    amount_sign_convention: str | None = None
 
 
 def detect_encoding(file_bytes: bytes) -> tuple[str, float]:
@@ -189,4 +204,5 @@ def detect_format(
         column_count=len(header),
         confidence_score=confidence,
         header_row=header,
+        amount_sign_convention=get_sign_convention(bank_format),
     )

@@ -115,14 +115,16 @@ Label each transaction below with (category, transaction_kind, confidence).
 category must be one of:
   groceries, restaurants, transport, entertainment, utilities, healthcare,
   shopping, travel, education, finance, subscriptions, fuel, atm_cash,
-  government, transfers, transfers_p2p, savings, other
+  government, transfers, transfers_p2p, savings, charity, other
 
 transaction_kind must be one of: spending, income, savings, transfer
 
 Rules:
-- transfers_p2p is always kind=spending
+- transfers_p2p is always kind=spending (P2P payments reduce net worth)
+- charity is always kind=spending (donations reduce net worth)
 - savings category requires kind=savings
 - transfers category requires kind=transfer
+- Inflows (positive amounts) are kind=income; for income, use category=other
 - Standard merchant spending is kind=spending
 
 For each transaction, return one line:

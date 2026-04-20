@@ -419,3 +419,13 @@ class TestUploadEndpointIntegration:
             assert uploads[0].detected_encoding is not None
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
+
+
+def test_get_sign_convention_known_banks():
+    from app.services.format_detector import get_sign_convention
+
+    assert get_sign_convention("monobank") == "negative_is_outflow"
+    assert get_sign_convention("privatbank") == "negative_is_outflow"
+    assert get_sign_convention("unknown") is None
+    assert get_sign_convention(None) is None
+    assert get_sign_convention("") is None

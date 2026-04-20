@@ -910,6 +910,10 @@ class TestProcessUploadSummaryPayload:
             flagged_count = 0
             persisted_count = 0
             duplicates_skipped = 0
+            validation_rejected_count = 0
+            validation_warnings_count = 0
+            rejected_rows: list = []
+            warnings: list = []
         mock_parse.return_value = _EmptyResult()
 
         from app.tasks.processing_tasks import process_upload

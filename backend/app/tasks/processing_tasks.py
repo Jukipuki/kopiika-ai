@@ -21,9 +21,14 @@ from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
 from app.models.upload import Upload
 from app.models.user import User
-from app.services.format_detector import FormatDetectionResult, get_bank_display_name
+from app.services.format_detector import (
+    FormatDetectionResult,
+    get_bank_display_name,
+    get_sign_convention,
+)
 from app.services.parser_service import (
     UnsupportedFormatError,
+    WholesaleRejectionError,
     sync_parse_and_store_transactions,
 )
 from app.services.profile_service import build_or_update_profile
@@ -131,6 +136,7 @@ def process_upload(self, job_id: str) -> dict:
                 column_count=0,
                 confidence_score=1.0,
                 header_row=[],
+                amount_sign_convention=get_sign_convention(upload.detected_format),
             )
 
             # 6. Parse and store transactions
@@ -367,6 +373,11 @@ def process_upload(self, job_id: str) -> dict:
             if job.step != "categorization_failed":
                 job.step = "done"
             job.progress = 100
+            schema_detection_source = (
+                "known_bank_parser"
+                if format_result.bank_format in ("monobank", "privatbank")
+                else "generic_fallback"
+            )
             job.result_data = {
                 "total_rows": result.total_rows,
                 "parsed_count": result.parsed_count,
@@ -383,6 +394,10 @@ def process_upload(self, job_id: str) -> dict:
                 "date_range_end": date_range_end,
                 "insight_count": insight_count,
                 "new_transactions": new_transactions,
+                "rejected_rows": result.rejected_rows,
+                "warnings": result.warnings,
+                "schema_detection_source": schema_detection_source,
+                "mojibake_detected": False,
             }
             job.updated_at = _utcnow()
             session.add(job)
@@ -398,6 +413,10 @@ def process_upload(self, job_id: str) -> dict:
                 "bankName": bank_name,
                 "transactionCount": new_transactions,
                 "dateRange": date_range,
+                "rejectedRows": result.rejected_rows,
+                "warnings": result.warnings,
+                "schemaDetectionSource": schema_detection_source,
+                "mojibakeDetected": False,
             })
 
             logger.info(
@@ -456,6 +475,17 @@ def process_upload(self, job_id: str) -> dict:
             partial = _collect_partial_timings(ingestion_ms, categorization_ms, education_ms)
             _mark_failed(session, job, "UNSUPPORTED_FORMAT", str(exc), is_retryable=False, timings=partial)
             return {"error": "unsupported_format"}
+
+        except WholesaleRejectionError as exc:
+            # Validation rejected the entire parser output (e.g. suspicious_duplicate_rate).
+            # Non-retryable — the file is the root cause; user must re-export.
+            session.rollback()
+            partial = _collect_partial_timings(ingestion_ms, categorization_ms, education_ms)
+            _mark_failed(
+                session, job, "WHOLESALE_REJECTION", exc.reason,
+                is_retryable=False, timings=partial,
+            )
+            return {"error": "wholesale_rejection", "reason": exc.reason}
 
         except (SoftTimeLimitExceeded, ValueError, KeyError, Exception) as exc:
             # Preserve partial results: commit any transactions added to session
@@ -706,6 +736,7 @@ def resume_upload(self, job_id: str) -> dict:
             session.add(job)
             session.commit()
 
+            prior_result = job.result_data or {}
             publish_job_progress(job_id, {
                 "event": "job-complete",
                 "jobId": job_id,
@@ -716,6 +747,10 @@ def resume_upload(self, job_id: str) -> dict:
                 "dateRange": date_range,
                 "duplicatesSkipped": duplicates_skipped,
                 "newTransactions": new_transactions,
+                "rejectedRows": prior_result.get("rejected_rows", []),
+                "warnings": prior_result.get("warnings", []),
+                "schemaDetectionSource": prior_result.get("schema_detection_source", "known_bank_parser"),
+                "mojibakeDetected": prior_result.get("mojibake_detected", False),
             })
 
             upload = session.get(Upload, job.upload_id)

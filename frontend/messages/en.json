@@ -197,7 +197,15 @@
       "transactionCount": "{count, plural, one {# transaction} other {# transactions}} analyzed",
       "dateRange": "{start} – {end}",
       "insightCount": "{count, plural, one {# insight card} other {# insight cards}} generated",
-      "viewInsights": "View Insights"
+      "viewInsights": "View Insights",
+      "rejectedRowsTitle": "Couldn't process {count, plural, one {# row} other {# rows}}",
+      "rejectedRowsRow": "Row {row} — {reason}",
+      "rejectedReason_date_out_of_range": "date outside expected range",
+      "rejectedReason_zero_or_null_amount": "zero or missing amount",
+      "rejectedReason_no_identifying_info": "no description or identifier",
+      "rejectedReason_sign_convention_mismatch": "unexpected amount sign",
+      "rejectedReason_unknown": "unrecognized issue",
+      "warningsTitle": "{count, plural, one {# row imported with a warning} other {# rows imported with warnings}}"
     }
   },
   "settings": {
