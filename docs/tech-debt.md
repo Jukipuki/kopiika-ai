@@ -786,26 +786,6 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
-### TD-042 (REOPENED) — Epic 11 categorization gate not stably cleared [MEDIUM]
-
-**Where:** [backend/tests/agents/categorization/test_golden_set.py](../backend/tests/agents/categorization/test_golden_set.py), Epic 11 Story 11.4 in [_bmad-output/planning-artifacts/epics.md](../_bmad-output/planning-artifacts/epics.md), prior closure note preserved in the Resolved section below for audit.
-
-**Problem:** Story 11.3a initially passed the 0.90 gate at `category_accuracy=0.900` (81/90), which was marked as TD-042 resolved. A follow-up review-pass harness run on the same day produced `category_accuracy=0.878` (79/90) — the 0.900 reading was at a ±3-row noise boundary, not a stable pass. Additionally, the golden-set review surfaced mislabels (gs-016/017 were `other/income` but are semantically `transfers/transfer`) that further change the target landscape. The gate has not been reliably cleared.
-
-**Why deferred-but-reopened:** Story 11.3a shipped substantial improvements (kind_accuracy jumped 0.000 → 0.978; category_accuracy trend is +; core disambiguation rules are in place). The residual failure modes are now well-characterized and cluster into two architectural cases that prompt iteration cannot close:
-  - `gs-051`/`gs-055` (cash-action narration) — MCC pass fires before the prompt rule can see the row.
-  - `gs-001`/`gs-002` (self-transfer) — needs a narrow description pattern rule OR counterparty enrichment.
-
-**Fix shape:**
-1. Implement Story 11.4 with the expanded scope (pre-pass Rule A for cash-action description filter + prompt Rule 4 for self-transfer detection via MCC 4829 + generic account language + absence of personal name).
-2. Re-run harness after Story 11.4; require `category_accuracy ≥ 0.92` AND `kind_accuracy ≥ 0.92` on a single run for a "reliable pass" (margin above the 0.90 gate to account for ±3-row variance on a 90-row fixture).
-3. Alternative stability measure: three consecutive runs all ≥ 0.90. Choose during retrospective.
-4. Expand the fixture toward 120+ rows over time to tighten the noise floor.
-
-**Surfaced in:** Story 11.3a post-fix harness review (2026-04-21).
-
----
-
 ### TD-048 — Self-transfer pair detection across multi-statement uploads [MEDIUM]
 
 **Where:** Would live in a new service between [backend/app/agents/categorization/node.py](../backend/app/agents/categorization/node.py) and the financial-profile aggregation layer. Currently affects any user who uploads both their Monobank card statement AND their FOP account statement.
@@ -893,7 +873,20 @@ Without this, gs-091 through gs-094 in the golden set cannot pass — they requi
 
 ## Resolved
 
-### TD-042 — [SUPERSEDED — moved back to Open section below] Epic 11 categorization gate
+### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]
+
+**Resolved by:** Story 11.4 (description pre-pass + Prompt Rule 4).
+
+**Stable measurement (Haiku, post-Story-11.4):** `category_accuracy=0.956` (86/90), `kind_accuracy=1.000` (90/90), `joint_accuracy=0.956` on the main 90-row set after filtering 4 `edge_case_tag="pe_statement"` rows. Both axes cleared the 0.92 noise-margin gate with meaningful headroom (+0.036 on category, +0.080 on kind above the 0.92 floor). `pe_statement_accuracy=1.000` (4/4) as a non-gating secondary signal — those rows remain gated by TD-049.
+
+**Methodology:** Single-run gate at 0.92 (not 0.90) to build margin above the 0.90 statutory threshold given ±3-row variance on a 90-row fixture. See [20260421T130309013273Z-haiku.json](../backend/tests/fixtures/categorization_golden_set/runs/20260421T130309013273Z-haiku.json) for the authoritative run report.
+
+**Residual 4 mismatches (non-blocking, out of Story 11.4 scope):**
+  - gs-027: education → government (MCC 4829 ambiguity around government-adjacent education payment)
+  - gs-061, gs-068: subscriptions → shopping (subscriptions-vs-shopping boundary)
+  - gs-086: transport → shopping (large-outlier transport purchase misclassified)
+
+Any follow-up on these would be a new scoped story; no new TD entry warranted yet.
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]
 

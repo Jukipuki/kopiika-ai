@@ -118,23 +118,37 @@ def _run_golden_set(model_label: str) -> tuple[float, float, float, Path]:
             row["id"], {"category": "uncategorized", "transaction_kind": None}
         )
 
-    total = len(rows)
+    # Story 11.4 AC #7: PE-statement rows require TD-049 (counterparty-aware
+    # categorization) to classify correctly. Filter them out of the main metric
+    # and report their accuracy as a secondary, non-gating signal.
+    pe_rows = [r for r in rows if r.get("edge_case_tag") == "pe_statement"]
+    main_rows = [r for r in rows if r.get("edge_case_tag") != "pe_statement"]
+
+    total = len(main_rows)
     category_correct = sum(
-        1 for row in rows
+        1 for row in main_rows
         if results_by_id[row["id"]].get("category") == row["expected_category"]
     )
     kind_correct = sum(
-        1 for row in rows
+        1 for row in main_rows
         if results_by_id[row["id"]].get("transaction_kind") == row["expected_kind"]
     )
     joint_correct = sum(
-        1 for row in rows
+        1 for row in main_rows
         if results_by_id[row["id"]].get("category") == row["expected_category"]
         and results_by_id[row["id"]].get("transaction_kind") == row["expected_kind"]
     )
-    category_accuracy = category_correct / total
-    kind_accuracy = kind_correct / total
-    joint_accuracy = joint_correct / total
+    category_accuracy = category_correct / total if total else 0.0
+    kind_accuracy = kind_correct / total if total else 0.0
+    joint_accuracy = joint_correct / total if total else 0.0
+
+    pe_total = len(pe_rows)
+    pe_joint_correct = sum(
+        1 for row in pe_rows
+        if results_by_id[row["id"]].get("category") == row["expected_category"]
+        and results_by_id[row["id"]].get("transaction_kind") == row["expected_kind"]
+    )
+    pe_statement_accuracy = (pe_joint_correct / pe_total) if pe_total else None
 
     mismatches = [
         {
@@ -157,12 +171,15 @@ def _run_golden_set(model_label: str) -> tuple[float, float, float, Path]:
         "elapsed_seconds": elapsed_s,
         "total_tokens_used": result_state.get("total_tokens_used", 0),
         "total": total,
+        "main_total": total,
+        "pe_total": pe_total,
         "category_correct": category_correct,
         "kind_correct": kind_correct,
         "joint_correct": joint_correct,
         "category_accuracy": category_accuracy,
         "kind_accuracy": kind_accuracy,
         "joint_accuracy": joint_accuracy,
+        "pe_statement_accuracy": pe_statement_accuracy,
         "mismatches": mismatches,
     }
 
@@ -171,22 +188,26 @@ def _run_golden_set(model_label: str) -> tuple[float, float, float, Path]:
     report_path = RUNS_DIR / f"{ts}-{model_label}.json"
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
 
+    pe_acc_str = f"{pe_statement_accuracy:.3f}" if pe_statement_accuracy is not None else "n/a"
     print(
-        f"\nGolden set run [{model_label}]: total={total} "
+        f"\nGolden set run [{model_label}]: main_total={total} pe_total={pe_total} "
         f"category_accuracy={category_accuracy:.3f} "
         f"kind_accuracy={kind_accuracy:.3f} "
         f"joint_accuracy={joint_accuracy:.3f} "
+        f"pe_statement_accuracy={pe_acc_str} "
         f"elapsed={elapsed_s:.2f}s "
         f"tokens={result_state.get('total_tokens_used', 0)} "
         f"report={report_path}"
     )
 
-    assert category_accuracy >= 0.90, (
-        f"[{model_label}] category_accuracy={category_accuracy:.3f} < 0.90. "
+    assert category_accuracy >= 0.92, (
+        f"[{model_label}] category_accuracy={category_accuracy:.3f} < 0.92 "
+        f"(main rows={total}, PE rows filtered={pe_total}). "
         f"See {report_path} for mismatch details."
     )
-    assert kind_accuracy >= 0.90, (
-        f"[{model_label}] kind_accuracy={kind_accuracy:.3f} < 0.90. "
+    assert kind_accuracy >= 0.92, (
+        f"[{model_label}] kind_accuracy={kind_accuracy:.3f} < 0.92 "
+        f"(main rows={total}, PE rows filtered={pe_total}). "
         f"See {report_path} for mismatch details."
     )
     return category_accuracy, kind_accuracy, joint_accuracy, report_path

@@ -111,6 +111,23 @@ def test_prompt_includes_fop_merchant_rule():
     assert "transfers_p2p only when" in prompt
 
 
+def test_prompt_includes_self_transfer_rule():
+    """Story 11.4 AC #4: Rule 4 (self-transfer vs P2P) must appear in prompt."""
+    prompt = _build_prompt([_txn()])
+    assert "Переказ між власними рахунками" in prompt
+    assert "Self-transfer" in prompt or "self-transfer" in prompt.lower()
+    # The absence-of-personal-name signal must be spelled out.
+    assert "personal full name" in prompt
+
+
+def test_prompt_includes_card_color_few_shot():
+    """Story 11.4 AC #5: card-color self-transfer example must be present."""
+    prompt = _build_prompt([_txn()])
+    assert "З Білої картки" in prompt
+    assert "Конвертація UAH" in prompt or "Конвертація валют" in prompt
+    assert "Переказ на картку" in prompt
+
+
 def test_prompt_includes_new_few_shot_examples():
     """Three few-shot examples per new rule must appear (AC #2)."""
     prompt = _build_prompt([_txn()])

@@ -232,7 +232,7 @@ development_status:
   # Applies 3 prompt disambiguation rules + 3 MCC table entries; gate = re-run
   # harness hits ≥0.90 both axes on Haiku. TD-042 closed-or-updated on outcome.
   11-3a-categorization-accuracy-follow-up: done
-  11-4-description-pattern-pre-pass-conditional: backlog
+  11-4-description-pattern-pre-pass-conditional: done
   11-5-post-parse-validation-layer-partial-import-semantics: done
   11-6-encoding-detection-with-mojibake-flagging: done
   11-7-ai-assisted-schema-detection-bank-format-registry: backlog

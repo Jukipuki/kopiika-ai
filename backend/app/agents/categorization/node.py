@@ -12,6 +12,7 @@ from typing import Any
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.agents.categorization.mcc_mapping import VALID_CATEGORIES, get_mcc_category
+from app.agents.categorization.pre_pass import classify_pre_pass
 from app.agents.circuit_breaker import CircuitBreakerOpenError, record_failure, record_success
 from app.agents.llm import get_fallback_llm_client, get_llm_client
 from app.agents.state import FinancialPipelineState
@@ -69,7 +70,10 @@ _FEW_SHOT_BLOCK = """Few-shot examples:
   {"id": "ex-14", "category": "shopping", "transaction_kind": "spending", "confidence": 0.9},
   {"id": "ex-15", "category": "transfers_p2p", "transaction_kind": "spending", "confidence": 0.9},
   {"id": "ex-16", "category": "other", "transaction_kind": "income", "confidence": 0.95},
-  {"id": "ex-17", "category": "other", "transaction_kind": "income", "confidence": 0.95}
+  {"id": "ex-17", "category": "other", "transaction_kind": "income", "confidence": 0.95},
+  {"id": "ex-18", "category": "transfers", "transaction_kind": "transfer", "confidence": 0.9},
+  {"id": "ex-19", "category": "transfers", "transaction_kind": "transfer", "confidence": 0.9},
+  {"id": "ex-20", "category": "transfers", "transaction_kind": "transfer", "confidence": 0.95}
 ]
 
 Examples explained:
@@ -89,7 +93,12 @@ ex-13: "FOP Ruban Olha Heorhii" -539.00 UAH (debit, MCC: 5200) → FOP on mercha
 ex-14: "LIQPAY*FOP Lutsenko Ev" -1222.00 UAH (debit, MCC: 5977) → FOP via LiqPay on merchant MCC → shopping
 ex-15: "Кукушкін Роман Олексійович" -1560.00 UAH (debit, MCC: 4829) → personal name on 4829 with no merchant markers → transfers_p2p
 ex-16: "Скасування. Bolt Food" +250.00 UAH (credit, MCC: 5812) → order cancellation is a reverse-direction inflow; positive amount → category=other, kind=income (merchant MCC is NOT authoritative for refunds/cancellations)
-ex-17: "Cancellation. LIQPAY*TOV ASHAN" +499.00 UAH (credit, MCC: null) → refund/cancellation inflow → category=other, kind=income"""
+ex-17: "Cancellation. LIQPAY*TOV ASHAN" +499.00 UAH (credit, MCC: null) → refund/cancellation inflow → category=other, kind=income
+
+Self-transfer vs P2P (Rule 4):
+ex-18: "Переказ на картку" -50000.00 UAH (debit, MCC: 4829) → generic account language, no personal name → transfers, kind=transfer (NOT transfers_p2p)
+ex-19: "З Білої картки" +1125.10 UAH (credit, MCC: 4829) → inbound leg of a Monobank card-color self-transfer → transfers, kind=transfer
+ex-20: "Конвертація UAH → USD" -50000.00 UAH (debit, MCC: 4829) → currency conversion between own accounts → transfers, kind=transfer"""
 
 
 def _build_prompt(transactions: list[dict]) -> str:
@@ -166,6 +175,19 @@ def _build_prompt(transactions: list[dict]) -> str:
         "   Use transfers_p2p only when the description is a bare personal\n"
         "   name (no ФОП/FOP/LIQPAY*FOP marker, no business identifier) AND\n"
         "   the MCC is 4829 or null.\n\n"
+        "4. Self-transfer between own accounts (MCC 4829, no personal name).\n"
+        "   When MCC is 4829 AND the description contains ONLY generic\n"
+        "   account/card/currency language (\"Переказ на картку\",\n"
+        "   \"Transfer to card\", \"На гривневий рахунок\", \"To USD account\",\n"
+        "   \"З <color> картки\", \"From <currency> account\",\n"
+        "   \"Конвертація валют\", \"Переказ між власними рахунками\") AND\n"
+        "   the description does NOT contain any of: a personal full name\n"
+        "   (Cyrillic or Latin first+last/patronymic), a business marker\n"
+        "   (ФОП, FOP, LIQPAY*, TOV, LLC), a fund/charity marker («...»,\n"
+        "   named fund), a deposit/investment marker (\"депозит\", \"deposit\",\n"
+        "   \"вклад\", \"investment\") → transfers, kind=transfer. This is\n"
+        "   the default for MCC 4829 debits that survive the other rules —\n"
+        "   NOT transfers_p2p (which requires a personal full name).\n\n"
         f"{_FEW_SHOT_BLOCK}\n\n"
         f"Transactions (signed UAH, negative=outflow, positive=inflow):\n{txn_block}\n\n"
         "Return ONLY a JSON array (no markdown, no explanation):\n"
@@ -284,6 +306,16 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
 
     categorized: list[dict] = []
     needs_llm: list[dict] = []
+
+    # Pass 0: Description pre-pass — overrides MCC for cash-action narration
+    remaining_after_pre_pass: list[dict] = []
+    for txn in transactions:
+        pre_result = classify_pre_pass(txn)
+        if pre_result is not None:
+            categorized.append(pre_result)
+        else:
+            remaining_after_pre_pass.append(txn)
+    transactions = remaining_after_pre_pass
 
     # Pass 1: MCC-based categorization (fast, free, no LLM)
     for txn in transactions:
