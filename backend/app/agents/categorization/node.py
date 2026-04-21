@@ -11,6 +11,7 @@ from typing import Any
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.agents.categorization.counterparty_patterns import edrpou_kind
 from app.agents.categorization.mcc_mapping import VALID_CATEGORIES, get_mcc_category
 from app.agents.categorization.pre_pass import classify_pre_pass
 from app.agents.circuit_breaker import CircuitBreakerOpenError, record_failure, record_success
@@ -101,14 +102,68 @@ ex-19: "З Білої картки" +1125.10 UAH (credit, MCC: 4829) → inbound
 ex-20: "Конвертація UAH → USD" -50000.00 UAH (debit, MCC: 4829) → currency conversion between own accounts → transfers, kind=transfer"""
 
 
+_RULE_5_8_BLOCK = """\
+5. Self-transfer by IBAN (Story 11.10).
+   When a transaction carries counterparty fields and `is_self_iban` is true,
+   the counterparty account is a KNOWN account of the user. Classify as
+   transfers, kind=transfer with confidence ≥ 0.98. Rule 5 overrides Rule 4
+   (description-based self-transfer) when signals conflict — IBAN match is
+   deterministic, description match is heuristic.
+
+6. Ukrainian State Treasury / Tax Service (Rule 6).
+   When `counterparty_tax_id_kind == "treasury"`:
+     - Outflow → category=government, kind=spending (tax payments).
+     - Inflow → category=other, kind=income (tax refunds).
+
+7. RNOKPP (10-digit individual tax ID, Rule 7).
+   When `counterparty_tax_id_kind == "rnokpp_10"` (individual counterparty):
+     - Inflow → category=other, kind=income (payment received from individual).
+     - Outflow → category=transfers_p2p, kind=spending.
+
+8. EDRPOU (8-digit legal-entity tax ID, Rule 8).
+   When `counterparty_tax_id_kind == "edrpou_8"` (non-Treasury legal entity):
+     - Inflow → category=other, kind=income (business income).
+     - Outflow → classify by description per existing rules. Rule 8 does NOT
+       auto-categorize outbound payments to legal entities — description
+       remains authoritative for expense bucketing.
+
+Rule precedence: Rule 5 > Rule 6 > Rule 4 > Rule 7 / Rule 8."""
+
+
+def _counterparty_block(txn: dict) -> str:
+    """Render the counterparty block for one row, or empty string if absent."""
+    has_any = any(
+        txn.get(k)
+        for k in ("counterparty_name", "counterparty_tax_id", "counterparty_account")
+    )
+    if not has_any and not txn.get("is_self_iban"):
+        return ""
+    parts = []
+    name = txn.get("counterparty_name")
+    tax = txn.get("counterparty_tax_id")
+    acct = txn.get("counterparty_account")
+    kind = txn.get("counterparty_tax_id_kind") or "unknown"
+    if name:
+        parts.append(f'name="{name}"')
+    if tax:
+        parts.append(f'tax_id="{tax}" (kind={kind})')
+    if acct:
+        parts.append(f'account="{acct}"')
+    parts.append(f"is_self_iban={bool(txn.get('is_self_iban'))}")
+    return "    counterparty: " + ", ".join(parts)
+
+
 def _build_prompt(transactions: list[dict]) -> str:
     """Build the two-axis (category + transaction_kind) categorization prompt.
 
     Each transaction line carries signed UAH amount, direction (debit/credit),
     and MCC (or "null"). The prompt ships the 19-category vocabulary, the
     kind×category matrix rules (tech spec §2.3), and 7 few-shot examples.
+    Rows carrying counterparty fields (PE statements) also ship a counterparty
+    block consumed by Rule 5-8 (Story 11.10).
     """
     lines = []
+    any_counterparty = False
     for i, txn in enumerate(transactions, start=1):
         amount_uah_str = f"{txn['amount'] / 100:+.2f} UAH"
         direction = "credit" if txn["amount"] > 0 else "debit"
@@ -118,7 +173,16 @@ def _build_prompt(transactions: list[dict]) -> str:
             f'{i}. [{txn["id"]}] "{txn["description"]}" {amount_uah_str} '
             f'({direction}, MCC: {mcc_str})'
         )
+        cp_block = _counterparty_block(txn)
+        if cp_block:
+            lines.append(cp_block)
+            any_counterparty = True
     txn_block = "\n".join(lines)
+    # The Rule 5-8 block is documentation-only for the LLM; deterministic
+    # post-processing enforces Rule 5/6 regardless. Omit it when no row in the
+    # batch has counterparty data (card-only regression path) so card users
+    # get bitwise-identical prompts to pre-11.10.
+    rule_5_8 = f"\n\n{_RULE_5_8_BLOCK}" if any_counterparty else ""
 
     return (
         "You are a financial transaction categorizer for Ukrainian bank statements.\n\n"
@@ -188,11 +252,85 @@ def _build_prompt(transactions: list[dict]) -> str:
         "   \"вклад\", \"investment\") → transfers, kind=transfer. This is\n"
         "   the default for MCC 4829 debits that survive the other rules —\n"
         "   NOT transfers_p2p (which requires a personal full name).\n\n"
-        f"{_FEW_SHOT_BLOCK}\n\n"
+        f"{_FEW_SHOT_BLOCK}"
+        f"{rule_5_8}\n\n"
         f"Transactions (signed UAH, negative=outflow, positive=inflow):\n{txn_block}\n\n"
         "Return ONLY a JSON array (no markdown, no explanation):\n"
         '[{"id": "uuid", "category": "groceries", "transaction_kind": "spending", "confidence": 0.97}, ...]'
     )
+
+
+def _apply_counterparty_rules(
+    txn: dict,
+    result: dict,
+    log_ctx: dict[str, str] | None = None,
+    *,
+    row_index: int | None = None,
+) -> dict:
+    """Deterministic Rule 5/6 enforcement and Rule 7/8 advisory logging.
+
+    Rule 5/6: if the deterministic verdict disagrees with the LLM, override.
+    Rule 7/8: log what rule the LLM's answer aligned with, but do not override.
+    Emits `categorization.counterparty_rule_hit` on any rule match; emits
+    `categorization.counterparty_rule_override` when we overrode the LLM.
+    """
+    is_self = bool(txn.get("is_self_iban"))
+    tax_kind = txn.get("counterparty_tax_id_kind") or "unknown"
+    amount = txn.get("amount", 0)
+    rule_number: int | None = None
+    deterministic: dict | None = None
+
+    if is_self:
+        rule_number = 5
+        deterministic = {"category": "transfers", "transaction_kind": "transfer"}
+    elif tax_kind == "treasury":
+        rule_number = 6
+        if amount < 0:
+            deterministic = {"category": "government", "transaction_kind": "spending"}
+        else:
+            deterministic = {"category": "other", "transaction_kind": "income"}
+    elif tax_kind == "rnokpp_10":
+        rule_number = 7  # advisory only
+    elif tax_kind == "edrpou_8":
+        rule_number = 8  # advisory only
+
+    if rule_number is None:
+        return result
+
+    log_payload = {
+        **(log_ctx or {}),
+        "transaction_row_index": row_index,
+        "transaction_row_id": txn.get("id"),
+        "rule_number": rule_number,
+        "counterparty_tax_id_kind": tax_kind if tax_kind != "unknown" else None,
+        "is_self_iban": is_self,
+    }
+    logger.info("categorization.counterparty_rule_hit", extra=log_payload)
+
+    if deterministic is not None:
+        if (
+            result.get("category") != deterministic["category"]
+            or result.get("transaction_kind") != deterministic["transaction_kind"]
+        ):
+            logger.info(
+                "categorization.counterparty_rule_override",
+                extra={
+                    **log_payload,
+                    "llm_category": result.get("category"),
+                    "llm_kind": result.get("transaction_kind"),
+                    "deterministic_category": deterministic["category"],
+                    "deterministic_kind": deterministic["transaction_kind"],
+                },
+            )
+        result["category"] = deterministic["category"]
+        result["transaction_kind"] = deterministic["transaction_kind"]
+        result["confidence_score"] = 1.0
+        result["flagged"] = False
+        result["uncategorized_reason"] = None
+        # Sentinel consumed by the post-LLM threshold loop to skip re-flagging —
+        # a deterministic rule must not be clobbered by a raised threshold.
+        result["deterministic_rule"] = rule_number
+    return result
 
 
 def _parse_llm_response(
@@ -213,7 +351,7 @@ def _parse_llm_response(
         # Index by id for quick lookup
         by_id = {r["id"]: r for r in results if "id" in r}
         parsed = []
-        for txn in transactions:
+        for row_index, txn in enumerate(transactions):
             r = by_id.get(txn["id"])
             if r:
                 raw_category = r.get("category", "other")
@@ -229,23 +367,25 @@ def _parse_llm_response(
                     category = "uncategorized"
                     transaction_kind = kind_by_sign(txn["amount"])
                     confidence_score = 0.0
-                parsed.append({
+                entry = {
                     "transaction_id": txn["id"],
                     "category": category,
                     "confidence_score": confidence_score,
                     "transaction_kind": transaction_kind,
                     "flagged": False,
                     "uncategorized_reason": None,
-                })
+                }
+                parsed.append(_apply_counterparty_rules(txn, entry, log_ctx, row_index=row_index))
             else:
-                parsed.append({
+                entry = {
                     "transaction_id": txn["id"],
                     "category": "other",
                     "confidence_score": 0.0,
                     "transaction_kind": kind_by_sign(txn["amount"]),
                     "flagged": False,
                     "uncategorized_reason": None,
-                })
+                }
+                parsed.append(_apply_counterparty_rules(txn, entry, log_ctx, row_index=row_index))
         return parsed
     except Exception as exc:
         logger.warning("Failed to parse LLM response: %s", exc, extra=log_ctx or {})
@@ -298,7 +438,8 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
     """LangGraph node: categorize all transactions using MCC codes + LLM fallback."""
     job_id = state["job_id"]
     user_id = state["user_id"]
-    log_ctx = {"job_id": job_id, "user_id": user_id}
+    upload_id = state.get("upload_id")
+    log_ctx = {"job_id": job_id, "user_id": user_id, "upload_id": upload_id}
 
     transactions = state["transactions"]
     batch_size = settings.CATEGORIZATION_BATCH_SIZE
@@ -427,8 +568,15 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         "uncategorized_reason": "llm_unavailable",
                     })
 
-        # Apply flagging threshold, set reason, override category for flagged transactions
+        # Apply flagging threshold, set reason, override category for flagged transactions.
+        # Rows stamped with `deterministic_rule` (Story 11.10 Rule 5/6) skip the
+        # threshold gate — a deterministic counterparty verdict must not be
+        # clobbered by an operator raising the confidence threshold.
         for r in llm_results:
+            if r.pop("deterministic_rule", None) is not None:
+                r["flagged"] = False
+                categorized.append(r)
+                continue
             r["flagged"] = r["confidence_score"] < confidence_threshold
             if r["flagged"]:
                 if r.get("uncategorized_reason") is None:

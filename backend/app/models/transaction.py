@@ -29,3 +29,8 @@ class Transaction(SQLModel, table=True):
     is_flagged_for_review: bool = Field(default=False)
     uncategorized_reason: Optional[str] = Field(default=None, max_length=50)
     transaction_kind: str = Field(default="spending", max_length=16)
+    # Story 11.10: counterparty signals for PE-statement categorization (TD-049).
+    # Populated by AIDetectedParser; None for card parsers (Monobank/PrivatBank).
+    counterparty_name: Optional[str] = Field(default=None, max_length=256)
+    counterparty_tax_id: Optional[str] = Field(default=None, max_length=32)
+    counterparty_account: Optional[str] = Field(default=None, max_length=64)

@@ -42,6 +42,47 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _build_state_transactions(
+    transactions_for_pipeline, session, user_id: uuid.UUID
+) -> list[dict]:
+    """Build the state.transactions list, pre-computing per-row counterparty signals.
+
+    Story 11.10: `is_self_iban` is resolved ONCE here against `user_iban_registry`
+    so the categorization node does not touch the DB inside its prompt-retry loop.
+    `counterparty_tax_id_kind` is a cheap deterministic classification (no DB).
+    """
+    from app.agents.categorization.counterparty_patterns import edrpou_kind
+    from app.services.user_iban_registry import UserIbanRegistryService
+
+    svc = UserIbanRegistryService(session)
+    out: list[dict] = []
+    for t in transactions_for_pipeline:
+        is_self_iban = False
+        if t.counterparty_account:
+            try:
+                is_self_iban = svc.is_user_iban(user_id, t.counterparty_account)
+            except Exception as exc:  # DB schema drift / eager lookup failure
+                logger.warning(
+                    "user_iban_registry.lookup_failed",
+                    extra={"user_id": str(user_id), "error": str(exc)},
+                )
+        out.append(
+            {
+                "id": str(t.id),
+                "mcc": t.mcc,
+                "description": t.description,
+                "amount": t.amount,
+                "date": str(t.date),
+                "counterparty_name": t.counterparty_name,
+                "counterparty_tax_id": t.counterparty_tax_id,
+                "counterparty_account": t.counterparty_account,
+                "counterparty_tax_id_kind": edrpou_kind(t.counterparty_tax_id),
+                "is_self_iban": is_self_iban,
+            }
+        )
+    return out
+
+
 def _get_upload_summary(session, upload_id: uuid.UUID) -> tuple[str | None, str | None]:
     """Compute (date_range_start, date_range_end) ISO date strings for an upload's transactions.
 
@@ -193,16 +234,9 @@ def process_upload(self, job_id: str) -> dict:
                     "job_id": job_id,
                     "user_id": str(job.user_id),
                     "upload_id": str(upload.id),
-                    "transactions": [
-                        {
-                            "id": str(t.id),
-                            "mcc": t.mcc,
-                            "description": t.description,
-                            "amount": t.amount,
-                            "date": str(t.date),
-                        }
-                        for t in transactions_for_pipeline
-                    ],
+                    "transactions": _build_state_transactions(
+                        transactions_for_pipeline, session, job.user_id,
+                    ),
                     "categorized_transactions": [],
                     "errors": [],
                     "step": "categorization",

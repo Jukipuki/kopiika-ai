@@ -808,7 +808,13 @@ Both are correctly classified `kind=transfer` (post-Story-11.4), so neither infl
 
 ---
 
-### TD-049 — Counterparty-aware categorization for PE account statements [HIGH]
+### TD-049 — Counterparty-aware categorization for PE account statements [RESOLVED 2026-04-21]
+
+**Resolved by:** [Story 11.10](../_bmad-output/implementation-artifacts/11-10-counterparty-aware-categorization-pe-statements.md). All 7 fix-shape items landed: (1) `detected_mapping` exposes counterparty columns (shipped in Story 11.7); (2) `TransactionData` + `Transaction` carry first-class `counterparty_name` / `counterparty_tax_id` / `counterparty_account`; (3) `user_iban_registry` table with AES-GCM envelope encryption via `app.core.crypto`; (4) Registry populated from PE-statement self-counterparty rows (card-header scan stub in place, inert pending parser updates); (5) Prompt Rules 5–8 with deterministic post-processing enforcement for Rules 5 and 6; (6) Six new golden-set rows (gs-095..gs-100) cover each Rule 5–8 branch; (7) Harness PE-segregation removed — unified gate now runs on the full 100-row set.
+
+---
+
+_Historical context (pre-resolution, retained for audit)._
 
 **Where:** Will require extensions to [backend/app/agents/categorization/node.py](../backend/app/agents/categorization/node.py) prompt contract, the `bank_format_registry` mapping schema (tech spec §2.4), and a new user-IBAN registry storage. Affects classification correctness for all FOP users who upload their PE account statement.
 
@@ -816,7 +822,6 @@ Both are correctly classified `kind=transfer` (post-Story-11.4), so neither infl
 
 - **What works today:** Any PE-statement row whose description contains one of the discriminating phrases the prompt has seen (self-transfer wording, service-payment wording, tax-payment wording) will classify correctly by description alone.
 - **What will break:** Real-world PE statements have high description variance (different contract numbers, different counterparty names, regional tax-office phrasings). Any row with an unfamiliar description pattern but a recognizable counterparty EDRPOU will fall through to default classification — the prompt does not have access to counterparty fields yet.
-- **Trajectory:** once Story 11.7 ships (AI-assisted schema detection will map counterparty columns), migrate the PE-row classification from description-pattern to counterparty-driven rules per the "Fix shape" below. Remove reliance on fixture-specific description patterns at that time.
 
 The current green test signal does NOT retire this TD; it means the TD is **masked** rather than resolved.
 
@@ -1006,6 +1011,79 @@ Story 11.7 hardcoded `session=None` at [parser_service.py:357](backend/app/servi
 **Fix shape:** Replace the `max_length=64` shorthand with an explicit `sa_column=Column(CHAR(64), unique=True, index=True, nullable=False)` so the model definition matches the migration.
 
 **Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-058 — Story 11.10 AC #6/#7 are dormant: no real-upload path populates `user_iban_registry` [HIGH]
+
+**Where:** [backend/app/services/parser_service.py:65-113](backend/app/services/parser_service.py#L65-L113), [backend/app/models/user.py](backend/app/models/user.py)
+
+**Problem:** Story 11.10 marked Tasks 5.1 and 5.2 `[x]`, but neither is functional in production:
+- Task 5.1 (Monobank/PrivatBank header IBAN scan) has no parser implementation — the hook sits idle.
+- Task 5.2 (PE self-counterparty register) keys on `user.full_name`, which does not exist on the `User` model. The hook short-circuits via `getattr(user, "full_name", None)`.
+AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E test pre-seeds the registry, masking the gap.
+
+**Why deferred:** Closing this requires (a) adding `User.full_name` (Cognito sync / profile story) and (b) implementing Monobank/PrivatBank header parsing — both larger than a review-time fix.
+
+**Fix shape:** (1) Add `User.full_name` via a profile/auth story; (2) extend Monobank and PrivatBank parsers to surface the statement-holder IBAN from file headers; (3) re-run AC #6/#7 acceptance against a real upload.
+
+**Surfaced in:** Story 11.10 code review (2026-04-21)
+
+---
+
+### TD-059 — Rule 6 Treasury EDRPOU seed list is too small for real-world tax payments [MEDIUM]
+
+**Where:** [backend/app/agents/categorization/counterparty_patterns.py:37-42](backend/app/agents/categorization/counterparty_patterns.py#L37-L42)
+
+**Problem:** Seed list contains only the central Treasury (37567646) and central Tax Service (43005000) EDRPOUs. Ukrainian tax payments typically go to regional (oblast) Treasury offices whose EDRPOUs are NOT in the set. Rule 6 will miss nearly all production Treasury outflows; golden-set coverage uses the central EDRPOU only, which masks this gap.
+
+**Why deferred:** Populating the list requires sourcing and verifying oblast-level EDRPOUs from public Treasury/Tax-Service registries — not a review-time task.
+
+**Fix shape:** Research oblast-level Treasury EDRPOUs from treasury.gov.ua, seed into `_TREASURY_EDRPOU`. If the list exceeds ~50 entries, migrate to YAML under `app/agents/categorization/data/` per the story's scope note. Add a golden-set row per oblast bucket.
+
+**Surfaced in:** Story 11.10 code review (2026-04-21)
+
+---
+
+### TD-060 — `AIDetectedParser._safe_cell` dead `None`-check noise [LOW]
+
+**Where:** [backend/app/agents/ingestion/parsers/ai_detected.py:53-57](backend/app/agents/ingestion/parsers/ai_detected.py#L53-L57)
+
+**Problem:** `return value if value is not None else None` is a no-op: `csv.reader` rows yield `str`, never `None`. The ternary is noise that invites future readers to assume `None` is possible.
+
+**Why deferred:** Cosmetic; no behavior change.
+
+**Fix shape:** Replace with `return value`.
+
+**Surfaced in:** Story 11.10 code review (2026-04-21)
+
+---
+
+### TD-061 — `user_iban_registry.updated_at` not bumped on raw UPDATEs [LOW]
+
+**Where:** [backend/app/models/user_iban_registry.py:50](backend/app/models/user_iban_registry.py#L50), [backend/alembic/versions/y1z2a3b4c5d6_add_user_iban_registry.py:48-53](backend/alembic/versions/y1z2a3b4c5d6_add_user_iban_registry.py#L48-L53)
+
+**Problem:** Column has `server_default=now()` on INSERT only; `UserIbanRegistryService.register` mutates the field manually on duplicate, but any future raw SQL UPDATE (operator scripts, data migrations) leaves `updated_at` stale.
+
+**Why deferred:** The service is the only writer today; rotation script bypasses this column.
+
+**Fix shape:** Add `server_onupdate=func.now()` (or DB trigger) plus matching model-level `onupdate=_utcnow` so every path refreshes the field.
+
+**Surfaced in:** Story 11.10 code review (2026-04-21)
+
+---
+
+### TD-062 — E2E crypto-settings mutation is not parallel-safe [LOW]
+
+**Where:** [backend/tests/integration/test_pe_categorization_e2e.py:86-93](backend/tests/integration/test_pe_categorization_e2e.py#L86-L93)
+
+**Problem:** `_local_fernet` fixture patches `crypto.settings.ENV`, `KMS_IBAN_KEY_ARN`, `LOCAL_IBAN_FERNET_KEY` on the module-level pydantic-settings singleton. If another test runs concurrently (e.g. `pytest-xdist`) it observes the mutated values.
+
+**Why deferred:** Test-only and we don't run xdist today.
+
+**Fix shape:** Route crypto through a context-scoped settings provider, or isolate the test in its own process (mark serial) when xdist lands.
+
+**Surfaced in:** Story 11.10 code review (2026-04-21)
 
 ---
 

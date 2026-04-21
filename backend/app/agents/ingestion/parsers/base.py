@@ -18,6 +18,12 @@ class TransactionData:
     # Mutually exclusive. Both None for rows without a currency column (legacy Monobank).
     currency_alpha: str | None = None
     currency_unknown_raw: str | None = None
+    # Story 11.10: counterparty signals from PE-statement-style parsers. Card
+    # parsers leave these as None; downstream consumers (categorization node,
+    # user-IBAN registry) treat None as "no signal, fall back to description".
+    counterparty_name: str | None = None
+    counterparty_tax_id: str | None = None
+    counterparty_account: str | None = None
 
 
 @dataclass

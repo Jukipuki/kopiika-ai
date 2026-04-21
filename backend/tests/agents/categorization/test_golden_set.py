@@ -66,16 +66,29 @@ def _load_golden_set() -> list[dict]:
 
 
 def _build_state(rows: list[dict]) -> dict:
-    transactions = [
-        {
+    from app.agents.categorization.counterparty_patterns import edrpou_kind
+
+    transactions = []
+    for row in rows:
+        txn = {
             "id": row["id"],
             "description": row["description"],
             "amount": row["amount_kopiykas"],
             "mcc": row["mcc"],
             "date": "2025-01-01",
         }
-        for row in rows
-    ]
+        # Story 11.10: thread optional counterparty fields from the fixture.
+        # Non-PE rows have these absent → txn stays card-only.
+        if row.get("counterparty_name"):
+            txn["counterparty_name"] = row["counterparty_name"]
+        if row.get("counterparty_tax_id"):
+            txn["counterparty_tax_id"] = row["counterparty_tax_id"]
+            txn["counterparty_tax_id_kind"] = edrpou_kind(row["counterparty_tax_id"])
+        if row.get("counterparty_account"):
+            txn["counterparty_account"] = row["counterparty_account"]
+        if "is_self_iban" in row:
+            txn["is_self_iban"] = bool(row["is_self_iban"])
+        transactions.append(txn)
     return {
         "job_id": f"golden-set-{uuid.uuid4()}",
         "user_id": "golden-set-user",
@@ -118,23 +131,22 @@ def _run_golden_set(model_label: str) -> tuple[float, float, float, Path]:
             row["id"], {"category": "uncategorized", "transaction_kind": None}
         )
 
-    # Story 11.4 AC #7: PE-statement rows require TD-049 (counterparty-aware
-    # categorization) to classify correctly. Filter them out of the main metric
-    # and report their accuracy as a secondary, non-gating signal.
+    # Story 11.10 / AC #12: PE-statement rows are no longer segregated. The
+    # primary gate runs on the full unified set. `pe_statement_accuracy` is
+    # retained as a non-gating operator-visibility metric.
     pe_rows = [r for r in rows if r.get("edge_case_tag") == "pe_statement"]
-    main_rows = [r for r in rows if r.get("edge_case_tag") != "pe_statement"]
 
-    total = len(main_rows)
+    total = len(rows)
     category_correct = sum(
-        1 for row in main_rows
+        1 for row in rows
         if results_by_id[row["id"]].get("category") == row["expected_category"]
     )
     kind_correct = sum(
-        1 for row in main_rows
+        1 for row in rows
         if results_by_id[row["id"]].get("transaction_kind") == row["expected_kind"]
     )
     joint_correct = sum(
-        1 for row in main_rows
+        1 for row in rows
         if results_by_id[row["id"]].get("category") == row["expected_category"]
         and results_by_id[row["id"]].get("transaction_kind") == row["expected_kind"]
     )
@@ -202,12 +214,12 @@ def _run_golden_set(model_label: str) -> tuple[float, float, float, Path]:
 
     assert category_accuracy >= 0.92, (
         f"[{model_label}] category_accuracy={category_accuracy:.3f} < 0.92 "
-        f"(main rows={total}, PE rows filtered={pe_total}). "
+        f"(unified total={total}, pe_included={pe_total}). "
         f"See {report_path} for mismatch details."
     )
     assert kind_accuracy >= 0.92, (
         f"[{model_label}] kind_accuracy={kind_accuracy:.3f} < 0.92 "
-        f"(main rows={total}, PE rows filtered={pe_total}). "
+        f"(unified total={total}, pe_included={pe_total}). "
         f"See {report_path} for mismatch details."
     )
     return category_accuracy, kind_accuracy, joint_accuracy, report_path
@@ -313,7 +325,7 @@ def test_golden_set_edge_case_coverage() -> None:
         # the tag's history; re-raise the minimum if salary-inflow rows are
         # re-added to the golden set.
         "salary_inflow": 0,
-        "pe_statement": 2,
+        "pe_statement": 8,
         "refund": 2,
         "standard": 10,
         "mcc_4829_ambiguous": 5,

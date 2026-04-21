@@ -62,6 +62,56 @@ class ParseAndStoreResult:
     schema_detection_source: str = "known_bank_parser"
 
 
+def _register_self_counterparty_ibans(
+    session: Session,
+    user_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    transactions: list,
+) -> None:
+    """Per Story 11.10 Task 5.2: register PE-statement self-transfer IBANs.
+
+    For rows where `counterparty_name` matches the user's `full_name`
+    (NFKC + casefold), insert the counterparty's IBAN into `user_iban_registry`.
+    Batches into one flush to avoid N+1. Idempotent via the service.
+    """
+    import unicodedata
+
+    from app.models.user import User
+    from app.services.user_iban_registry import UserIbanRegistryService, iban_fingerprint
+
+    user = session.get(User, user_id)
+    if user is None or not getattr(user, "full_name", None):
+        return
+
+    user_name_canon = unicodedata.normalize("NFKC", user.full_name).strip().casefold()
+    if not user_name_canon:
+        return
+
+    # Make pending new_txns visible to the registry's lookup SELECT regardless
+    # of session-level autoflush settings.
+    session.flush()
+
+    svc = UserIbanRegistryService(session)
+    seen_fingerprints: set[str] = set()
+    for txn in transactions:
+        name = (txn.counterparty_name or "").strip()
+        account = (txn.counterparty_account or "").strip()
+        if not name or not account:
+            continue
+        if unicodedata.normalize("NFKC", name).strip().casefold() != user_name_canon:
+            continue
+        fp = iban_fingerprint(account)
+        if fp in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fp)
+        svc.register(
+            user_id=user_id,
+            iban_plaintext=account,
+            label="PE counterparty (self)",
+            first_seen_upload_id=upload_id,
+        )
+
+
 class UnsupportedFormatError(Exception):
     """Raised when no parser is available for the detected bank format."""
 
@@ -260,6 +310,9 @@ def _parse_and_build_records(
             uncategorized_reason=(
                 "currency_unknown" if txn_data.currency_unknown_raw is not None else None
             ),
+            counterparty_name=txn_data.counterparty_name,
+            counterparty_tax_id=txn_data.counterparty_tax_id,
+            counterparty_account=txn_data.counterparty_account,
         )
         for txn_data in validation.accepted
     ]
@@ -413,6 +466,19 @@ def sync_parse_and_store_transactions(
 
     session.add_all(new_txns)
     session.add_all(flagged_records)
+
+    # Story 11.10: populate user_iban_registry with self-counterparty IBANs
+    # from PE statements. Best-effort — registry failures must NOT fail the
+    # upload path.
+    try:
+        _register_self_counterparty_ibans(
+            session, user_id, upload_id, new_txns,
+        )
+    except Exception as exc:
+        logger.warning(
+            "user_iban_registry.register_failed",
+            extra={"upload_id": str(upload_id), "error": str(exc)},
+        )
 
     logger.info(
         "Sync parse and store complete",

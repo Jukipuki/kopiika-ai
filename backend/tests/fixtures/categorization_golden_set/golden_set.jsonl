@@ -906,7 +906,11 @@
     "expected_category": "transfers",
     "expected_kind": "transfer",
     "edge_case_tag": "pe_statement",
-    "notes": "PE-statement row — outbound self-transfer FROM user's FOP account TO their own Monobank card. Counterparty (if captured): name=user's own name, tax_id=individual-RNOKPP, iban=user's own card IBAN. No MCC in PE statement shape. Description is language-invariant across UA/EN PE exports. REQUIRES Story 11.7 (schema detection with counterparty fields) + TD-049 (counterparty-aware categorization). Expected to fail current card-only pipeline — harness should segregate pe_statement rows from main accuracy metric."
+    "counterparty_name": "ТЕСТ КОРИСТУВАЧ",
+    "counterparty_tax_id": "3300100100",
+    "counterparty_account": "UA213223130000026007233566091",
+    "is_self_iban": true,
+    "notes": "PE-statement row — outbound self-transfer. Post-Story-11.10: classified via Rule 5 (is_self_iban=true)."
 }
 {
     "id": "gs-092",
@@ -916,7 +920,11 @@
     "expected_category": "transfers",
     "expected_kind": "transfer",
     "edge_case_tag": "pe_statement",
-    "notes": "PE-statement row — larger outbound self-transfer demonstrating the same pattern at a different amount. Same structural signals as gs-091; tests that amount variance doesn't alter classification. REQUIRES Story 11.7 + TD-049."
+    "counterparty_name": "ТЕСТ КОРИСТУВАЧ",
+    "counterparty_tax_id": "3300100100",
+    "counterparty_account": "UA213223130000026007233566091",
+    "is_self_iban": true,
+    "notes": "PE-statement row — larger outbound self-transfer; classified via Rule 5."
 }
 {
     "id": "gs-093",
@@ -926,7 +934,11 @@
     "expected_category": "other",
     "expected_kind": "income",
     "edge_case_tag": "pe_statement",
-    "notes": "PE-statement row — REAL income: inbound service payment from a business counterparty (a client paying for IT services). Counterparty (if captured): name=company, tax_id=non-zero EDRPOU (8-digit legal entity code), iban=external business IBAN. This is the actual salary-equivalent for a FOP user, distinct from the card-side 'З гривневого рахунку ФОП' which is just the internal transfer of these funds. REQUIRES Story 11.7 + TD-049."
+    "counterparty_name": "ТОВ КЛІЄНТ ПРИКЛАД",
+    "counterparty_tax_id": "87654321",
+    "counterparty_account": "UA553133220000026008233560093",
+    "is_self_iban": false,
+    "notes": "PE-statement row — inbound business income. 8-digit EDRPOU → Rule 8: kind=income, category=other."
 }
 {
     "id": "gs-094",
@@ -936,5 +948,93 @@
     "expected_category": "government",
     "expected_kind": "spending",
     "edge_case_tag": "pe_statement",
-    "notes": "PE-statement row — synthetic but realistic single-tax payment for a Group 3 FOP (5% of 175,800 UAH income = 8,790 UAH). Counterparty would be State Treasury / ДКСУ with distinctive EDRPOU pattern. Tests that government-payment classification on PE statement uses counterparty identity (treasury code) rather than description parsing alone. REQUIRES Story 11.7 + TD-049."
+    "counterparty_name": "Державна казначейська служба України",
+    "counterparty_tax_id": "37567646",
+    "counterparty_account": "UA898999980000000000000000094",
+    "is_self_iban": false,
+    "notes": "PE-statement row — single-tax payment, Treasury EDRPOU. Classified via Rule 6."
+}
+{
+    "id": "gs-095",
+    "description": "Переказ коштів на поповнення картки",
+    "amount_kopiykas": -2500000,
+    "mcc": null,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "pe_statement",
+    "counterparty_name": "ТЕСТ КОРИСТУВАЧ",
+    "counterparty_tax_id": "3300100100",
+    "counterparty_account": "UA213223130000026007233566999",
+    "is_self_iban": true,
+    "notes": "Story 11.10 Rule 5 (self-IBAN). Counterparty account matches user's registered IBAN; description wording is deliberately novel (not in Story 11.4's Rule 4 pattern list). Tests that IBAN match alone produces the correct classification."
+}
+{
+    "id": "gs-096",
+    "description": "Єдиний податок Державна казначейська служба України",
+    "amount_kopiykas": -1250000,
+    "mcc": null,
+    "expected_category": "government",
+    "expected_kind": "spending",
+    "edge_case_tag": "pe_statement",
+    "counterparty_name": "Державна казначейська служба України",
+    "counterparty_tax_id": "37567646",
+    "counterparty_account": "UA898999980000000000000000001",
+    "is_self_iban": false,
+    "notes": "Story 11.10 Rule 6 (Treasury outbound). Counterparty EDRPOU matches Treasury seed list → kind=spending, category=government regardless of description wording variance."
+}
+{
+    "id": "gs-097",
+    "description": "Повернення надміру сплачених коштів згідно рішення",
+    "amount_kopiykas": 150000,
+    "mcc": null,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "pe_statement",
+    "counterparty_name": "Державна податкова служба України",
+    "counterparty_tax_id": "43005000",
+    "counterparty_account": "UA898999980000000000000000002",
+    "is_self_iban": false,
+    "notes": "Story 11.10 Rule 6 (Treasury inbound refund). Rare but real: tax overpayment refund. EDRPOU match → kind=income, category=other."
+}
+{
+    "id": "gs-098",
+    "description": "Переказ коштів від фізичної особи",
+    "amount_kopiykas": 300000,
+    "mcc": null,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "pe_statement",
+    "counterparty_name": "Іванов Іван Петрович",
+    "counterparty_tax_id": "1234567890",
+    "counterparty_account": "UA213323130000026007233566111",
+    "is_self_iban": false,
+    "notes": "Story 11.10 Rule 7 (RNOKPP inbound P2P). 10-digit tax ID → individual → inbound = income."
+}
+{
+    "id": "gs-099",
+    "description": "Плата за послуги згідно угоди",
+    "amount_kopiykas": -450000,
+    "mcc": null,
+    "expected_category": "transfers_p2p",
+    "expected_kind": "spending",
+    "edge_case_tag": "pe_statement",
+    "counterparty_name": "Петренко Петро Іванович",
+    "counterparty_tax_id": "9876543210",
+    "counterparty_account": "UA213323130000026007233566112",
+    "is_self_iban": false,
+    "notes": "Story 11.10 Rule 7 (RNOKPP outbound). 10-digit tax ID → individual → outbound = transfers_p2p, kind=spending."
+}
+{
+    "id": "gs-100",
+    "description": "Надходження від реалізації продукції, замовлення №284",
+    "amount_kopiykas": 22000000,
+    "mcc": null,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "pe_statement",
+    "counterparty_name": "ТОВ АБВГД",
+    "counterparty_tax_id": "12345678",
+    "counterparty_account": "UA213323130000026007233566222",
+    "is_self_iban": false,
+    "notes": "Story 11.10 Rule 8 (EDRPOU inbound). Novel description wording (no 'послуги у сфері інформатизації' phrase from gs-093). 8-digit non-Treasury EDRPOU → kind=income, category=other regardless of description."
 }

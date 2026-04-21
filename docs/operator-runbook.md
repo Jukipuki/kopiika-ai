@@ -489,3 +489,49 @@ Re-upload the problem statement and confirm:
   never recur — dropping a row forces a fresh LLM call on the next upload of
   the same format.
 
+
+## Rotating the IBAN encryption KMS key (Story 11.10)
+
+`user_iban_registry` stores application-level AES-GCM ciphertext; each row's
+data encryption key (DEK) is generated per-call by the KMS CMK named in
+`settings.KMS_IBAN_KEY_ARN`. Rotation is an operator-initiated event — not
+cron-automated — because it requires a maintenance window and a row-level
+lock sweep.
+
+### When to rotate
+
+- Scheduled annual key rotation per compliance policy.
+- After a suspected key-material compromise (treat as emergency).
+- When migrating an environment from the local-Fernet dev fallback to KMS
+  (each row carries a prefix byte that routes decryption, so the script
+  transparently reads Fernet rows and writes KMS rows).
+
+### How to rotate
+
+1. Create a new CMK version in AWS KMS or point `KMS_IBAN_KEY_ARN` at the
+   new CMK ARN. KMS resolves historical key versions on decrypt
+   automatically — no downtime on reads during rotation.
+2. Coordinate a short maintenance window (row-level locks acquired during
+   the UPDATE). Expected runtime: ~1s per 500 rows on a well-connected
+   worker; single-shot even for typical user bases.
+3. Run a dry-run first to confirm row counts:
+   ```bash
+   python scripts/rotate_iban_encryption.py --dry-run
+   ```
+4. Execute the rotation:
+   ```bash
+   python scripts/rotate_iban_encryption.py
+   ```
+5. Verify: `SELECT COUNT(*) FROM user_iban_registry;` matches the row count
+   the script reported. Spot-check a row by calling
+   `UserIbanRegistryService.is_user_iban(user_id, known_plaintext)` — it
+   must still return True after rotation (fingerprint is key-independent).
+
+### Warnings
+
+- The script takes a row lock during re-encrypt; writes during the window
+  are blocked. Keep the window short.
+- Do NOT delete the old CMK version until the script reports success and a
+  post-rotation verification pass completes. KMS retains old versions for
+  decrypt; deleting too early breaks old ciphertexts that weren't yet
+  re-encrypted (shouldn't happen after a clean run, but defense in depth).

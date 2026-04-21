@@ -105,6 +105,14 @@ async def _seed_user_data(session: SQLModelAsyncSession, user_id: uuid.UUID):
         user_id=user_id, upload_id=upload_id,
         row_number=1, raw_data={"desc": "Unknown"}, reason="unrecognized",
     ))
+    # Story 11.10: ensure user_iban_registry is covered by the deletion cascade.
+    from app.models.user_iban_registry import UserIbanRegistry
+    session.add(UserIbanRegistry(
+        user_id=user_id,
+        iban_encrypted=b"\x02fake-ct",  # cascade test doesn't round-trip crypto
+        iban_fingerprint="a" * 64,
+        label="test",
+    ))
     await session.flush()
     return upload_id
 
@@ -185,6 +193,13 @@ class TestAccountDeletion:
                     select(Transaction).where(Transaction.user_id == user_id)
                 )).all()
                 assert len(transactions) == 0
+
+                # Story 11.10: user_iban_registry cascade-delete coverage.
+                from app.models.user_iban_registry import UserIbanRegistry
+                ibans = (await verify_session.exec(
+                    select(UserIbanRegistry).where(UserIbanRegistry.user_id == user_id)
+                )).all()
+                assert len(ibans) == 0
 
                 insights = (await verify_session.exec(
                     select(Insight).where(Insight.user_id == user_id)

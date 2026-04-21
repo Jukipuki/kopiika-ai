@@ -15,6 +15,7 @@ from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
 from app.models.upload import Upload
 from app.models.user import User
+from app.models.user_iban_registry import UserIbanRegistry
 
 __all__ = [
     "AuditLog",
@@ -35,4 +36,5 @@ __all__ = [
     "Upload",
     "User",
     "UserConsent",
+    "UserIbanRegistry",
 ]

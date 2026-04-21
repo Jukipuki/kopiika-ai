@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     CATEGORIZATION_CONFIDENCE_THRESHOLD: float = 0.7
     CATEGORIZATION_BATCH_SIZE: int = 50
 
+    # Deployment environment (local | dev | staging | prod). Gates the local-only
+    # Fernet fallback in app.core.crypto — non-local ENV must use KMS.
+    ENV: str = "local"
+
+    # KMS CMK ARN for IBAN envelope encryption (Story 11.10 / TD-049). Required
+    # in non-local environments; local falls back to LOCAL_IBAN_FERNET_KEY.
+    KMS_IBAN_KEY_ARN: Optional[str] = None
+
+    # Local-dev-only Fernet key (urlsafe-b64, 32 bytes). NEVER set in staging/prod.
+    LOCAL_IBAN_FERNET_KEY: Optional[str] = None
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property

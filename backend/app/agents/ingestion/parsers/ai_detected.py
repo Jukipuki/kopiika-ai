@@ -1,10 +1,11 @@
 """Generic-schema parser that applies a mapping produced by AI schema detection.
 
-Story 11.7. Given a `mapping: dict` (from `resolve_bank_format`), parse a CSV
-file deterministically into the shared `ParseResult` shape. Counterparty column
-values (when present in the mapping) are stashed in `TransactionData.raw_data`
-under explicit keys so TD-049 can consume them later without re-running
-detection. Counterparty fields are NOT added to `TransactionData` itself.
+Story 11.7 introduced AI-assisted detection; Story 11.10 promotes counterparty
+signals to first-class `TransactionData` fields (TD-049 resolution). Given a
+`mapping: dict` (from `resolve_bank_format`), parse a CSV file deterministically
+into the shared `ParseResult` shape, populating `counterparty_name` /
+`counterparty_tax_id` / `counterparty_account` directly on the DTO when the
+mapping exposes them.
 """
 from __future__ import annotations
 
@@ -32,8 +33,12 @@ _COUNTERPARTY_MAPPING_KEYS: tuple[tuple[str, str], ...] = (
     ("counterparty_name_column", "counterparty_name"),
     ("counterparty_tax_id_column", "counterparty_tax_id"),
     ("counterparty_account_column", "counterparty_account"),
-    ("counterparty_currency_column", "counterparty_currency"),
 )
+_FIRST_CLASS_COUNTERPARTY_FIELDS = {
+    "counterparty_name",
+    "counterparty_tax_id",
+    "counterparty_account",
+}
 
 
 def _col_index(header: list[str], name: str | None) -> int | None:
@@ -116,10 +121,10 @@ class AIDetectedParser(AbstractParser):
 
         # Counterparty lookups — may all be None; that's fine.
         counterparty_idxs: list[tuple[str, int]] = []
-        for mapping_key, raw_data_key in _COUNTERPARTY_MAPPING_KEYS:
+        for mapping_key, field_name in _COUNTERPARTY_MAPPING_KEYS:
             idx = _col_index(header, mapping.get(mapping_key))
             if idx is not None:
-                counterparty_idxs.append((raw_data_key, idx))
+                counterparty_idxs.append((field_name, idx))
 
         if date_idx is None or amount_idx is None:
             return ParseResult(
@@ -191,10 +196,15 @@ class AIDetectedParser(AbstractParser):
                             },
                         )
 
-                for raw_data_key, idx in counterparty_idxs:
+                counterparty_values: dict[str, str | None] = {
+                    "counterparty_name": None,
+                    "counterparty_tax_id": None,
+                    "counterparty_account": None,
+                }
+                for field_name, idx in counterparty_idxs:
                     value = _safe_cell(row, idx)
                     if value is not None and value.strip():
-                        raw_data[raw_data_key] = value.strip()
+                        counterparty_values[field_name] = value.strip()
 
                 transactions.append(
                     TransactionData(
@@ -207,6 +217,9 @@ class AIDetectedParser(AbstractParser):
                         raw_data=raw_data,
                         currency_alpha=currency_alpha,
                         currency_unknown_raw=currency_unknown_raw,
+                        counterparty_name=counterparty_values["counterparty_name"],
+                        counterparty_tax_id=counterparty_values["counterparty_tax_id"],
+                        counterparty_account=counterparty_values["counterparty_account"],
                     )
                 )
             except (IndexError, ValueError, InvalidOperation) as exc:
