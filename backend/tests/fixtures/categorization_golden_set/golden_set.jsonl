@@ -133,7 +133,7 @@
     "description": "FOP FETSYCH OLEKSANDR YUR",
     "amount_kopiykas": -300000,
     "mcc": 8021,
-    "expected_category": "shopping",
+    "expected_category": "healthcare",
     "expected_kind": "spending",
     "edge_case_tag": "p2p_individual",
     "notes": "Payment to a ФОП where MCC 8021 (dental) points to a specific service — merchant purchase not P2P. Hand-labeled."
@@ -143,7 +143,7 @@
     "description": "LIQPAY*Dzikovskyy V.V.",
     "amount_kopiykas": -165500,
     "mcc": 5812,
-    "expected_category": "shopping",
+    "expected_category": "restaurants",
     "expected_kind": "spending",
     "edge_case_tag": "p2p_individual",
     "notes": "LIQPAY-rail payment where the counterparty name looks personal but MCC 5812 (restaurants) indicates a food purchase. Hand-labeled."
@@ -153,20 +153,20 @@
     "description": "З гривневого рахунку ФОП",
     "amount_kopiykas": 1000000,
     "mcc": 4829,
-    "expected_category": "other",
-    "expected_kind": "income",
-    "edge_case_tag": "salary_inflow",
-    "notes": "Ukrainian-locale inbound top-up from FOP business account — the payroll-equivalent income rail for a Ukrainian sole proprietor. Hand-labeled."
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "self_transfer",
+    "notes": "Relabeled 2026-04-21 from other/income → transfers/transfer. 'ФОП' marker = user's own sole-proprietor account, so this is the INBOUND leg of a self-transfer, not income. Real income lives on the PE statement (see gs-093). Card-only users relying on this for income should be prompted to upload PE statement (TD-050)."
 }
 {
     "id": "gs-017",
     "description": "From UAH account",
     "amount_kopiykas": 1000000,
     "mcc": 4829,
-    "expected_category": "other",
-    "expected_kind": "income",
-    "edge_case_tag": "salary_inflow",
-    "notes": "English-locale inbound top-up from own UAH (FOP) account to personal card — income rail. Hand-labeled."
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "self_transfer",
+    "notes": "Relabeled 2026-04-21 from other/income → transfers/transfer. English-locale inbound leg of a self-transfer from the user's own account ('UAH account' = own non-card account, typically FOP). Real income requires PE statement upload (TD-050)."
 }
 {
     "id": "gs-018",
@@ -443,7 +443,7 @@
     "description": "MauDau",
     "amount_kopiykas": -243200,
     "mcc": 5411,
-    "expected_category": "shopping",
+    "expected_category": "groceries",
     "expected_kind": "spending",
     "edge_case_tag": "standard",
     "notes": "MauDau is a Ukrainian pet-supplies retailer; MCC 5411 hints at grocery-category items (pet food) but the retailer is pet-specific — shopping."
@@ -733,10 +733,10 @@
     "description": "City24",
     "amount_kopiykas": -500000,
     "mcc": 6010,
-    "expected_category": "finance",
+    "expected_category": "atm_cash",
     "expected_kind": "spending",
     "edge_case_tag": "standard",
-    "notes": "City24 Ukrainian money-transfer/exchange service; MCC 6010 (manual cash disbursement) supports finance classification."
+    "notes": "City24 operator-mediated cash disbursement on MCC 6010 — functionally equivalent to ATM withdrawal (user walks out with cash). Relabeled from finance→atm_cash during Story 11.3 golden-set review."
 }
 {
     "id": "gs-075",
@@ -833,10 +833,10 @@
     "description": "Поповнення депозиту «Скарбничка»",
     "amount_kopiykas": -2500000,
     "mcc": 4829,
-    "expected_category": "transfers",
-    "expected_kind": "transfer",
+    "expected_category": "savings",
+    "expected_kind": "savings",
     "edge_case_tag": "deposit_top_up",
-    "notes": "Third deposit top-up example to satisfy §4.2 minimum (≥3). Named savings product ('Skarbnychka') — funds remain user-owned; classified as transfer not spending."
+    "notes": "Third deposit top-up example to satisfy §4.2 minimum (≥3). Named savings product ('Skarbnychka') — funds remain user-owned but land in a dedicated savings product, so labeled savings/savings (relabeled from transfers/transfer during Story 11.3 review to match the enriched-prompt few-shot for deposit top-ups)."
 }
 {
     "id": "gs-085",
@@ -897,4 +897,44 @@
     "expected_kind": "spending",
     "edge_case_tag": "non_uah_currency",
     "notes": "Foreign-currency purchase (USD-denominated, ~3200 UAH equivalent). Verifies USD shopping categorization on book/retail MCC; no currency conversion happens in the categorizer."
+}
+{
+    "id": "gs-091",
+    "description": "Переказ між власними рахунками для поповнення картки 444111******XXXX",
+    "amount_kopiykas": -1000000,
+    "mcc": null,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "pe_statement",
+    "notes": "PE-statement row — outbound self-transfer FROM user's FOP account TO their own Monobank card. Counterparty (if captured): name=user's own name, tax_id=individual-RNOKPP, iban=user's own card IBAN. No MCC in PE statement shape. Description is language-invariant across UA/EN PE exports. REQUIRES Story 11.7 (schema detection with counterparty fields) + TD-049 (counterparty-aware categorization). Expected to fail current card-only pipeline — harness should segregate pe_statement rows from main accuracy metric."
+}
+{
+    "id": "gs-092",
+    "description": "Переказ між власними рахунками для поповнення картки 444111******XXXX",
+    "amount_kopiykas": -5000000,
+    "mcc": null,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "edge_case_tag": "pe_statement",
+    "notes": "PE-statement row — larger outbound self-transfer demonstrating the same pattern at a different amount. Same structural signals as gs-091; tests that amount variance doesn't alter classification. REQUIRES Story 11.7 + TD-049."
+}
+{
+    "id": "gs-093",
+    "description": "Оплата за послуги у сфері інформатизації згідно Договору № 1-21 від 28.12.2021 р. Без ПДВ",
+    "amount_kopiykas": 17580000,
+    "mcc": null,
+    "expected_category": "other",
+    "expected_kind": "income",
+    "edge_case_tag": "pe_statement",
+    "notes": "PE-statement row — REAL income: inbound service payment from a business counterparty (a client paying for IT services). Counterparty (if captured): name=company, tax_id=non-zero EDRPOU (8-digit legal entity code), iban=external business IBAN. This is the actual salary-equivalent for a FOP user, distinct from the card-side 'З гривневого рахунку ФОП' which is just the internal transfer of these funds. REQUIRES Story 11.7 + TD-049."
+}
+{
+    "id": "gs-094",
+    "description": "Податок на доходи ФОП 3 група 5%",
+    "amount_kopiykas": -879000,
+    "mcc": null,
+    "expected_category": "government",
+    "expected_kind": "spending",
+    "edge_case_tag": "pe_statement",
+    "notes": "PE-statement row — synthetic but realistic single-tax payment for a Group 3 FOP (5% of 175,800 UAH income = 8,790 UAH). Counterparty would be State Treasury / ДКСУ with distinctive EDRPOU pattern. Tests that government-payment classification on PE statement uses counterparty identity (treasury code) rather than description parsing alone. REQUIRES Story 11.7 + TD-049."
 }

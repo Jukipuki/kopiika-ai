@@ -1,4 +1,13 @@
-"""Tests for Transaction Categorization Agent (Story 3.1)."""
+"""Tests for Transaction Categorization Agent (Story 3.1).
+
+Mock contract (post-Story 11.3): LLM response payloads here usually omit
+`transaction_kind`. `_parse_llm_response` then falls back to `kind_by_sign`,
+which pairs negative amounts with `spending` — matrix-valid for every category
+used below. If you add a mock with a **positive** amount, either set
+`"transaction_kind": "income"` in the payload (and pair with `category="other"`),
+or expect the parser's matrix guard to coerce the row to `uncategorized` with
+`confidence_score=0.0`.
+"""
 
 import io
 import json
@@ -126,7 +135,6 @@ def test_mcc_mapping_contains_required_entries():
         4112: "transport",
         4121: "transport",
         4131: "transport",
-        4816: "utilities",
         4899: "utilities",
         5912: "healthcare",
         8099: "healthcare",
@@ -145,7 +153,6 @@ def test_mcc_mapping_contains_required_entries():
         8220: "education",
         8249: "education",
         6011: "atm_cash",
-        6012: "atm_cash",
         6099: "finance",
         6159: "finance",
         4900: "utilities",

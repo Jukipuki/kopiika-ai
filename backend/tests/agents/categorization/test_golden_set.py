@@ -10,6 +10,7 @@ Run with:
 
 import datetime
 import json
+import time
 import uuid
 from pathlib import Path
 
@@ -95,18 +96,19 @@ def _build_state(rows: list[dict]) -> dict:
     }
 
 
-@pytest.mark.integration
-@pytest.mark.xfail(
-    strict=False,
-    reason="kind_accuracy < 0.90 until Story 11.3 enriches the prompt to emit transaction_kind",
-)
-def test_golden_set_accuracy() -> None:
+def _run_golden_set(model_label: str) -> tuple[float, float, float, Path]:
+    """Execute the golden set, write a timestamped report, assert ≥0.90 gates.
+
+    Returns (category_accuracy, kind_accuracy, joint_accuracy, report_path).
+    """
     rows = _load_golden_set()
     _assert_fixture_schema(rows)
     _assert_expected_categories_valid(rows)
 
     state = _build_state(rows)
+    start = time.perf_counter()
     result_state = categorization_node(state)
+    elapsed_s = time.perf_counter() - start
 
     results_by_id: dict[str, dict] = {
         r["transaction_id"]: r for r in result_state["categorized_transactions"]
@@ -151,6 +153,9 @@ def test_golden_set_accuracy() -> None:
 
     report = {
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "model_label": model_label,
+        "elapsed_seconds": elapsed_s,
+        "total_tokens_used": result_state.get("total_tokens_used", 0),
         "total": total,
         "category_correct": category_correct,
         "kind_correct": kind_correct,
@@ -163,26 +168,60 @@ def test_golden_set_accuracy() -> None:
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    report_path = RUNS_DIR / f"{ts}.json"
+    report_path = RUNS_DIR / f"{ts}-{model_label}.json"
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
 
     print(
-        f"\nGolden set run: total={total} "
+        f"\nGolden set run [{model_label}]: total={total} "
         f"category_accuracy={category_accuracy:.3f} "
         f"kind_accuracy={kind_accuracy:.3f} "
         f"joint_accuracy={joint_accuracy:.3f} "
+        f"elapsed={elapsed_s:.2f}s "
+        f"tokens={result_state.get('total_tokens_used', 0)} "
         f"report={report_path}"
     )
 
     assert category_accuracy >= 0.90, (
-        f"category_accuracy={category_accuracy:.3f} < 0.90. "
+        f"[{model_label}] category_accuracy={category_accuracy:.3f} < 0.90. "
         f"See {report_path} for mismatch details."
     )
     assert kind_accuracy >= 0.90, (
-        f"kind_accuracy={kind_accuracy:.3f} < 0.90. "
-        f"See {report_path} for mismatch details. "
-        f"Expected to fail until Story 11.3 lands."
+        f"[{model_label}] kind_accuracy={kind_accuracy:.3f} < 0.90. "
+        f"See {report_path} for mismatch details."
     )
+    return category_accuracy, kind_accuracy, joint_accuracy, report_path
+
+
+@pytest.mark.integration
+def test_golden_set_accuracy() -> None:
+    """Haiku (production model) golden-set gate.
+
+    Story 11.3a closed the gate: category_accuracy 0.856 → 0.900, kind_accuracy
+    0.978 (both ≥ 0.90) via 3 disambiguation rules + MCC table tweaks, making
+    Story 11.4's description-pattern pre-pass unnecessary (TD-042 resolved).
+    """
+    _run_golden_set("haiku")
+
+
+@pytest.mark.integration
+@pytest.mark.xfail(
+    strict=False,
+    reason=(
+        "Sonnet is not a production candidate (per Story 11.3 retrospective + "
+        "Story 11.3a close). Haiku is the shipping model; this test remains as "
+        "a dormant comparison only — xfail indefinitely."
+    ),
+)
+def test_golden_set_accuracy_sonnet(monkeypatch) -> None:
+    """Sonnet comparison run (AC #5). Informs future model-swap decision."""
+    from app.agents import llm as llm_module
+
+    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    # Reset any cached LLM client singletons if present.
+    for attr in ("_llm_client", "_fallback_llm_client", "_cached_llm_client"):
+        if hasattr(llm_module, attr):
+            setattr(llm_module, attr, None)
+    _run_golden_set("sonnet")
 
 
 def _assert_fixture_schema(rows: list[dict]) -> None:
@@ -221,6 +260,24 @@ def test_golden_set_expected_categories_valid() -> None:
     """Cheap, non-LLM check that the fixture's expected_category vocabulary is producible."""
     rows = _load_golden_set()
     _assert_expected_categories_valid(rows)
+
+
+def test_gs_074_expected_category_is_atm_cash() -> None:
+    """Story 11.3a AC #5: gs-074 (City24, MCC 6010) must stay labeled atm_cash.
+
+    Guards against accidental revert — without this assertion, a future fixture
+    edit could silently flip the label and the harness would still be green.
+    """
+    rows = _load_golden_set()
+    row = next((r for r in rows if r["id"] == "gs-074"), None)
+    assert row is not None, "gs-074 missing from golden_set.jsonl"
+    assert row["expected_category"] == "atm_cash", (
+        f"gs-074 expected_category must remain 'atm_cash' (Story 11.3a AC #5), "
+        f"got {row['expected_category']!r}"
+    )
+    assert row["mcc"] == 6010, (
+        f"gs-074 mcc must remain 6010 (Manual Cash Disbursement), got {row['mcc']!r}"
+    )
 
 
 def test_golden_set_edge_case_coverage() -> None:

@@ -87,6 +87,37 @@ def test_mcc_4215_maps_to_shopping():
     assert get_mcc_category(4215) == "shopping"
 
 
+# ---------------------------------------------------------------------------
+# Story 11.3a: new MCC entries + intentional omissions (AC #3, #4)
+# ---------------------------------------------------------------------------
+
+def test_mcc_5200_maps_to_shopping():
+    """Home Supply Warehouse Stores — catches FOP-on-5200 merchants."""
+    assert get_mcc_category(5200) == "shopping"
+
+
+def test_mcc_8021_maps_to_healthcare():
+    """Dentists and Orthodontists — catches FOP-on-8021 merchants."""
+    assert get_mcc_category(8021) == "healthcare"
+
+
+def test_mcc_6010_maps_to_atm_cash():
+    """Manual Cash Disbursement — functionally same as ATM (6011)."""
+    assert get_mcc_category(6010) == "atm_cash"
+
+
+def test_mcc_4816_intentionally_unmapped():
+    """Computer Network Services — description-authoritative, routed to LLM pass."""
+    assert 4816 not in MCC_TO_CATEGORY
+    assert get_mcc_category(4816) is None
+
+
+def test_mcc_6012_intentionally_unmapped():
+    """Financial Institutions - Merchandise — fintech catchall, routed to LLM pass."""
+    assert 6012 not in MCC_TO_CATEGORY
+    assert get_mcc_category(6012) is None
+
+
 def test_valid_categories_includes_new_buckets():
     """Story 11.1 added these — sanity-check they survived 11.2."""
     for cat in ("savings", "transfers_p2p", "charity"):

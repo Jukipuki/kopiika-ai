@@ -2252,35 +2252,91 @@ So that categorization accuracy on the golden set meets the 90% threshold for bo
 **When** the golden-set harness runs
 **Then** it executes the batch against **both** Claude Haiku (current production model) **and** Claude Sonnet, and the run report records per-axis accuracy, median latency, and token cost for each — so the Haiku-vs-Sonnet choice is a measured decision, not a speculative one. Model swap (if any) remains out of scope for this story; decision and follow-up story are captured in the Epic 11 retrospective.
 
+### Story 11.3a: Categorization Accuracy Follow-up — Prompt Disambiguation Rules + MCC Table Extensions
+
+As the **system**,
+I want targeted prompt disambiguation rules and a modest MCC-table extension driven by the Story 11.3 golden-set run report,
+So that category_accuracy on the golden set clears the 0.90 gate without needing a full description-pattern pre-pass stage (Story 11.4).
+
+**Depends on:** Story 11.3 (baseline + failure cluster analysis).
+
+**Context:** Story 11.3 closed with `category_accuracy = 0.856` (13 misses) vs. the 0.90 gate. The Haiku-vs-Sonnet comparison is decided (Haiku wins on every dimension; see Story 11.3 retrospective). The 13 misses cluster into four teachable patterns, three of which are prompt-fixable and one of which is better addressed by extending the deterministic MCC table. This story is the minimum intervention to close the gap before committing to Story 11.4's full pre-pass rules engine.
+
+**Acceptance Criteria:**
+
+**Given** the batch prompt builder `_build_prompt`
+**When** the prompt is constructed
+**Then** it includes the three disambiguation rules from tech spec §3.3 verbatim (charity-jar, cash-action narration, FOP+merchant-MCC), appended after the base rules block, with ≥ 1 concrete few-shot example per rule
+
+**Given** `backend/app/agents/categorization/mcc_mapping.py`
+**When** the Epic 11 changes are applied
+**Then** `MCC_TO_CATEGORY` includes `5200: "shopping"`, `8021: "healthcare"`, `6010: "atm_cash"`; MCCs `4816` and `6012` are explicitly commented as intentionally unmapped per tech spec §2.2
+
+**Given** the golden-set fixture row `gs-074` (City24)
+**When** the harness loads it
+**Then** `expected_category = "atm_cash"` — relabeled from `finance` because MCC 6010 operator-mediated cash disbursement is functionally identical to ATM withdrawal
+
+**Given** the golden-set harness re-run on Haiku with 11.3a changes
+**When** the report is produced
+**Then** `category_accuracy >= 0.90` AND `kind_accuracy >= 0.90`; if the gate passes, the `@pytest.mark.xfail` on the Haiku test is removed; the Sonnet test is NOT re-run (decision locked per Story 11.3 retrospective)
+
+**Given** the harness outcome
+**When** the story is closed
+**Then** TD-042 is either closed (gate passed — move to `## Resolved` in `docs/tech-debt.md`; Story 11.4 stays `backlog` annotated as deferred) OR updated with the specific residual failure cluster (gate missed — Story 11.4 scope narrowed to just those patterns)
+
+**Given** existing unit tests in `test_enriched_prompt.py`
+**When** 11.3a lands
+**Then** three new tests are added — one per disambiguation rule — asserting the relevant rule text appears in the prompt; all existing tests continue to pass
+
 ### Story 11.4: Description-Pattern Pre-Pass (Conditional)
 
 As the **system**,
 I want a deterministic description-pattern pre-pass for the transaction types the LLM demonstrably mis-classifies,
 So that golden-set accuracy clears the 90% threshold without forever increasing LLM cost or reasoning load.
 
-**This story is CONDITIONAL.** It is implemented only if Story 11.3's golden-set run reports `category_accuracy < 0.90` or `kind_accuracy < 0.90`. Otherwise it is deferred to tech-debt (`TD-NNN`) and closed as "not needed."
+**This story is TRIGGERED** (TD-042 reopened 2026-04-21). Story 11.3a moved category accuracy toward the gate but post-fix harness runs are unstable at 0.878–0.900 (0.900 was at noise boundary on a 90-row fixture). Two residual failure patterns cannot be closed by prompt iteration alone:
+  - **Cash-action narration + food/retail MCC** (gs-051, gs-055) — MCC pass routes these to `groceries` deterministically before the prompt can apply the cash-action disambiguation rule.
+  - **Self-transfer with no personal name** (gs-001, gs-002) — description ("Переказ на картку" / "Transfer to card") has no signal distinguishing own-account from P2P; LLM defaults to `transfers_p2p`.
 
-**Acceptance Criteria (if triggered):**
+**Scope (narrowed to evidence-based patterns):**
 
-**Given** the failure patterns identified in Story 11.3's run report
-**When** pre-pass rules are authored
-**Then** only rules for *demonstrated* failure patterns are added — no speculative rules, and the rule count is capped at 5 to limit maintenance burden (per tech spec §3.5)
+**Acceptance Criteria:**
 
-**Given** a transaction description matching the self-transfer pattern `/(З|From|To|На) (гривневого|UAH|EUR|USD) рахунк[уа]/i` with both legs visible in the same batch
-**When** the pre-pass runs
-**Then** it emits `(category='transfers', kind='transfer', confidence=0.9)` and the LLM pass is skipped for this transaction
+**Given** the ingestion pipeline stage order
+**When** Story 11.4 lands
+**Then** a new description-based pre-pass runs **BEFORE** the MCC pass (not between MCC and LLM). This is the architectural fix: cash-action descriptions must override MCC deterministic mapping. Pre-pass is a single function in `backend/app/agents/categorization/node.py` (or a new `pre_pass.py` module), invoked from `categorization_node` at the start of per-transaction classification.
 
-**Given** a transaction description matching `/Поповнення (депозиту|вкладу)/i`
-**When** the pre-pass runs
-**Then** it emits `(category='savings', kind='savings', confidence=0.9)`
+**Given** Pre-pass Rule A — cash-action narration override
+**When** a transaction's description matches the case-insensitive pattern `/\b(cash withdrawal|видача готівки|отримання готівки)\b/i` (UA + EN locale coverage)
+**Then** the pre-pass emits `(category='atm_cash', kind='spending', confidence=0.95)` and the MCC + LLM stages are skipped for this transaction. Closes gs-051 and gs-055.
 
-**Given** a transaction description matching the Cyrillic full-name pattern `/^[А-ЯЁЇІЄҐ][а-яёїієґ]+ [А-ЯЁЇІЄҐ][а-яёїієґ]+$/` with a debit amount
-**When** the pre-pass runs
-**Then** it emits `(category='transfers_p2p', kind='spending', confidence=0.85)`
+**Given** Prompt Rule 4 — self-transfer detection (LIVES IN THE PROMPT, not the pre-pass)
+**When** `_build_prompt` is extended
+**Then** the prompt includes a new disambiguation rule: "When MCC is 4829 AND the description contains only generic account/card/currency language ('Переказ на картку', 'Transfer to card', 'На гривневий рахунок', 'To USD account', 'З <color> картки', 'From <currency> account', 'Конвертація валют') AND the description does NOT contain a personal full name, a business marker (ФОП/FOP/LIQPAY/TOV/LLC), a fund/charity marker («...»), or a deposit/investment marker ('депозит', 'deposit', 'вклад', 'investment') → transfers/transfer. This is the default for MCC 4829 debits that survive the other rules — NOT transfers_p2p."
 
-**Given** the golden-set harness from Story 11.1
-**When** it runs with Story 11.4's pre-pass enabled
-**Then** both `category_accuracy` and `kind_accuracy` now meet or exceed `0.90` — if they still don't, the story is not complete; add more targeted rules or revisit prompt design
+**Given** Prompt Rule 4 few-shots
+**When** the prompt is rendered
+**Then** at least three concrete few-shot examples are added: `"Переказ на картку"` → transfers/transfer, `"З Білої картки"` → transfers/transfer (inbound leg), `"Конвертація UAH → USD"` → transfers/transfer. Closes gs-001 and gs-002.
+
+**Given** the golden-set relabels already committed (gs-016, gs-017: `other/income` → `transfers/transfer`)
+**When** the harness runs post-11.4
+**Then** the relabeled rows classify correctly under Prompt Rule 4 (both have "ФОП" or "UAH account" markers — self-transfer, not income). Do NOT revert the relabels.
+
+**Given** PE-statement golden rows (gs-091 through gs-094) tagged `edge_case_tag = "pe_statement"`
+**When** the harness runs
+**Then** the test helper filters `pe_statement`-tagged rows from the main `category_accuracy` / `kind_accuracy` metric (these require Story 11.7 + TD-049 to classify correctly; they should not depress Story 11.4's measurement). A secondary metric `pe_statement_accuracy` may be emitted for tracking but does not gate the story.
+
+**Given** the post-11.4 harness run on Haiku
+**When** the gate is evaluated
+**Then** both `category_accuracy ≥ 0.92` AND `kind_accuracy ≥ 0.92` on the 86 non-PE rows (90 total − 4 PE rows filtered). Margin above 0.90 is required to account for ±3-row noise on an 86-row fixture. If the gate is not cleared, residual failure patterns are enumerated in the Dev Agent Record and TD-042 updated; do NOT add rules for patterns that are not demonstrated failures.
+
+**Given** rule discipline
+**When** additional rules are considered during implementation
+**Then** only rules for *demonstrated* failure patterns from the Story 11.3a harness report are added. No speculative rules. Rule count cap: Rule A (pre-pass, cash-action) + Rule 4 (prompt, self-transfer). Additional rules require an explicit failure-cluster reference in the story file.
+
+**Given** TD-042 closure
+**When** Story 11.4 reaches done
+**Then** TD-042 is moved to `## Resolved` in `docs/tech-debt.md` with the stable-gate measurement recorded (the reopened-2026-04-21 entry, not the earlier resolve).
 
 ### Story 11.5: Post-Parse Validation Layer with Partial-Import Semantics
 

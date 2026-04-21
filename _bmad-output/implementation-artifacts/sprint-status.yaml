@@ -227,7 +227,11 @@ development_status:
   epic-11: in-progress
   11-1-golden-set-evaluation-harness-for-categorization: done
   11-2-transaction-kind-field-expanded-category-taxonomy: done
-  11-3-enriched-llm-categorization-prompt-kind-category-mcc-signed-amount: backlog
+  11-3-enriched-llm-categorization-prompt-kind-category-mcc-signed-amount: done
+  # Story 11.3a (2026-04-21): lower-cost path to close category gap before 11.4.
+  # Applies 3 prompt disambiguation rules + 3 MCC table entries; gate = re-run
+  # harness hits ≥0.90 both axes on Haiku. TD-042 closed-or-updated on outcome.
+  11-3a-categorization-accuracy-follow-up: done
   11-4-description-pattern-pre-pass-conditional: backlog
   11-5-post-parse-validation-layer-partial-import-semantics: done
   11-6-encoding-detection-with-mojibake-flagging: done

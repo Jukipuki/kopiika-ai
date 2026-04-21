@@ -13,6 +13,12 @@ VALID_CATEGORIES: frozenset[str] = frozenset({
     "uncategorized",
 })
 
+# DO NOT add MCCs 4816 (Computer Network Services) or 6012 (Financial
+# Institutions - Merchandise). Both cover too many distinct real-world
+# behaviors (ISP vs SaaS vs payment-processor passthrough for 4816;
+# fintech catchall for 6012) to map deterministically. Description is
+# authoritative — let the LLM pass resolve them. Rationale: tech-spec
+# §2.2 "Explicitly NOT deterministically mapped".
 MCC_TO_CATEGORY: dict[int, str] = {
     # Groceries
     5411: "groceries",   # Grocery Stores, Supermarkets
@@ -43,7 +49,6 @@ MCC_TO_CATEGORY: dict[int, str] = {
     7523: "transport",   # Automobile Parking Lots and Garages
 
     # Utilities
-    4816: "utilities",   # Computer Network/Information Services (Internet)
     4899: "utilities",   # Cable, Satellite, and Other Pay Television/Radio
     4900: "utilities",   # Utilities: Electric, Gas, Water, Sanitary
     4814: "utilities",   # Telecommunication Services, including Local and Long Distance
@@ -60,7 +65,6 @@ MCC_TO_CATEGORY: dict[int, str] = {
     8042: "healthcare",  # Optometrists, Ophthalmologist
     8043: "healthcare",  # Opticians, Optical Goods, and Eyeglasses
     8071: "healthcare",  # Medical and Dental Laboratories
-    8099: "healthcare",  # Medical Services
 
     # Entertainment
     7832: "entertainment",  # Motion Picture Theaters
@@ -96,6 +100,7 @@ MCC_TO_CATEGORY: dict[int, str] = {
     5944: "shopping",   # Jewelry Stores, Watches, Clocks, and Silverware
     5947: "shopping",   # Gift, Card, Novelty, and Souvenir Shops
     5999: "shopping",   # Miscellaneous and Specialty Retail Shops
+    5200: "shopping",   # Home Supply Warehouse Stores (catches FOP-on-5200 merchants)
 
     # Courier / Delivery
     4215: "shopping",   # Courier Services (Nova Poshta, Meest, Justin, etc.)
@@ -119,8 +124,8 @@ MCC_TO_CATEGORY: dict[int, str] = {
     8241: "education",  # Correspondence Schools
 
     # ATM / Cash
+    6010: "atm_cash",   # Manual Cash Disbursement — functionally same as ATM (6011)
     6011: "atm_cash",   # Automated Cash Disbursements (ATM)
-    6012: "atm_cash",   # Financial Institutions – Merchandise and Services
 
     # Note: MCC 4829 (Wire Transfer / Money Order) is intentionally NOT mapped
     # here — it is semantically ambiguous (charity donations, P2P jar payments,

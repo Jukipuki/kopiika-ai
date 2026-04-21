@@ -701,24 +701,6 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
-### TD-042 — Epic 11 Story 11.4 (description-pattern pre-pass) deferred pending Story 11.3 measurement [MEDIUM]
-
-**Where:** [_bmad-output/planning-artifacts/epics.md](_bmad-output/planning-artifacts/epics.md) — Epic 11 Story 11.4, [_bmad-output/planning-artifacts/tech-spec-ingestion-categorization.md](_bmad-output/planning-artifacts/tech-spec-ingestion-categorization.md) §3.5
-
-**Problem:** Story 11.4 introduces a deterministic description-pattern pre-pass (self-transfer, deposit top-up, Cyrillic-name P2P) to catch categorization failures the LLM can't reliably handle on its own. It is scoped as **conditional**: implemented only if Story 11.3's golden-set run reports `category_accuracy < 0.90` or `kind_accuracy < 0.90` on either axis. If the enriched prompt (Story 11.3) clears 90% on both axes, the pre-pass is not built — but the need could re-emerge later as the transaction mix shifts (new banks, new merchant patterns, drift in LLM behavior after model upgrades).
-
-**Why deferred:** Measurement-first decision. Building pre-pass rules without evidence that they're needed would add permanent maintenance burden (every rule needs test fixtures, every bank quirk tempts a new rule, rules drift silently as merchant naming changes). Deferring until measured is deliberate. This TD exists so that if the measurement flips in a future run — or if post-launch production data shows accuracy regression — the story is trackable and scopes are already drafted.
-
-**Fix shape:**
-1. Re-run the golden-set harness after any of: (a) new bank format onboarding, (b) LLM provider/model swap (see Epic 9), (c) significant prompt change, (d) user-reported mis-categorizations clustering on a specific pattern.
-2. If measured accuracy falls below 90% on either axis: scope in Story 11.4 per the draft ACs already in epics.md. Rules are limited to the *demonstrated* failure patterns — no speculative additions.
-3. After 11.4 lands, re-run the harness to confirm the threshold is met.
-4. Close this TD entry.
-
-**Surfaced in:** Epic 11 planning session 2026-04-19 (architect review of parsing-and-categorization-issues.md)
-
----
-
 ### TD-043 — Upload summary warnings list is count-only, not itemized [LOW]
 
 **Where:** [frontend/src/features/upload/components/UploadSummaryCard.tsx:119-126](../frontend/src/features/upload/components/UploadSummaryCard.tsx#L119-L126)
@@ -804,7 +786,114 @@ Option 1 is the less-surprising contract across the pipeline.
 
 ---
 
+### TD-042 (REOPENED) — Epic 11 categorization gate not stably cleared [MEDIUM]
+
+**Where:** [backend/tests/agents/categorization/test_golden_set.py](../backend/tests/agents/categorization/test_golden_set.py), Epic 11 Story 11.4 in [_bmad-output/planning-artifacts/epics.md](../_bmad-output/planning-artifacts/epics.md), prior closure note preserved in the Resolved section below for audit.
+
+**Problem:** Story 11.3a initially passed the 0.90 gate at `category_accuracy=0.900` (81/90), which was marked as TD-042 resolved. A follow-up review-pass harness run on the same day produced `category_accuracy=0.878` (79/90) — the 0.900 reading was at a ±3-row noise boundary, not a stable pass. Additionally, the golden-set review surfaced mislabels (gs-016/017 were `other/income` but are semantically `transfers/transfer`) that further change the target landscape. The gate has not been reliably cleared.
+
+**Why deferred-but-reopened:** Story 11.3a shipped substantial improvements (kind_accuracy jumped 0.000 → 0.978; category_accuracy trend is +; core disambiguation rules are in place). The residual failure modes are now well-characterized and cluster into two architectural cases that prompt iteration cannot close:
+  - `gs-051`/`gs-055` (cash-action narration) — MCC pass fires before the prompt rule can see the row.
+  - `gs-001`/`gs-002` (self-transfer) — needs a narrow description pattern rule OR counterparty enrichment.
+
+**Fix shape:**
+1. Implement Story 11.4 with the expanded scope (pre-pass Rule A for cash-action description filter + prompt Rule 4 for self-transfer detection via MCC 4829 + generic account language + absence of personal name).
+2. Re-run harness after Story 11.4; require `category_accuracy ≥ 0.92` AND `kind_accuracy ≥ 0.92` on a single run for a "reliable pass" (margin above the 0.90 gate to account for ±3-row variance on a 90-row fixture).
+3. Alternative stability measure: three consecutive runs all ≥ 0.90. Choose during retrospective.
+4. Expand the fixture toward 120+ rows over time to tighten the noise floor.
+
+**Surfaced in:** Story 11.3a post-fix harness review (2026-04-21).
+
+---
+
+### TD-048 — Self-transfer pair detection across multi-statement uploads [MEDIUM]
+
+**Where:** Would live in a new service between [backend/app/agents/categorization/node.py](../backend/app/agents/categorization/node.py) and the financial-profile aggregation layer. Currently affects any user who uploads both their Monobank card statement AND their FOP account statement.
+
+**Problem:** A single economic event (user moves money from their FOP account to their personal card) appears as two rows:
+  - PE statement: `-10,000 UAH "Переказ між власними рахунками..."` (outbound leg)
+  - Card statement: `+10,000 UAH "З гривневого рахунку ФОП"` (inbound leg)
+
+Both are correctly classified `kind=transfer` (post-Story-11.4), so neither inflates spending or savings. But the Transfers breakdown in the UI double-lists the same event, which is cosmetic noise. More importantly, if a future Pattern Detection layer aggregates transfer volume, it will over-count by a factor of 2 per self-transfer pair.
+
+**Why deferred:** Not a categorization-layer concern — per-row classification is correct. Belongs in a matching/aggregation layer that sees multiple rows at once. Out of Epic 11 scope.
+
+**Fix shape:**
+1. In a future pattern-detection or profile-aggregation service, implement pairing logic: for every `kind=transfer` outbound row, look for an inbound `kind=transfer` row within ±10 minutes, absolute amount consistent with FX conversion (within 1% tolerance after applying the transaction's rate), and matching currency pair.
+2. When a pair is recognized, annotate both rows with a shared `self_transfer_pair_id` (UUID) and surface them as a single movement in the Transfers breakdown UI.
+3. Unpaired transfer rows (e.g., card-only uploader with no FOP statement) continue to display individually.
+4. Cross-bank pairing (Monobank → PrivatBank) is out of scope initially — too much variance in descriptions.
+
+**Surfaced in:** Architect review 2026-04-21 (Epic 11 PE-statement discussion).
+
+---
+
+### TD-049 — Counterparty-aware categorization for PE account statements [HIGH]
+
+**Where:** Will require extensions to [backend/app/agents/categorization/node.py](../backend/app/agents/categorization/node.py) prompt contract, the `bank_format_registry` mapping schema (tech spec §2.4), and a new user-IBAN registry storage. Affects classification correctness for all FOP users who upload their PE account statement.
+
+**Problem:** The Ukrainian PE (sole-proprietor) account statement has a fundamentally different signal structure than the card statement:
+  - PE statement has: **counterparty name, counterparty EDRPOU (tax ID), counterparty IBAN** — but NO MCC.
+  - Card statement has: MCC — but no counterparty fields.
+
+The current categorization pipeline assumes MCC + description and cannot use counterparty signals. This makes several categorizations incorrect on PE statements:
+  - Real business income (`+175,800 "Оплата за послуги..." from Company with non-zero EDRPOU`) looks structurally identical to a P2P receipt because the pipeline doesn't know EDRPOU distinguishes legal entities from individuals.
+  - Self-transfers to the user's own card (`-10,000 "Переказ між власними рахунками..."` with the user's own IBAN as counterparty) can't be deterministically detected without comparing counterparty IBAN to the user's known IBANs.
+  - Tax payments to the State Treasury have a distinctive EDRPOU pattern that would deterministically map to `category=government`.
+
+Without this, gs-091 through gs-094 in the golden set cannot pass — they require counterparty-driven classification that the current pipeline can't perform.
+
+**Why deferred:** Requires multiple coordinated changes: (a) Story 11.7 must ship AI-assisted schema detection first (so counterparty columns get mapped); (b) `bank_format_registry` schema must accept counterparty column mappings (additive to tech spec §2.4); (c) the categorization node must receive counterparty fields in its input; (d) a user-IBAN registry must exist so the system can recognize "user's own IBAN." Large scope, worth a dedicated story post-Story-11.7.
+
+**Fix shape:**
+1. Extend `bank_format_registry.detected_mapping` JSON shape to include optional `counterparty_name_column`, `counterparty_tax_id_column`, `counterparty_account_column`, `counterparty_account_currency_column` fields.
+2. Extend the categorization pipeline's transaction DTO to carry counterparty fields when available.
+3. Add a `user_iban_registry` table (per-user, many IBANs): `{id, user_id, iban_encrypted, label, first_seen_upload_id, created_at}`. **IBAN values MUST be encrypted at rest** (follow Story 5.1 encryption pattern — application-level AES using the same KMS key). IBANs are PII under GDPR and Ukrainian financial-data protection rules.
+4. Populate `user_iban_registry` from both directions:
+   - Card uploads: extract the user's own card IBAN from statement metadata (if present in the parser output).
+   - PE uploads: any counterparty IBAN matching the user's name is a candidate for the registry.
+5. Extend the categorization prompt to receive counterparty fields when present, with new disambiguation rules:
+   - `counterparty_iban` ∈ `user_iban_registry` → `transfers/transfer` (self-transfer)
+   - `counterparty_tax_id` matches State Treasury / tax authority patterns → `government/spending` (outbound) or `other/income` (inbound refund, rare)
+   - `counterparty_tax_id` is a 10-digit RNOKPP (individual tax ID) → treat as P2P
+   - `counterparty_tax_id` is an 8-digit EDRPOU (legal entity) → `other/income` (inbound) OR classify by description (outbound)
+6. Add 5–10 golden-set rows covering PE-statement patterns (gs-091 through gs-094 seeded 2026-04-21; expand as real PE-statement variants are encountered).
+7. Extend the harness to segregate `edge_case_tag = "pe_statement"` rows from the card-pipeline accuracy metric until this TD lands.
+
+**Surfaced in:** Architect review 2026-04-21 (Epic 11 PE-statement discussion). Blocks gs-091–gs-094 harness coverage.
+
+---
+
+### TD-050 — UX hint: prompt user to upload all account statements when card-only upload detected [MEDIUM]
+
+**Where:** Frontend upload flow + Teaching Feed card types + Epic 4 financial-profile surfaces. No existing file location.
+
+**Problem:** Card-only uploaders have an incomplete financial picture, and the system currently has no mechanism to tell them so. Specifically:
+  - Their Savings Ratio component of the Health Score is unreliable because the real income signal (`Оплата за послуги...` on the PE statement) is invisible. The card statement's `З гривневого рахунку ФОП` is a self-transfer, not income — post-Story-11.4 it will be correctly classified as `transfers/transfer`, which means a card-only FOP user's income will appear as zero, and their Savings Ratio will display "Not enough data yet."
+  - Multi-card users see the outbound leg of a self-transfer on one card and the inbound leg on the other; without both uploads, the inbound looks like unexplained income.
+  - The system currently has no user-facing signal that the picture is partial.
+
+**Why deferred:** Product/UX work, not categorization. Needs design before implementation.
+
+**Fix shape:**
+1. **Detection heuristics:**
+   - Upload from a single Monobank card statement AND ≥ N `З гривневого рахунку ФОП` / `From UAH account` / similar inbound self-transfers present → user is likely an FOP who also has a PE statement.
+   - User has multiple uploads in the same month but ≥ M unreconciled inbound self-transfer-pattern transactions → user likely has another card/account whose statement hasn't been uploaded.
+   - Health Score's Savings Ratio component renders "Not enough data yet" because `sum(kind=income)==0` → surface an upload prompt.
+2. **Surfaces:**
+   - Inline banner on the upload-completion screen: "Do you have a business (FOP) account? Upload its statement for accurate income and tax tracking."
+   - Teaching Feed `uploadPrompt` card type (new) surfaced when detection fires, linking back to the upload flow.
+   - Settings / data-quality panel showing "Accounts you've uploaded: 1 of ~2 likely" with guidance.
+3. **Copy (UA + EN) needed.**
+4. **Dismissal logic** — don't nag. Once dismissed per upload-id, don't re-surface for the same upload.
+
+**Surfaced in:** Architect review 2026-04-21 (Epic 11 PE-statement discussion).
+
+---
+
 ## Resolved
+
+### TD-042 — [SUPERSEDED — moved back to Open section below] Epic 11 categorization gate
 
 ### TD-026 — Celery beat scheduler is not deployed; `beat_schedule` never fires [HIGH]
 

@@ -49,9 +49,28 @@ VALID_CATEGORIES: frozenset[str] = frozenset({
 Also add to `MCC_TO_CATEGORY`:
 
 ```python
-8398: "charity",   # Charitable and Social Service Organizations
-4215: "shopping",  # Courier Services (Nova Poshta, Meest, Justin, etc.)
+8398: "charity",    # Charitable and Social Service Organizations
+4215: "shopping",   # Courier Services (Nova Poshta, Meest, Justin, etc.)
+5200: "shopping",   # Home Supply Warehouse Stores (catches FOP-on-5200 merchants)
+8021: "healthcare", # Dentists and Orthodontists (catches FOP-on-8021 merchants)
+6010: "atm_cash",   # Manual Cash Disbursement — functionally same as ATM (6011)
 ```
+
+**Explicitly NOT deterministically mapped — LLM-routed:**
+
+Some MCCs look financial-services-ish but carry too many distinct real-world behaviors to map safely. Force these through the LLM pass where description is available:
+
+```python
+# DO NOT add to MCC_TO_CATEGORY:
+# 4816 — Computer Network Services. Covers ISPs (utilities), SaaS
+#        (subscriptions), and payment-processor passthroughs (PayPal
+#        small recurring = subscription). Description is authoritative.
+# 6012 — Financial Institutions - Merchandise and Services. Catchall
+#        used by OLX Pay, fintech middlemen. The underlying activity
+#        (shopping, finance, etc.) lives in the description.
+```
+
+Surfaced during Story 11.3 golden-set measurement — PayPal on 4816 was being auto-mapped to utilities; OLX on 6012 was being auto-mapped to finance. Both are wrong in ~100% of real cases.
 
 Semantic boundaries:
 
@@ -201,12 +220,77 @@ Rules:
 - Inflows (positive amounts) are kind=income with category=other
 - Negative amounts with no clear category → "other", kind inferred from context
 
-Few-shot examples:
-[5–7 hand-labeled examples covering: self-transfer (UA + EN locale),
- deposit top-up (UA + EN locale), P2P to individual, salary inflow,
- charity via MCC 4829 (military fund / Monobank jar),
- BNPL instalment (KTS / Monomarket — IS the purchase record),
- cash-on-delivery ("накладений платіж" — looks like a transfer without context)]
+Disambiguation rules (surfaced by Story 11.3 golden-set measurement):
+
+1. Monobank "banka" jar top-ups — descriptions matching
+   "Поповнення «<name>»" or "Top up «<name>»" — are NEVER savings.
+   - If the quoted jar name references a military / humanitarian /
+     charity cause (e.g. «На ЗСУ», «Повернись живим», «На Авто!»,
+     «На детектор FPV», «Притула», «United24», any Armed Forces or
+     named-fund reference) → charity, kind=spending.
+   - If the jar name is a neutral personal goal (e.g. «На відпустку»,
+     «На iPhone») → default to charity over savings unless clearly
+     a personal goal.
+   Savings is RESERVED for bank-owned accounts with explicit markers:
+   "Deposit top-up" / "Поповнення депозиту" / "Поповнення вкладу" /
+   "Investment account" — NO quoted jar name, NO «...» pattern.
+
+2. Cash-action narration overrides merchant MCC.
+   When description explicitly names a cash action — "Cash withdrawal
+   <merchant>", "Видача готівки <merchant>", "Отримання готівки" —
+   classify as atm_cash, kind=spending, regardless of the merchant
+   MCC. Cashback-at-till commonly arrives with food/retail MCCs
+   (5499, 5411) but the narrative is authoritative.
+
+3. ФОП/FOP with merchant MCC is a merchant, not P2P.
+   When description contains "ФОП <name>", "FOP <name>", or
+   "LIQPAY*FOP <name>" AND the MCC is a specific merchant category
+   (anything except 4829), classify by the MCC — dental → healthcare,
+   home → shopping, food → restaurants. Use transfers_p2p only when
+   (a) MCC is 4829 AND (b) no merchant/business markers — just a
+   personal name.
+
+Few-shot examples (must cover the three disambiguation rules above plus base edge cases):
+
+Jar vs savings (Rule 1):
+- "Поповнення «На детектор FPV»" -100.00 UAH (MCC 4829)
+    → charity, spending, 0.95
+    Reason: Military jar (FPV drone detector) — donation, not personal saving.
+- "Top up «На Авто!»" -333.00 UAH (MCC 4829)
+    → charity, spending, 0.9
+    Reason: Monobank military-vehicle fundraiser jar.
+- "Поповнення депозиту" -199980.54 UAH (MCC 4829)
+    → savings, savings, 0.95
+    Reason: Explicit bank deposit marker — capital retention, no jar pattern.
+
+Cash action overrides MCC (Rule 2):
+- "Cash withdrawal Близенько" -1000.00 UAH (MCC 5499)
+    → atm_cash, spending, 0.95
+    Reason: Cashback-at-till; description overrides the grocery MCC.
+- "Видача готівки Близенько" -5000.00 UAH (MCC 5499)
+    → atm_cash, spending, 0.95
+    Reason: Ukrainian-locale same pattern.
+
+FOP + merchant MCC → merchant (Rule 3):
+- "FOP Ruban Olha Heorhii" -539.00 UAH (MCC 5200)
+    → shopping, spending, 0.9
+    Reason: ФОП on home-improvement MCC — retail purchase.
+- "LIQPAY*FOP Lutsenko Ev" -1222.00 UAH (MCC 5977)
+    → shopping, spending, 0.9
+    Reason: LIQPAY-routed ФОП on cosmetics MCC — merchant purchase.
+- "Кукушкін Роман Олексійович" -1560.00 UAH (MCC 4829)
+    → transfers_p2p, spending, 0.9
+    Reason: Full personal name on MCC 4829 with no merchant context.
+
+Base edge cases:
+- "Transfer to card" -5000.00 UAH (MCC 4829) → transfers, transfer, 0.95
+    Reason: Own-to-own card move, English locale.
+- "З гривневого рахунку ФОП" +10000.00 UAH (MCC 4829) → other, income, 0.95
+    Reason: Inbound top-up from own FOP account — income rail.
+- "Payment KTC - monomarket" -6666.50 UAH (MCC 4829) → shopping, spending, 0.9
+    Reason: Monobank BNPL instalment — IS the purchase record, not debt service.
+- "Нова пошта накладений платіж" -1151.50 UAH (MCC 4215) → shopping, spending, 0.9
+    Reason: Cash-on-delivery — bundled goods price + delivery fee.
 
 Transactions:
 1. [id] "description" -1234.56 UAH (debit, MCC: 5411)
