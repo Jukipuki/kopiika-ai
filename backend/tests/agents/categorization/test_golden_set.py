@@ -308,7 +308,12 @@ def test_golden_set_edge_case_coverage() -> None:
         "self_transfer": 3,
         "deposit_top_up": 3,
         "p2p_individual": 3,
-        "salary_inflow": 2,
+        # salary_inflow was dropped from the fixture when PE-statement edge
+        # cases replaced it (Story 11.3a / 11.4 sprint). Kept at 0 to document
+        # the tag's history; re-raise the minimum if salary-inflow rows are
+        # re-added to the golden set.
+        "salary_inflow": 0,
+        "pe_statement": 2,
         "refund": 2,
         "standard": 10,
         "mcc_4829_ambiguous": 5,

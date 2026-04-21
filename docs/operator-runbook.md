@@ -402,3 +402,90 @@ SELECT cluster_id, top_reason_chips, sample_card_ids
 FROM flagged_topic_clusters
 WHERE cluster_id = :category;
 ```
+
+## Overriding a detected bank format mapping (Story 11.7)
+
+The AI-assisted schema-detection pipeline caches one row per distinct statement
+header shape in `bank_format_registry`, keyed by a SHA-256 fingerprint of the
+canonical header. When an operator spots a misdetection (rows rejected by
+validation, column mismatches in the SSE partial-import response, or a
+`parser.schema_detection` log event with `suspect_detection: true`), the fix
+path is a direct DB update — no UI exists as of Story 11.7.
+
+### 1. Inspect recent registry rows
+
+```sql
+SELECT id,
+       header_fingerprint,
+       detected_bank_hint,
+       detection_confidence,
+       use_count,
+       last_used_at
+FROM bank_format_registry
+ORDER BY last_used_at DESC
+LIMIT 50;
+```
+
+To find the fingerprint for a specific problem upload, grep for
+`parser.schema_detection` events in the worker logs with the matching
+`upload_id`; the `fingerprint` field is logged on every invocation.
+
+### 2. View the existing mapping
+
+```sql
+SELECT jsonb_pretty(detected_mapping) AS detected,
+       jsonb_pretty(override_mapping) AS override,
+       sample_header
+FROM bank_format_registry
+WHERE header_fingerprint = '<hash>';
+```
+
+### 3. Apply the override
+
+The `override_mapping` JSON must match the shape from tech spec §2.4 — keys
+`date_column`, `date_format`, `amount_column`, `amount_sign_convention`,
+`description_column`, `currency_column`, `mcc_column`, `balance_column`,
+`delimiter`, `encoding_hint`. Counterparty keys are optional (persisted
+verbatim but not yet consumed by the categorization pipeline — TD-049).
+
+```sql
+UPDATE bank_format_registry
+SET override_mapping = '{
+  "date_column": "Дата",
+  "date_format": "%d.%m.%Y",
+  "amount_column": "Сума",
+  "amount_sign_convention": "negative_is_outflow",
+  "description_column": "Призначення",
+  "currency_column": "Валюта",
+  "mcc_column": null,
+  "balance_column": null,
+  "delimiter": ";",
+  "encoding_hint": "windows-1251"
+}'::jsonb,
+    updated_at = now()
+WHERE header_fingerprint = '<hash>';
+```
+
+### 4. Validate the override
+
+Re-upload the problem statement and confirm:
+
+- The SSE partial-import payload has `schemaDetectionSource: "cached_override"`.
+- The transaction count matches the number of data rows in the CSV.
+- Spot-check a few rows: the date, amount sign, description, and currency
+  appear correctly in the transactions list for that upload.
+- No `parser.schema_detection` event with `suspect_detection: true` fires for
+  the new upload.
+
+### Warnings
+
+- **Mapping shape drift**: overrides must include every required key. A
+  missing `amount_sign_convention` or `date_format` will cause the parser to
+  reject rows wholesale. Run step 2 first to copy the detected shape.
+- **Column names must exist verbatim in the CSV header** — use the
+  `sample_header` column as a reference. Trailing whitespace is stripped by
+  the parser, but other transformations (case, NFKC) are not; match exactly.
+- **Do not delete registry rows** unless you are certain the fingerprint will
+  never recur — dropping a row forces a fresh LLM call on the next upload of
+  the same format.
+

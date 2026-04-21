@@ -399,11 +399,10 @@ def process_upload(self, job_id: str) -> dict:
             if job.step != "categorization_failed":
                 job.step = "done"
             job.progress = 100
-            schema_detection_source = (
-                "known_bank_parser"
-                if format_result.bank_format in ("monobank", "privatbank")
-                else "generic_fallback"
-            )
+            # Story 11.7: the parser_service layer now reports the actual
+            # source path (known/cached/llm/fallback). Derivation from
+            # detected_format is no longer accurate for unknown formats.
+            schema_detection_source = result.schema_detection_source
             job.result_data = {
                 "total_rows": result.total_rows,
                 "parsed_count": result.parsed_count,

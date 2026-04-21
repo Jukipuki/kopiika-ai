@@ -315,11 +315,12 @@ class TestInsightReadySSEEvents:
             assert "insightId" in payload
             assert payload["insightId"] != ""
 
-        # Verify event ordering: education pipeline-progress must come BEFORE insight-ready
+        # Verify event ordering: insights pipeline-progress must come BEFORE insight-ready
+        # (Story 8.1 renamed the old "education" step to "insights".)
         all_events = [c.args[1]["event"] for c in mock_publish.call_args_list]
         education_idx = next(
             i for i, c in enumerate(mock_publish.call_args_list)
-            if c.args[1].get("event") == "pipeline-progress" and c.args[1].get("step") == "education"
+            if c.args[1].get("event") == "pipeline-progress" and c.args[1].get("step") == "insights"
         )
         first_insight_idx = next(
             i for i, c in enumerate(mock_publish.call_args_list)
@@ -914,6 +915,8 @@ class TestProcessUploadSummaryPayload:
             validation_warnings_count = 0
             rejected_rows: list = []
             warnings: list = []
+            mojibake_detected = False
+            schema_detection_source = "known_bank_parser"
         mock_parse.return_value = _EmptyResult()
 
         from app.tasks.processing_tasks import process_upload

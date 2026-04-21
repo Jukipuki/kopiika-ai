@@ -812,16 +812,22 @@ Both are correctly classified `kind=transfer` (post-Story-11.4), so neither infl
 
 **Where:** Will require extensions to [backend/app/agents/categorization/node.py](../backend/app/agents/categorization/node.py) prompt contract, the `bank_format_registry` mapping schema (tech spec §2.4), and a new user-IBAN registry storage. Affects classification correctness for all FOP users who upload their PE account statement.
 
-**Problem:** The Ukrainian PE (sole-proprietor) account statement has a fundamentally different signal structure than the card statement:
+**Current state (2026-04-21 update — Story 11.4 post-hoc):** Story 11.4's golden-set run reported `pe_statement_accuracy=1.000` (4/4) on the gs-091–gs-094 rows. This is achieved via **description-pattern matching in the LLM prompt** — the current prompt picked up reliable signals from the fixture descriptions ("Оплата за послуги...", "Переказ між власними рахунками...") and classifies them correctly via few-shot + existing rules. This is a working **interim solution** for the fixture, NOT a general-purpose PE-statement categorization path:
+
+- **What works today:** Any PE-statement row whose description contains one of the discriminating phrases the prompt has seen (self-transfer wording, service-payment wording, tax-payment wording) will classify correctly by description alone.
+- **What will break:** Real-world PE statements have high description variance (different contract numbers, different counterparty names, regional tax-office phrasings). Any row with an unfamiliar description pattern but a recognizable counterparty EDRPOU will fall through to default classification — the prompt does not have access to counterparty fields yet.
+- **Trajectory:** once Story 11.7 ships (AI-assisted schema detection will map counterparty columns), migrate the PE-row classification from description-pattern to counterparty-driven rules per the "Fix shape" below. Remove reliance on fixture-specific description patterns at that time.
+
+The current green test signal does NOT retire this TD; it means the TD is **masked** rather than resolved.
+
+**Problem (original):** The Ukrainian PE (sole-proprietor) account statement has a fundamentally different signal structure than the card statement:
   - PE statement has: **counterparty name, counterparty EDRPOU (tax ID), counterparty IBAN** — but NO MCC.
   - Card statement has: MCC — but no counterparty fields.
 
-The current categorization pipeline assumes MCC + description and cannot use counterparty signals. This makes several categorizations incorrect on PE statements:
-  - Real business income (`+175,800 "Оплата за послуги..." from Company with non-zero EDRPOU`) looks structurally identical to a P2P receipt because the pipeline doesn't know EDRPOU distinguishes legal entities from individuals.
-  - Self-transfers to the user's own card (`-10,000 "Переказ між власними рахунками..."` with the user's own IBAN as counterparty) can't be deterministically detected without comparing counterparty IBAN to the user's known IBANs.
+The current categorization pipeline assumes MCC + description and cannot use counterparty signals. This makes several categorizations incorrect on real PE statements beyond the golden-set fixture:
+  - Real business income (`+175,800 "Оплата за послуги..." from Company with non-zero EDRPOU`) looks structurally identical to a P2P receipt at the description level for arbitrary contract wording; the pipeline doesn't know EDRPOU distinguishes legal entities from individuals.
+  - Self-transfers to the user's own card (`-10,000 "Переказ між власними рахунками..."` with the user's own IBAN as counterparty) can't be deterministically detected across real-world wording variance without comparing counterparty IBAN to the user's known IBANs.
   - Tax payments to the State Treasury have a distinctive EDRPOU pattern that would deterministically map to `category=government`.
-
-Without this, gs-091 through gs-094 in the golden set cannot pass — they require counterparty-driven classification that the current pipeline can't perform.
 
 **Why deferred:** Requires multiple coordinated changes: (a) Story 11.7 must ship AI-assisted schema detection first (so counterparty columns get mapped); (b) `bank_format_registry` schema must accept counterparty column mappings (additive to tech spec §2.4); (c) the categorization node must receive counterparty fields in its input; (d) a user-IBAN registry must exist so the system can recognize "user's own IBAN." Large scope, worth a dedicated story post-Story-11.7.
 
@@ -868,6 +874,138 @@ Without this, gs-091 through gs-094 in the golden set cannot pass — they requi
 4. **Dismissal logic** — don't nag. Once dismissed per upload-id, don't re-surface for the same upload.
 
 **Surfaced in:** Architect review 2026-04-21 (Epic 11 PE-statement discussion).
+
+---
+
+### TD-051 — `amount_sign_convention` labels lack a real unsigned / split-column option [MEDIUM]
+
+**Where:** [backend/app/services/schema_detection.py](backend/app/services/schema_detection.py) (LLM prompt + `_VALID_SIGN_CONVENTIONS`), [backend/app/services/parse_validator.py:90-99](backend/app/services/parse_validator.py#L90-L99), [backend/app/agents/ingestion/parsers/ai_detected.py](backend/app/agents/ingestion/parsers/ai_detected.py)
+
+**Problem:** The schema-detection prompt offers exactly two `amount_sign_convention` values — `positive_is_income` and `negative_is_outflow` — but both describe the same file shape (signed amounts where negative = outflow). The AI parser does not flip signs under either label; the labels only feed the validator's `sign_convention_mismatch` soft warning. Two real conventions are not yet representable:
+
+1. **Unsigned amounts + direction flag column** — e.g., statements with an all-positive `Amount` column and a separate `Type` column (`DEBIT`/`CREDIT`).
+2. **Debit/credit split columns** — e.g., two columns `Debit` and `Credit`, one populated per row.
+
+Additionally, the 11.5 validator warns on every opposite-polarity row, which generates false positives on normal mixed-sign statements (Monobank income rows under `negative_is_outflow` all warn). The warning's product value should be revisited once real multi-column conventions land.
+
+**Why deferred:** Surfaced in Story 11.7 code review. Fixing properly expands the mapping schema (new keys: `direction_column`, `debit_column`, `credit_column`), the LLM prompt contract, the registry row shape, and the AI parser's row-to-`TransactionData` transform. Doing this well needs real-world fixtures of each shape, which Story 11.7 did not have. Story 11.7's PE-statement fixture uses signed amounts, so the current single-column signed-amount path covers it.
+
+**Fix shape:**
+1. Collect 2–3 real fixtures each of (a) unsigned+direction and (b) debit/credit split formats.
+2. Extend `DetectedSchema.detected_mapping` with an optional sibling schema describing which of the three shapes applies: `signed_amount` (current), `unsigned_with_direction`, `debit_credit_split`.
+3. Extend the LLM prompt to ask for the shape and the relevant column names.
+4. In `AIDetectedParser`, branch on the detected shape and compute the signed canonical `amount` accordingly.
+5. Revisit `parse_validator.py` `sign_convention_mismatch` warning — likely replace with "file purports to be one-directional but contains mixed signs" detection, which only fires when the invariant is meaningfully violated.
+6. Migration not required (JSONB schema is additive), but older cached rows will need a backfill default of `signed_amount`.
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-052 — Schema-detection LLM prompt sends raw transaction values; redact to shape tokens [LOW]
+
+**Where:** [backend/app/services/schema_detection.py](backend/app/services/schema_detection.py) — `_build_prompt`
+
+**Problem:** The prompt sends up to 5 raw rows to the LLM (values included: amounts, merchant names, counterparty tax IDs, IBANs). Today this is not a net privacy regression because:
+
+- The categorization pipeline already sends description / merchant / amount / MCC to the same LLM for every transaction on every upload. Schema detection touches fewer rows (5 per new format ever, then cached) and fewer columns (structural fields only).
+- IBAN / counterparty account number is genuinely sensitive and does NOT flow through the categorization LLM, but also has no business reason to remain in the schema-detection prompt — the LLM infers the counterparty-account *column* from the header name, not from the value shape (IBAN patterns are uniform enough that any single value is sufficient, and we don't strictly need a real one).
+- Planned IBAN usage (self-transfer pairing via TD-048, counterparty-aware categorization via TD-049) is app-side — will not send IBAN to the LLM.
+
+Still: sending raw IBAN / tax-ID values to the LLM for schema inference is avoidable by redacting those specific columns to shape tokens while keeping other cells literal (dates, amounts, currency codes all need real exemplars for the LLM to infer formats).
+
+**Why deferred:** Surfaced in Story 11.7 code review as a defense-in-depth nicety, not a current leak. The categorization path is the dominant exposure surface and isn't changed by redacting schema-detection samples. A careful redactor that preserves format-inference signal (date shape, decimal separator, sign character, currency-code structure) while masking sensitive long-form strings (IBANs, tax IDs, full counterparty names) is more subtle than it looks — premature without a concrete privacy requirement driving it.
+
+**Fix shape:**
+1. Add a `_redact_cell(cell, header_name_hint)` helper that maps each cell to a shape-preserving token. Preserve:
+   - Date-shaped strings verbatim (the LLM needs `"15.01.2024"` to infer `%d.%m.%Y`).
+   - Numeric amounts verbatim (sign + separator + precision drive `amount_sign_convention` and decimal-handling).
+   - ISO-3-letter currency codes verbatim.
+   Mask:
+   - Cells in columns whose header matches IBAN / tax-ID / account-number patterns (`iban`, `рахунок`, `account`, `ІПН`, `inn`, `едрпоу`, etc.) → replace with `<iban-shaped>` / `<tax-id-shaped>`.
+   - Long free-text cells (description, counterparty name) beyond N characters → truncate with `<...>` marker, or replace with `<string:len=N>`.
+2. Extend the prompt so the LLM knows some cells have been redacted: "Cells shown as `<iban-shaped>` are real values masked for privacy; assume they exist and have a consistent shape."
+3. Add unit tests for the redactor: date cells survive, currency codes survive, long strings truncate, IBANs redact.
+4. Golden-set (or at least a handful of real fixtures) regression check: confirm `detection_confidence` and `detected_bank_hint` don't degrade meaningfully on a redacted vs. non-redacted prompt.
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-053 — `parse_and_store_transactions` (async) is dead production code [LOW]
+
+**Where:** [backend/app/services/parser_service.py:341](backend/app/services/parser_service.py#L341)
+
+**Problem:** The async `parse_and_store_transactions` is imported only by test files ([test_monobank_parser.py](backend/tests/test_monobank_parser.py), [test_privatbank_parser.py](backend/tests/test_privatbank_parser.py), [test_generic_parser.py](backend/tests/test_generic_parser.py)). No production code path calls it — the FastAPI upload endpoint dispatches a Celery job, which uses the sync `sync_parse_and_store_transactions`. The async variant was left behind when the Celery-worker architecture settled.
+
+Story 11.7 hardcoded `session=None` at [parser_service.py:357](backend/app/services/parser_service.py#L357) to opt this dead path out of schema detection, which creates a misleading impression that there is a real async use case that "doesn't need AI detection yet." There isn't.
+
+**Why deferred:** Not a correctness issue — production uploads hit the sync path and get full schema detection. Surfaced as cleanup during 11.7 code review.
+
+**Fix shape:**
+1. Delete `parse_and_store_transactions` from `parser_service.py`.
+2. Migrate the three parser tests to `sync_parse_and_store_transactions` with a sync `Session` fixture. The tests already operate on pre-built `ParseResult` stubs; the sync variant's interface is near-identical.
+3. Drop the aspirational dev-note in Story 11.7 completion ("async path not wired for schema detection") — it no longer applies.
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-054 — Schema-detection integration test uses monkeypatched LLM, violating AC #13 [LOW]
+
+**Where:** [backend/tests/integration/test_schema_detection_e2e.py:127](backend/tests/integration/test_schema_detection_e2e.py#L127) — `test_fallback_when_llm_returns_non_json`
+
+**Problem:** Story 11.7 AC #13 says "three end-to-end integration tests exist, **each with real LLM calls**." This third test is marked `@pytest.mark.integration` but monkeypatches `get_llm_client` to return canned non-JSON content — no real LLM call. It's functionally a unit test wearing an integration label.
+
+**Why deferred:** Fixing requires either (a) relocating to the unit suite (drop the marker and move to `tests/services/`), which is trivial, or (b) designing a genuinely LLM-provoking malformed input, which is fragile because the real LLM tends to produce *some* JSON even for nonsense inputs (we'd need to prompt-inject for reliable failure, which is ugly). Option (a) is the honest fix but leaves AC #13 at 2-of-3 strict compliance.
+
+**Fix shape:**
+1. Drop `@pytest.mark.integration` from `test_fallback_when_llm_returns_non_json`, move the test to `tests/services/test_schema_detection.py`.
+2. Update AC #13 language from "three integration tests" to "two integration tests (real LLM) + one unit test (canned response) covering the fallback path."
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-055 — `header_fingerprint` recomputed twice per unknown-format upload [LOW]
+
+**Where:** [backend/app/services/parser_service.py:176](backend/app/services/parser_service.py#L176)
+
+**Problem:** `_select_parser_and_parse` recomputes `header_fingerprint(header)` in its return tuple after `resolve_bank_format` has already computed the same value internally. SHA-256 over a short canonical string is cheap, but it's still a signal of leaky abstraction: callers reach into the service's internals to reconstruct a value the service already derived.
+
+**Why deferred:** Micro-optimization and tidiness, not correctness.
+
+**Fix shape:** Add `fingerprint: str` to the `ResolvedFormat` dataclass; populate it inside `resolve_bank_format`; update `_select_parser_and_parse` to read it from the returned object instead of recomputing.
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-056 — `AIDetectedParser` flagged-row has a dead else branch [LOW]
+
+**Where:** [backend/app/agents/ingestion/parsers/ai_detected.py:215](backend/app/agents/ingestion/parsers/ai_detected.py#L215)
+
+**Problem:** `raw_data=dict(zip(header, row)) if row else ",".join(row)` — the `else` branch calls `",".join([])`, but empty/whitespace-only rows are already skipped at [line 143](backend/app/agents/ingestion/parsers/ai_detected.py#L143) by `if not row or all(cell.strip() == "" for cell in row): continue`. The else is unreachable.
+
+**Why deferred:** Dead code, no runtime impact.
+
+**Fix shape:** Replace the conditional with `raw_data=dict(zip(header, row))` unconditionally.
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
+
+---
+
+### TD-057 — `BankFormatRegistry.header_fingerprint` model type drifts from migration [LOW]
+
+**Where:** [backend/app/models/bank_format_registry.py:33](backend/app/models/bank_format_registry.py#L33), [backend/alembic/versions/x0y1z2a3b4c5_add_bank_format_registry.py:35](backend/alembic/versions/x0y1z2a3b4c5_add_bank_format_registry.py#L35)
+
+**Problem:** Migration emits `sa.CHAR(64)` (fixed-width, per tech spec §2.4 and AC #1). The SQLModel field uses `Field(max_length=64, unique=True, index=True)`, which SQLAlchemy renders as `VARCHAR(64)`. The migration is authoritative in production so actual Postgres columns are `CHAR(64)`, but if someone runs `create_all` against a fresh DB (e.g., tests, ad-hoc scripts), they get `VARCHAR(64)` instead. Test runs against SQLite don't care either way.
+
+**Why deferred:** Not currently observable — production uses migrations; tests use SQLite. A single path (e.g., `create_all` in CI bootstrapping) could expose the drift.
+
+**Fix shape:** Replace the `max_length=64` shorthand with an explicit `sa_column=Column(CHAR(64), unique=True, index=True, nullable=False)` so the model definition matches the migration.
+
+**Surfaced in:** Story 11.7 code review (2026-04-21)
 
 ---
 

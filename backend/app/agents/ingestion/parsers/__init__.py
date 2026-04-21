@@ -1,3 +1,4 @@
+from app.agents.ingestion.parsers.ai_detected import AIDetectedParser
 from app.agents.ingestion.parsers.base import (
     AbstractParser,
     FlaggedRow,
@@ -10,6 +11,7 @@ from app.agents.ingestion.parsers.privatbank import PrivatBankParser
 
 __all__ = [
     "AbstractParser",
+    "AIDetectedParser",
     "FlaggedRow",
     "GenericParser",
     "MonobankParser",

@@ -58,7 +58,9 @@ def _run_with_parsed(rows, flagged_rows=None):
     user_id = uuid.uuid4()
     upload_id = uuid.uuid4()
     with patch("app.agents.ingestion.parsers.monobank.MonobankParser.parse", return_value=parse_result):
-        return _parse_and_build_records(user_id, upload_id, b"ignored", _format_result())
+        return _parse_and_build_records(
+            user_id, upload_id, b"ignored", _format_result(), session=None
+        )
 
 
 class TestParserServiceValidation:
@@ -149,7 +151,7 @@ class TestParserServiceValidation:
             return_value=parse_result,
         ):
             _, flagged_records, result = _parse_and_build_records(
-                user_id, upload_id, b"ignored", _format_result()
+                user_id, upload_id, b"ignored", _format_result(), session=None
             )
         reasons = {fr.reason for fr in flagged_records}
         assert reasons == {"malformed_row", "zero_or_null_amount"}
@@ -179,6 +181,51 @@ class TestParserServiceValidation:
         _, _, result = _run_with_parsed(rows)
         assert result.mojibake_detected is False
         assert result.mojibake_replacement_rate == 0.0
+
+
+class TestKnownBankBypassesSchemaDetection:
+    """Story 11.7 AC #12 regression: Monobank/PrivatBank uploads must never
+    reach the AI schema-detection code path — their deterministic parsers are
+    the happy path and AI detection is only a fallback for unknown formats.
+    """
+
+    @pytest.mark.parametrize("bank", ["monobank", "privatbank"])
+    def test_known_bank_bypasses_schema_detection(self, bank):
+        rows = [_txn(description="COFFEE", amount=-500)]
+        parse_result = ParseResult(
+            transactions=rows,
+            flagged_rows=[],
+            total_rows=1,
+            parsed_count=1,
+            flagged_count=0,
+        )
+        user_id = uuid.uuid4()
+        upload_id = uuid.uuid4()
+
+        parser_path = (
+            "app.agents.ingestion.parsers.monobank.MonobankParser.parse"
+            if bank == "monobank"
+            else "app.agents.ingestion.parsers.privatbank.PrivatBankParser.parse"
+        )
+
+        # A real session object — but if schema detection gets invoked on a
+        # known-bank upload, `resolve_bank_format` would fire and we want the
+        # test to fail loudly rather than silently hit the LLM path.
+        with patch(parser_path, return_value=parse_result), patch(
+            "app.services.parser_service.resolve_bank_format",
+            side_effect=AssertionError(
+                f"resolve_bank_format must not be called for {bank} upload"
+            ),
+        ):
+            _, _, result = _parse_and_build_records(
+                user_id,
+                upload_id,
+                b"ignored",
+                _format_result(bank=bank),
+                session=None,
+            )
+
+        assert result.schema_detection_source == "known_bank_parser"
 
     def test_rejected_rows_payload_shape(self):
         rows = [_txn(description="", mcc=None), _txn(description="GOOD")]

@@ -299,13 +299,21 @@ class TestRedisPubSubUtilities:
 class TestCeleryTaskPublishesProgress:
     """7.6 — Celery task publishes progress events to Redis."""
 
+    @patch("app.agents.pattern_detection.node.get_sync_session")
     @patch("app.tasks.processing_tasks.publish_job_progress")
     @patch("app.tasks.processing_tasks.boto3.client")
     @patch("app.tasks.processing_tasks.get_sync_session")
     def test_happy_path_publishes_progress_events(
-        self, mock_get_session, mock_boto_client, mock_publish, sync_engine
+        self, mock_get_session, mock_boto_client, mock_publish,
+        mock_pattern_session, sync_engine
     ):
-        """Celery task publishes progress at each checkpoint and job-complete on success."""
+        """Celery task publishes progress at each checkpoint and job-complete on success.
+
+        Post-Story 8.1 event sequence: 10 (ingestion-start) → 30 (parsing done)
+        → 40 (categorization start) → 70 (insights done) → 90 (profile) → 92
+        (health-score). Story 8.1 collapsed the old separate categorization=60
+        and education=80 checkpoints into a single insights=70 event.
+        """
         import io
 
         user_id, job_id = _seed(sync_engine, status="validated")
@@ -319,6 +327,10 @@ class TestCeleryTaskPublishesProgress:
                 s.close()
 
         mock_get_session.side_effect = _cm
+        # pattern_detection opens its own session via get_sync_session; route
+        # it to the test engine so FKs resolve against the same DB that was
+        # seeded with the test user.
+        mock_pattern_session.side_effect = _cm
 
         csv_data = (
             "Дата і час операції;Опис операції;MCC;Сума в валюті картки (UAH);Залишок на рахунку (UAH)\n"
@@ -334,34 +346,30 @@ class TestCeleryTaskPublishesProgress:
         assert result["parsed_count"] == 1
 
         calls = mock_publish.call_args_list
-        # Events: 10% ingestion, 30% parsing, 40% categorization start,
-        # 60% categorization done, 80% education done, 90% profile build,
-        # 92% health-score, N x insight-ready, job-complete
         progress_calls = [c for c in calls if c[0][1]["event"] == "pipeline-progress"]
         insight_calls = [c for c in calls if c[0][1]["event"] == "insight-ready"]
         complete_calls = [c for c in calls if c[0][1]["event"] == "job-complete"]
 
-        assert len(progress_calls) == 7
+        assert len(progress_calls) == 6
         assert len(complete_calls) == 1
 
+        assert progress_calls[0][0][1]["step"] == "ingestion"
         assert progress_calls[0][0][1]["progress"] == 10
+
+        assert progress_calls[1][0][1]["step"] == "ingestion"
         assert progress_calls[1][0][1]["progress"] == 30
 
         assert progress_calls[2][0][1]["step"] == "categorization"
         assert progress_calls[2][0][1]["progress"] == 40
 
-        assert progress_calls[3][0][1]["step"] == "categorization"
-        assert progress_calls[3][0][1]["progress"] == 60
+        assert progress_calls[3][0][1]["step"] == "insights"
+        assert progress_calls[3][0][1]["progress"] == 70
 
-        assert progress_calls[4][0][1]["step"] == "education"
-        assert progress_calls[4][0][1]["progress"] == 80
+        assert progress_calls[4][0][1]["step"] == "profile"
+        assert progress_calls[4][0][1]["progress"] == 90
 
-        assert progress_calls[5][0][1]["step"] == "profile"
-        assert progress_calls[5][0][1]["progress"] == 90
-
-        assert progress_calls[6][0][1]["step"] == "health-score"
-        assert progress_calls[6][0][1]["progress"] == 92
-        assert progress_calls[5][0][1]["progress"] == 90
+        assert progress_calls[5][0][1]["step"] == "health-score"
+        assert progress_calls[5][0][1]["progress"] == 92
 
         # Each insight card produces an insight-ready event
         for ic in insight_calls:
@@ -427,8 +435,13 @@ class TestCeleryTaskPublishesProgress:
         assert failed_calls[0][0][1]["error"]["code"] == "UNSUPPORTED_FORMAT"
 
 
-def _seed(engine, status="processing", error_code=None, error_message=None):
-    """Create user + upload + job. Returns (user_id, job_id)."""
+def _seed(engine, status="processing", error_code=None, error_message=None, detected_format="monobank"):
+    """Create user + upload + job. Returns (user_id, job_id).
+
+    `detected_format` defaults to "monobank" so happy-path tests don't trip the
+    Story 11.7 AI-schema-detection fallback when seeding uploads directly
+    (bypassing the real upload-service detection step).
+    """
     user_id = uuid.uuid4()
     upload_id = uuid.uuid4()
     job_id = uuid.uuid4()
@@ -438,6 +451,8 @@ def _seed(engine, status="processing", error_code=None, error_message=None):
         s.add(Upload(
             id=upload_id, user_id=user_id, file_name="t.csv",
             s3_key=f"{user_id}/t.csv", file_size=100, mime_type="text/csv",
+            detected_format=detected_format, detected_encoding="utf-8",
+            detected_delimiter=";",
         ))
         s.flush()
         s.add(ProcessingJob(

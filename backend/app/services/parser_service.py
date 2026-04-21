@@ -1,3 +1,5 @@
+import csv
+import io
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -5,6 +7,7 @@ from dataclasses import dataclass, field
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
+from app.agents.ingestion.parsers.ai_detected import AIDetectedParser
 from app.agents.ingestion.parsers.base import AbstractParser
 from app.agents.ingestion.parsers.generic import GenericParser
 from app.agents.ingestion.parsers.monobank import MonobankParser
@@ -13,6 +16,12 @@ from app.models.flagged_import_row import FlaggedImportRow
 from app.models.transaction import Transaction
 from app.services.format_detector import FormatDetectionResult, detect_mojibake
 from app.services.parse_validator import validate_parsed_rows
+from app.services.schema_detection import (
+    SchemaDetectionFailed,
+    emit_suspect_detection_event,
+    header_fingerprint,
+    resolve_bank_format,
+)
 from app.services.transaction_service import compute_dedup_hash
 
 logger = logging.getLogger(__name__)
@@ -21,6 +30,13 @@ _PARSERS: dict[str, type[AbstractParser]] = {
     "monobank": MonobankParser,
     "privatbank": PrivatBankParser,
 }
+
+# Story 11.7: rate above which a detected mapping is flagged as "suspect"
+# (AC #9). Matches the tech-spec threshold; Story 11.5 already rejects rows.
+_SUSPECT_REJECTION_RATE = 0.30
+
+# Max sample rows handed to the LLM for schema detection.
+_MAX_SAMPLE_ROWS = 5
 
 
 @dataclass
@@ -36,6 +52,14 @@ class ParseAndStoreResult:
     warnings: list[dict] = field(default_factory=list)
     mojibake_detected: bool = False
     mojibake_replacement_rate: float = 0.0
+    # Story 11.7: which code path produced the parsed output. Values:
+    #   "known_bank_parser" — Monobank/PrivatBank deterministic parser
+    #   "cached_override"   — bank_format_registry hit with operator override
+    #   "cached_detected"   — bank_format_registry hit with LLM-detected mapping
+    #   "llm_detected"      — registry miss, LLM call produced a fresh mapping
+    #   "fallback_generic"  — generic heuristic parser (known parser missing OR
+    #                         LLM detection failed)
+    schema_detection_source: str = "known_bank_parser"
 
 
 class UnsupportedFormatError(Exception):
@@ -50,41 +74,162 @@ class WholesaleRejectionError(Exception):
         super().__init__(f"Wholesale rejection: {reason}")
 
 
-def _parse_and_build_records(
-    user_id: uuid.UUID,
-    upload_id: uuid.UUID,
+def _extract_header_and_samples(
+    file_bytes: bytes, encoding: str, delimiter: str
+) -> tuple[list[str], list[list[str]]]:
+    """Pull the header row and up to _MAX_SAMPLE_ROWS data rows out of raw bytes.
+
+    Used to feed `resolve_bank_format` without paying for a full parse first.
+    """
+    try:
+        text = file_bytes.decode(encoding)
+    except (UnicodeDecodeError, LookupError):
+        text = file_bytes.decode("utf-8", errors="replace")
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    try:
+        header = [col.strip() for col in next(reader)]
+    except StopIteration:
+        return [], []
+    samples: list[list[str]] = []
+    for row in reader:
+        if not row or all(cell.strip() == "" for cell in row):
+            continue
+        samples.append(row)
+        if len(samples) >= _MAX_SAMPLE_ROWS:
+            break
+    return header, samples
+
+
+def _select_parser_and_parse(
+    session: Session | None,
     file_bytes: bytes,
     format_result: FormatDetectionResult,
-) -> tuple[list[Transaction], list[FlaggedImportRow], ParseAndStoreResult]:
-    """Parse file and build ORM objects. Shared by async and sync store functions."""
-    parser_cls = _PARSERS.get(format_result.bank_format)
+    *,
+    upload_id: uuid.UUID | None = None,
+    user_id: uuid.UUID | None = None,
+) -> tuple[object, str, FormatDetectionResult, str | None]:
+    """Choose the parser for this upload per Story 11.7 precedence.
 
-    if parser_cls is not None:
-        parser = parser_cls()
+    Returns (parse_result, schema_detection_source, effective_format_result,
+    fingerprint_or_none). `fingerprint_or_none` is populated only when a
+    registry-backed mapping was used (needed for AC #9 suspect logging).
+    """
+    known = _PARSERS.get(format_result.bank_format)
+    if known is not None:
+        parser = known()
         result = parser.parse(
             file_bytes=file_bytes,
             encoding=format_result.encoding,
             delimiter=format_result.delimiter,
         )
-    else:
-        generic = GenericParser()
-        result = generic.parse(
-            file_bytes=file_bytes,
-            encoding=format_result.encoding,
-            delimiter=format_result.delimiter,
+        return result, "known_bank_parser", format_result, None
+
+    # Unknown format — try AI-assisted schema detection first.
+    if session is not None:
+        header, samples = _extract_header_and_samples(
+            file_bytes, format_result.encoding, format_result.delimiter
         )
-        if result.parsed_count == 0:
-            raise UnsupportedFormatError(
-                "This file format is not yet supported. "
-                "Currently supported: Monobank CSV, PrivatBank CSV."
-            )
+        if header:
+            try:
+                resolved = resolve_bank_format(
+                    header_row=header,
+                    sample_rows=samples,
+                    encoding=format_result.encoding,
+                    db_session=session,
+                    upload_id=str(upload_id) if upload_id else None,
+                    user_id=str(user_id) if user_id else None,
+                )
+            except SchemaDetectionFailed:
+                # resolve_bank_format already emitted a
+                # `parser.schema_detection` event with source="fallback_generic"
+                # and error_reason before raising. Don't double-log.
+                pass
+            else:
+                ai_parser = AIDetectedParser(mapping=resolved.mapping)
+                # Let the mapping's delimiter override (it came from the LLM
+                # reading the actual file), but fall back to the detected one.
+                mapping_delim = resolved.mapping.get("delimiter")
+                if mapping_delim == "\\t":
+                    mapping_delim = "\t"
+                effective = FormatDetectionResult(
+                    bank_format=format_result.bank_format,
+                    encoding=format_result.encoding,
+                    delimiter=mapping_delim or format_result.delimiter,
+                    column_count=len(header),
+                    confidence_score=format_result.confidence_score,
+                    header_row=header,
+                    amount_sign_convention=resolved.mapping.get(
+                        "amount_sign_convention"
+                    ),
+                )
+                result = ai_parser.parse(
+                    file_bytes=file_bytes,
+                    encoding=effective.encoding,
+                    delimiter=effective.delimiter,
+                )
+                return (
+                    result,
+                    resolved.source,
+                    effective,
+                    header_fingerprint(header),
+                )
+
+    # Fallback — generic heuristic parser (either no session, empty header, or
+    # LLM detection failed).
+    generic = GenericParser()
+    result = generic.parse(
+        file_bytes=file_bytes,
+        encoding=format_result.encoding,
+        delimiter=format_result.delimiter,
+    )
+    if result.parsed_count == 0:
+        raise UnsupportedFormatError(
+            "This file format is not yet supported. "
+            "Currently supported: Monobank CSV, PrivatBank CSV."
+        )
+    return result, "fallback_generic", format_result, None
+
+
+def _parse_and_build_records(
+    user_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    file_bytes: bytes,
+    format_result: FormatDetectionResult,
+    session: Session | None,
+) -> tuple[list[Transaction], list[FlaggedImportRow], ParseAndStoreResult]:
+    """Parse file and build ORM objects. Shared by async and sync store functions."""
+    result, schema_source, effective_format, fingerprint = _select_parser_and_parse(
+        session=session,
+        file_bytes=file_bytes,
+        format_result=format_result,
+        upload_id=upload_id,
+        user_id=user_id,
+    )
 
     validation = validate_parsed_rows(
         rows=result.transactions,
-        amount_sign_convention=format_result.amount_sign_convention,
+        amount_sign_convention=effective_format.amount_sign_convention,
     )
     if validation.wholesale_rejected:
         raise WholesaleRejectionError(validation.wholesale_rejection_reason or "unknown")
+
+    # Story 11.7 AC #9: log a suspect-detection event when a registry-backed
+    # mapping produced > 30% validation rejections. Do NOT mutate the registry —
+    # auto-repair is deferred to an operator-facing story.
+    if fingerprint and schema_source in ("cached_override", "cached_detected", "llm_detected"):
+        total = len(result.transactions) + len(validation.rejected_rows)
+        rejected = len(validation.rejected_rows)
+        if total > 0 and (rejected / total) > _SUSPECT_REJECTION_RATE:
+            emit_suspect_detection_event(
+                upload_id=str(upload_id),
+                user_id=str(user_id),
+                fingerprint=fingerprint,
+                source=schema_source,
+                rejected_count=rejected,
+                total_count=total,
+            )
 
     descriptions = [txn.description or "" for txn in validation.accepted]
     mojibake_flag, mojibake_rate = detect_mojibake(descriptions)
@@ -167,6 +312,7 @@ def _parse_and_build_records(
         warnings=warnings_payload,
         mojibake_detected=mojibake_flag,
         mojibake_replacement_rate=mojibake_rate,
+        schema_detection_source=schema_source,
     )
 
     return transactions, flagged_records, store_result
@@ -204,8 +350,11 @@ async def parse_and_store_transactions(
     Deduplicates against existing transactions for this user.
     NOTE: Does NOT commit the session — caller controls the transaction boundary.
     """
+    # The async path is only used by FastAPI request handlers where schema
+    # detection isn't yet wired in (upload flow runs detection in Celery). Pass
+    # session=None so the flow falls through to GenericParser on unknown format.
     transactions, flagged_records, result = _parse_and_build_records(
-        user_id, upload_id, file_bytes, format_result,
+        user_id, upload_id, file_bytes, format_result, session=None,
     )
 
     # Query existing dedup hashes for this user
@@ -231,6 +380,7 @@ async def parse_and_store_transactions(
             "duplicates_skipped": duplicates_skipped,
             "validation_rejected": result.validation_rejected_count,
             "validation_warnings": result.validation_warnings_count,
+            "schema_detection_source": result.schema_detection_source,
         },
     )
 
@@ -250,7 +400,7 @@ def sync_parse_and_store_transactions(
     NOTE: Does NOT commit the session — caller controls the transaction boundary.
     """
     transactions, flagged_records, result = _parse_and_build_records(
-        user_id, upload_id, file_bytes, format_result,
+        user_id, upload_id, file_bytes, format_result, session=session,
     )
 
     # Query existing dedup hashes for this user
@@ -275,6 +425,7 @@ def sync_parse_and_store_transactions(
             "duplicates_skipped": duplicates_skipped,
             "validation_rejected": result.validation_rejected_count,
             "validation_warnings": result.validation_warnings_count,
+            "schema_detection_source": result.schema_detection_source,
         },
     )
 
