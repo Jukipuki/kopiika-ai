@@ -1277,6 +1277,48 @@ So that the score becomes a trustworthy signal of my financial health rather tha
 
 ---
 
+### Story 4.10: Profile aggregates respect `transaction_kind` (diversity / regularity / coverage fix)
+
+As a **user**,
+I want my Category Diversity, Expense Regularity, and Income Coverage sub-scores to ignore savings and transfer transactions,
+So that a single deposit top-up or between-account transfer doesn't wreck the rest of my Health Score.
+
+**Context:** Story 4.9 wired Savings Ratio to read `transaction_kind` inside `_compute_breakdown`, but the underlying `FinancialProfile` aggregates that the other three components read — `total_income`, `total_expenses`, `category_totals` — still partition by amount sign in [backend/app/services/profile_service.py:210-218](backend/app/services/profile_service.py#L210-L218). This means a `kind='savings'` outflow (e.g. a −50 000 deposit top-up) is counted as a giant single-category expense, which (1) collapses Category Diversity to a single-category floor, (2) inflates the variance that drives Expense Regularity downward, and (3) inflates `avg_monthly_expense` while simultaneously deflating `net_savings = total_income + total_expenses`, crushing Income Coverage toward 0. Same applies to `kind='transfer'` rows. Surfaced in Story 4.9 post-review testing (2026-04-22).
+
+**Depends on:** Story 4.9 (Savings Ratio — landed), Story 11.2 (`transaction_kind` field — landed)
+
+**Acceptance Criteria:**
+
+**Given** a user has transactions with `transaction_kind` in `('savings', 'transfer')` in the profile's period
+**When** `build_or_update_profile` computes `total_expenses` and `category_totals`
+**Then** those transactions are excluded from both aggregates — `total_expenses` reflects only `kind='spending'` outflows, and `category_totals` contains only `kind='spending'` rows.
+
+**Given** a user has transactions with `transaction_kind='income'` that happen to have a negative amount (data correction edge case)
+**When** `build_or_update_profile` computes `total_income`
+**Then** `total_income` is the sum of `abs(amount)` over `kind='income'` rows — it reads kind, not sign, matching Story 4.9's contract for Savings Ratio.
+
+**Given** a user has one `kind='spending'` transaction per category (e.g. groceries, transport, utilities) and one large `kind='savings'` transaction
+**When** the Health Score is computed
+**Then** Category Diversity is computed over the spending categories only, Expense Regularity variance is computed over the spending-category totals only, and Income Coverage's `avg_monthly_expense` uses only the spending outflows — the savings transaction influences Savings Ratio (Story 4.9) and nothing else.
+
+**Given** a user whose `total_income` (kind-based) exceeds their total `kind='spending'` outflows
+**When** Income Coverage is computed
+**Then** `net_savings = total_income − total_spending_abs` is positive and `months_covered = net_savings / avg_monthly_spending` yields a non-zero score, regardless of whether the user also has `kind='savings'` or `kind='transfer'` transactions in the period.
+
+**Given** a legacy user whose transactions all default to `kind='spending'` (pre-Epic-11)
+**When** `build_or_update_profile` runs
+**Then** behavior is identical to today — the aggregates match the old sign-based partition because every row is `kind='spending'`. No migration or backfill required (greenfield assumption applies, matching Story 4.9 AC #6).
+
+**Given** the existing `get_category_breakdown` endpoint ([profile_service.py:31-70](backend/app/services/profile_service.py#L31-L70)) reads `category_totals` from the profile
+**When** that endpoint runs after this story lands
+**Then** the returned breakdown contains only `kind='spending'` categories — savings/transfer rows no longer appear as spending categories in the UI (this is the intended user-visible side effect; any test that asserted on savings-kind amounts appearing in category breakdown must be updated).
+
+**Given** a user has the same underlying transactions before and after this change, with `transaction_kind` correctly populated
+**When** `calculate_health_score` runs via the Celery pipeline
+**Then** a new `FinancialHealthScore` row is persisted with Savings Ratio unchanged from Story 4.9 behavior, and Category Diversity / Expense Regularity / Income Coverage reflecting only spending-kind activity (they may increase — that is the point).
+
+---
+
 ## Epic 5: Data Privacy, Trust & Consent
 
 Users can understand how their data is used, consent to AI processing, view stored data, delete all their data, and see appropriate disclaimers — building the trust foundation for a financial product.

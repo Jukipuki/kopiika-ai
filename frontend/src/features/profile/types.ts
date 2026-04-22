@@ -10,7 +10,7 @@ export interface FinancialProfile {
 
 // snake_case keys match the backend JSONB breakdown structure (opaque dict, not aliased by Pydantic)
 export interface HealthScoreBreakdown {
-  savings_ratio: number;
+  savings_ratio: number | null;
   category_diversity: number;
   expense_regularity: number;
   income_coverage: number;

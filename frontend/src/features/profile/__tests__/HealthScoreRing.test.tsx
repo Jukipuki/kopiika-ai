@@ -127,6 +127,54 @@ describe("HealthScoreRing", () => {
     window.matchMedia = originalMatchMedia;
   });
 
+  // ==================== Story 4.9 ====================
+
+  it("renders 'Not enough data yet' when savings_ratio is null (AC #2)", async () => {
+    const user = userEvent.setup();
+    const nullBreakdown = { ...baseBreakdown, savings_ratio: null };
+    render(<HealthScoreRing score={60} breakdown={nullBreakdown} />);
+    await user.click(screen.getByText("Show breakdown"));
+
+    expect(screen.getByText("Not enough data yet")).toBeTruthy();
+    // The Savings Ratio row must not render as "null/100".
+    expect(screen.queryByText("null/100")).toBeNull();
+  });
+
+  it("renders 0/100 (real zero) without partial marker when savings_ratio is 0 (AC #3)", async () => {
+    const user = userEvent.setup();
+    const zeroBreakdown = { ...baseBreakdown, savings_ratio: 0 };
+    const { container } = render(<HealthScoreRing score={60} breakdown={zeroBreakdown} />);
+    await user.click(screen.getByText("Show breakdown"));
+
+    expect(screen.getByText("0/100")).toBeTruthy();
+    expect(screen.queryByText("Not enough data yet")).toBeNull();
+    expect(container.querySelector('[data-testid="partial-score-marker"]')).toBeNull();
+    expect(screen.queryByText("Partial score — savings data not yet available")).toBeNull();
+  });
+
+  it("renders partial marker, helper, and partial aria-label when savings_ratio is null (AC #7)", () => {
+    const nullBreakdown = { ...baseBreakdown, savings_ratio: null };
+    const { container } = render(
+      <HealthScoreRing score={60} breakdown={nullBreakdown} />
+    );
+
+    expect(container.querySelector('[data-testid="partial-score-marker"]')?.textContent).toBe("*");
+    expect(screen.getByText("Partial score — savings data not yet available")).toBeTruthy();
+    const svg = screen.getByRole("img");
+    expect(svg.getAttribute("aria-label")).toContain("partial");
+  });
+
+  it("does not render partial marker or helper when all four components are non-null (AC #7)", () => {
+    const { container } = render(
+      <HealthScoreRing score={72} breakdown={baseBreakdown} />
+    );
+
+    expect(container.querySelector('[data-testid="partial-score-marker"]')).toBeNull();
+    expect(screen.queryByText("Partial score — savings data not yet available")).toBeNull();
+    const svg = screen.getByRole("img");
+    expect(svg.getAttribute("aria-label")).not.toContain("partial");
+  });
+
   it("applies correct gradient color for each zone", () => {
     const { container: c1 } = render(
       <HealthScoreRing score={20} breakdown={baseBreakdown} />

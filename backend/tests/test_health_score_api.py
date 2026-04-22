@@ -170,6 +170,39 @@ class TestHealthScoreEndpoint:
         response = await hs_client.get("/api/v1/health-score")
         assert response.status_code in (401, 403)
 
+    @pytest.mark.asyncio
+    async def test_savings_ratio_null_serializes_as_json_null(self, hs_client, hs_api_session):
+        """Story 4.9 AC #2: a null savings_ratio in the stored breakdown round-trips as JSON `null`."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "hs-null-sub"
+        user_id = await _create_user(hs_api_session, cognito_sub, "null-hs@test.com")
+
+        score = FinancialHealthScore(
+            user_id=user_id,
+            score=60,
+            calculated_at=datetime(2026, 3, 15),
+            breakdown={
+                "savings_ratio": None,
+                "category_diversity": 60,
+                "expense_regularity": 60,
+                "income_coverage": 60,
+            },
+        )
+        hs_api_session.add(score)
+        await hs_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await hs_client.get("/api/v1/health-score")
+            assert response.status_code == 200
+            data = response.json()
+            assert "savings_ratio" in data["breakdown"]
+            assert data["breakdown"]["savings_ratio"] is None
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
 
 class TestHealthScoreHistoryEndpoint:
     """Test GET /api/v1/health-score/history."""

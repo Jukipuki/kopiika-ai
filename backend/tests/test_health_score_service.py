@@ -13,6 +13,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
+from app.models.transaction import Transaction
+from app.models.upload import Upload
 from app.models.user import User
 
 
@@ -75,20 +77,57 @@ def _create_profile(
     total_income: int = 50000,
     total_expenses: int = -20000,
     category_totals: dict | None = None,
-    period_start: datetime | None = None,
-    period_end: datetime | None = None,
+    period_start: datetime | None = datetime(2026, 1, 1),
+    period_end: datetime | None = datetime(2026, 3, 31),
 ):
     profile = FinancialProfile(
         user_id=user_id,
         total_income=total_income,
         total_expenses=total_expenses,
         category_totals=category_totals or {"food": -15000, "transport": -5000},
-        period_start=period_start or datetime(2026, 1, 1),
-        period_end=period_end or datetime(2026, 3, 31),
+        period_start=period_start,
+        period_end=period_end,
     )
     session.add(profile)
     session.flush()
     return profile
+
+
+def _create_upload(session: Session, user_id: uuid.UUID) -> uuid.UUID:
+    upload = Upload(
+        user_id=user_id,
+        file_name="test.csv",
+        s3_key=f"test/{uuid.uuid4()}",
+        file_size=100,
+        mime_type="text/csv",
+    )
+    session.add(upload)
+    session.flush()
+    return upload.id
+
+
+def _add_transaction(
+    session: Session,
+    user_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    amount: int,
+    kind: str,
+    date: datetime = datetime(2026, 2, 1),
+    category: str | None = None,
+):
+    txn = Transaction(
+        user_id=user_id,
+        upload_id=upload_id,
+        date=date,
+        description=f"{kind} txn",
+        amount=amount,
+        transaction_kind=kind,
+        dedup_hash=str(uuid.uuid4()),
+        category=category,
+    )
+    session.add(txn)
+    session.flush()
+    return txn
 
 
 # ==================== Service Unit Tests ====================
@@ -102,7 +141,7 @@ class TestCalculateHealthScore:
         from app.services.health_score_service import calculate_health_score
 
         user_id = _create_user(sync_session, "balanced-sub")
-        # 50k income, -20k expenses → 60% savings rate
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(
             sync_session,
             user_id,
@@ -114,9 +153,11 @@ class TestCalculateHealthScore:
                 "entertainment": -4000,
                 "utilities": -4000,
             },
-            period_start=datetime(2026, 1, 1),
-            period_end=datetime(2026, 3, 31),
         )
+        # Story 4.9: savings_ratio now reads transaction_kind directly.
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -30000, "savings")
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
         sync_session.commit()
 
         score = calculate_health_score(sync_session, user_id)
@@ -133,21 +174,24 @@ class TestCalculateHealthScore:
         from app.services.health_score_service import calculate_health_score
 
         user_id = _create_user(sync_session, "overspend-sub")
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(
             sync_session,
             user_id,
             total_income=20000,
             total_expenses=-30000,
             category_totals={"food": -20000, "transport": -10000},
-            period_start=datetime(2026, 1, 1),
-            period_end=datetime(2026, 3, 31),
         )
+        # Income but no savings kind → savings_ratio = 0 (real zero).
+        _add_transaction(sync_session, user_id, upload_id, 20000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -20000, "spending")
+        _add_transaction(sync_session, user_id, upload_id, -10000, "spending")
         sync_session.commit()
 
         score = calculate_health_score(sync_session, user_id)
 
         assert score.score < 40
-        assert score.breakdown["savings_ratio"] == 0  # Negative savings
+        assert score.breakdown["savings_ratio"] == 0
         assert score.breakdown["income_coverage"] == 0
 
     def test_single_category_concentration(self, sync_session):
@@ -155,15 +199,16 @@ class TestCalculateHealthScore:
         from app.services.health_score_service import calculate_health_score
 
         user_id = _create_user(sync_session, "single-cat-sub")
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(
             sync_session,
             user_id,
             total_income=50000,
             total_expenses=-20000,
             category_totals={"food": -20000},
-            period_start=datetime(2026, 1, 1),
-            period_end=datetime(2026, 3, 31),
         )
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -20000, "spending")
         sync_session.commit()
 
         score = calculate_health_score(sync_session, user_id)
@@ -171,10 +216,11 @@ class TestCalculateHealthScore:
         assert score.breakdown["category_diversity"] == 0
 
     def test_high_savings_ratio(self, sync_session):
-        """High savings ratio yields score > 80."""
+        """High savings ratio (savings >= income) clamps to 100."""
         from app.services.health_score_service import calculate_health_score
 
         user_id = _create_user(sync_session, "high-savings-sub")
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(
             sync_session,
             user_id,
@@ -185,37 +231,40 @@ class TestCalculateHealthScore:
                 "transport": -3000,
                 "utilities": -3000,
             },
-            period_start=datetime(2026, 1, 1),
             period_end=datetime(2026, 6, 30),
         )
+        _add_transaction(sync_session, user_id, upload_id, 100000, "income")
+        # AC #1: raw_ratio clamps at 1.0; savings > income → 100
+        _add_transaction(sync_session, user_id, upload_id, -120000, "savings")
+        _add_transaction(sync_session, user_id, upload_id, -10000, "spending")
         sync_session.commit()
 
         score = calculate_health_score(sync_session, user_id)
 
         assert score.score > 80
-        assert score.breakdown["savings_ratio"] == 100  # 90% savings capped at 100
+        assert score.breakdown["savings_ratio"] == 100
 
     def test_zero_income(self, sync_session):
-        """Zero income yields savings component = 0, other components still calculated."""
+        """No income-kind transactions → savings_ratio is None (AC #2)."""
         from app.services.health_score_service import calculate_health_score
 
         user_id = _create_user(sync_session, "zero-income-sub")
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(
             sync_session,
             user_id,
             total_income=0,
             total_expenses=-10000,
             category_totals={"food": -5000, "transport": -5000},
-            period_start=datetime(2026, 1, 1),
-            period_end=datetime(2026, 3, 31),
         )
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
         sync_session.commit()
 
         score = calculate_health_score(sync_session, user_id)
 
-        assert score.breakdown["savings_ratio"] == 0
+        assert score.breakdown["savings_ratio"] is None
         assert score.breakdown["income_coverage"] == 0
-        # Diversity and regularity can still be calculated
         assert score.breakdown["category_diversity"] >= 0
         assert score.breakdown["expense_regularity"] >= 0
 
@@ -230,11 +279,15 @@ class TestCalculateHealthScore:
             calculate_health_score(sync_session, user_id)
 
     def test_breakdown_contains_all_components(self, sync_session):
-        """Breakdown JSONB contains all 4 component scores."""
+        """Breakdown JSONB contains all 4 component keys."""
         from app.services.health_score_service import calculate_health_score
 
         user_id = _create_user(sync_session, "breakdown-sub")
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(sync_session, user_id)
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -15000, "spending")
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
         sync_session.commit()
 
         score = calculate_health_score(sync_session, user_id)
@@ -244,7 +297,7 @@ class TestCalculateHealthScore:
         assert "expense_regularity" in score.breakdown
         assert "income_coverage" in score.breakdown
         for value in score.breakdown.values():
-            assert 0 <= value <= 100
+            assert value is None or 0 <= value <= 100
 
     def test_score_is_appended_not_replaced(self, sync_session):
         """Each call creates a new score record (append-only)."""
@@ -253,7 +306,10 @@ class TestCalculateHealthScore:
         from sqlmodel import select
 
         user_id = _create_user(sync_session, "append-sub")
+        upload_id = _create_upload(sync_session, user_id)
         _create_profile(sync_session, user_id)
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -15000, "spending")
         sync_session.commit()
 
         score1 = calculate_health_score(sync_session, user_id)
@@ -266,6 +322,161 @@ class TestCalculateHealthScore:
             )
         ).all()
         assert len(all_scores) == 2
+
+
+# ==================== Story 4.9: transaction_kind wiring ====================
+
+
+class TestSavingsRatioFromTransactionKind:
+    """Story 4.9: savings_ratio reads transaction_kind, not amount signs or category."""
+
+    def test_savings_ratio_from_kind_sums(self, sync_session):
+        """AC #1, #5: savings / income = 10000 / 50000 → 20."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-basic-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(sync_session, user_id)
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -10000, "savings")
+        _add_transaction(sync_session, user_id, upload_id, -3000, "spending")
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        assert score.breakdown["savings_ratio"] == 20
+
+    def test_no_income_returns_null(self, sync_session):
+        """AC #2: no income-kind entries → savings_ratio is None, final score re-normalizes."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-no-income-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(
+            sync_session,
+            user_id,
+            total_income=0,
+            total_expenses=-10000,
+            category_totals={"food": -5000, "transport": -5000},
+        )
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+
+        assert score.breakdown["savings_ratio"] is None
+        # Final score should be the average of the remaining three components.
+        d = score.breakdown["category_diversity"]
+        r = score.breakdown["expense_regularity"]
+        c = score.breakdown["income_coverage"]
+        expected = int(round((0.2 * d + 0.2 * r + 0.2 * c) / 0.6))
+        assert score.score == expected
+
+    def test_income_but_no_savings_returns_zero(self, sync_session):
+        """AC #3: income with no savings kind → savings_ratio = 0 (real zero)."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-zero-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(sync_session, user_id)
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -10000, "spending")
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        assert score.breakdown["savings_ratio"] == 0
+        assert isinstance(score.breakdown["savings_ratio"], int)
+
+    def test_savings_greater_than_income_clamps_to_100(self, sync_session):
+        """AC #1: raw_ratio clamps to [0.0, 1.0]."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-clamp-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(sync_session, user_id)
+        _add_transaction(sync_session, user_id, upload_id, 30000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -80000, "savings")
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        assert score.breakdown["savings_ratio"] == 100
+
+    def test_legacy_spending_default_returns_null(self, sync_session):
+        """AC #6: pre-Epic-11 rows default to kind='spending' → savings_ratio None."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-legacy-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(sync_session, user_id)
+        # Legacy: every row defaulted to 'spending' (even what was really salary).
+        _add_transaction(sync_session, user_id, upload_id, 50000, "spending")
+        _add_transaction(sync_session, user_id, upload_id, -10000, "spending")
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending")
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        assert score.breakdown["savings_ratio"] is None
+
+    def test_reads_kind_not_amount_sign(self, sync_session):
+        """AC #4: implementation reads transaction_kind, not amount sign."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-kind-only-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(sync_session, user_id)
+        # Pathological mix: sign and kind disagree. Code must trust kind.
+        # income: 40000 (positive), but we add a negative row tagged 'income' too.
+        _add_transaction(sync_session, user_id, upload_id, 40000, "income")
+        _add_transaction(sync_session, user_id, upload_id, -10000, "income")  # kind wins
+        _add_transaction(sync_session, user_id, upload_id, -5000, "savings")
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        # abs-sum by kind: income=50000, savings=5000 → 10.
+        assert score.breakdown["savings_ratio"] == 10
+
+    def test_empty_profile_short_circuits(self, sync_session):
+        """Empty profile (period_start/end=None) → savings_ratio None, no query needed."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-empty-sub")
+        _create_profile(
+            sync_session,
+            user_id,
+            total_income=0,
+            total_expenses=0,
+            category_totals={},
+            period_start=None,
+            period_end=None,
+        )
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        assert score.breakdown["savings_ratio"] is None
+
+    def test_transactions_outside_period_ignored(self, sync_session):
+        """The GROUP BY is scoped to profile's [period_start, period_end]."""
+        from app.services.health_score_service import calculate_health_score
+
+        user_id = _create_user(sync_session, "sr-scope-sub")
+        upload_id = _create_upload(sync_session, user_id)
+        _create_profile(
+            sync_session,
+            user_id,
+            period_start=datetime(2026, 2, 1),
+            period_end=datetime(2026, 2, 28),
+        )
+        # Inside window
+        _add_transaction(sync_session, user_id, upload_id, 30000, "income", date=datetime(2026, 2, 10))
+        _add_transaction(sync_session, user_id, upload_id, -6000, "savings", date=datetime(2026, 2, 15))
+        # Outside window — should be ignored by the kind query
+        _add_transaction(sync_session, user_id, upload_id, 100000, "income", date=datetime(2026, 1, 5))
+        _add_transaction(sync_session, user_id, upload_id, -50000, "savings", date=datetime(2026, 3, 5))
+        sync_session.commit()
+
+        score = calculate_health_score(sync_session, user_id)
+        # Only the February rows count: 6000 / 30000 → 20.
+        assert score.breakdown["savings_ratio"] == 20
 
 
 # ==================== Async Service Tests ====================

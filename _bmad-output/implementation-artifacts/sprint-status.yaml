@@ -132,7 +132,8 @@ development_status:
   4-6-health-score-history-trends: done
   4-7-month-over-month-spending-comparison: done
   4-8-category-spending-breakdown: done
-  4-9-savings-ratio-wired-to-transaction-kind: backlog
+  4-9-savings-ratio-wired-to-transaction-kind: done
+  4-10-profile-aggregates-respect-transaction-kind: backlog
   epic-4-retrospective: optional
 
   # Epic 5: Data Privacy, Trust & Consent
@@ -243,4 +244,15 @@ development_status:
   # counterparty columns, AIDetectedParser stashes values in raw_data). Scope
   # covers all 7 TD-049 fix-shape items in one story (no further deferrals).
   11-10-counterparty-aware-categorization-pe-statements: done
+  # Story 11.11 (2026-04-22): post-Epic-11 UAT regression — ~4 redundant LLM
+  # insights per upload when transfers dominate (97%-transfers PE-account case).
+  # Switches _build_spending_summary from amount-sign filtering to
+  # transaction_kind=='spending', adds a single deterministic "mostly-transfers"
+  # structural card (threshold 70%), and adds a "no transfer-volume insights"
+  # rule to all 4 education prompt templates. Depends on Story 11.2
+  # (transaction_kind field — done). Tiny blast radius, no schema change.
+  # Cross-epic: code lives in backend/app/agents/education/ (Epic 3 surface)
+  # but the fix is a direct consumer of Story 11.2's transaction_kind, so
+  # filed under Epic 11.
+  11-11-exclude-transfers-from-insight-generation: ready-for-dev
   epic-11-retrospective: optional

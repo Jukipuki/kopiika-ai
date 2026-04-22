@@ -35,6 +35,7 @@ export function HealthScoreRing({ score, breakdown }: HealthScoreRingProps) {
 
   const zone = getZone(score);
   const colors = ZONE_GRADIENT_COLORS[zone];
+  const isPartial = breakdown.savings_ratio === null;
 
   const size = 160;
   const strokeWidth = 12;
@@ -51,7 +52,9 @@ export function HealthScoreRing({ score, breakdown }: HealthScoreRingProps) {
           width={size}
           height={size}
           role="img"
-          aria-label={t("ariaLabel", { score })}
+          aria-label={
+            isPartial ? t("ariaLabelPartial", { score }) : t("ariaLabel", { score })
+          }
         >
           <defs>
             <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -98,6 +101,20 @@ export function HealthScoreRing({ score, breakdown }: HealthScoreRingProps) {
           >
             {score}
           </text>
+          {isPartial && (
+            <text
+              x={center}
+              y={center - 18}
+              dx={20}
+              textAnchor="start"
+              dominantBaseline="central"
+              className="fill-foreground opacity-60"
+              style={{ fontSize: "0.9rem" }}
+              data-testid="partial-score-marker"
+            >
+              *
+            </text>
+          )}
           {/* Zone label */}
           <text
             x={center}
@@ -112,6 +129,12 @@ export function HealthScoreRing({ score, breakdown }: HealthScoreRingProps) {
         </svg>
       </div>
 
+      {isPartial && (
+        <p className="text-muted-foreground text-xs">
+          {t("partialScoreHelper")}
+        </p>
+      )}
+
       {/* Breakdown toggle */}
       <button
         type="button"
@@ -124,14 +147,21 @@ export function HealthScoreRing({ score, breakdown }: HealthScoreRingProps) {
       {/* Breakdown details */}
       {showBreakdown && (
         <div className="w-full max-w-xs space-y-2">
-          {BREAKDOWN_KEYS.map((key) => (
-            <div key={key} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                {t(`breakdown.${key}`)}
-              </span>
-              <span className="font-medium">{breakdown[key]}/100</span>
-            </div>
-          ))}
+          {BREAKDOWN_KEYS.map((key) => {
+            const value = breakdown[key];
+            return (
+              <div key={key} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {t(`breakdown.${key}`)}
+                </span>
+                <span className="font-medium">
+                  {value === null
+                    ? t("breakdown.savingsRatioNoData")
+                    : `${value}/100`}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

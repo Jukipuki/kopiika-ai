@@ -337,8 +337,11 @@
         "savings_ratio": "Savings Ratio",
         "category_diversity": "Category Diversity",
         "expense_regularity": "Expense Regularity",
-        "income_coverage": "Income Coverage"
+        "income_coverage": "Income Coverage",
+        "savingsRatioNoData": "Not enough data yet"
       },
+      "partialScoreHelper": "Partial score — savings data not yet available",
+      "ariaLabelPartial": "Financial Health Score: {score} out of 100 (partial — savings data not yet available)",
       "trendTitle": "Score History",
       "trendEmpty": "Upload more months to track your progress",
       "trendLabel": "Health score trend"

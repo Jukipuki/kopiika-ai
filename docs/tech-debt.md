@@ -1166,6 +1166,20 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
+### TD-066 — No observability on the health-score `GROUP BY transaction_kind` query [LOW]
+
+**Where:** [backend/app/services/health_score_service.py:108-117](backend/app/services/health_score_service.py#L108-L117)
+
+**Problem:** The per-user `SELECT transaction_kind, SUM(ABS(amount)) ... GROUP BY transaction_kind` that powers the Savings Ratio sub-score emits no structured log or metric. If it becomes slow (e.g. a user with very long history + a wide profile period), there's no signal — the only symptom would be slower Celery pipeline completion, which aggregates many stages and would mask the source.
+
+**Why deferred:** Story 4.9 Dev Notes explicitly say "if the dev finds a measurable performance issue with the per-call `GROUP BY` (unlikely — the query is indexed by `user_id` and scoped by date range), open a TD item rather than expand the scope of this story." No perf issue observed in dev yet; this TD captures the observability gap proactively so it can be picked up alongside Epic 11's observability substrate work.
+
+**Fix shape:** Wrap the query in a timed structured log call (matching the `categorization.*` event shape so existing CloudWatch Insights queries in `docs/operator-runbook.md` can surface it). Emit `duration_ms`, `user_id`, `period_days`, and a row count. Optionally add a metric filter if the p95 drifts above a threshold (e.g. 100ms).
+
+**Surfaced in:** Story 4.9 code review (2026-04-22).
+
+---
+
 ## Resolved
 
 ### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]

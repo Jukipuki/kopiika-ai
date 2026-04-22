@@ -1,12 +1,12 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Any
-
+from sqlalchemy import func
 from sqlmodel import Session, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.models.financial_health_score import FinancialHealthScore
 from app.models.financial_profile import FinancialProfile
+from app.models.transaction import Transaction
 
 
 def calculate_health_score(
@@ -20,14 +20,28 @@ def calculate_health_score(
     if not profile:
         raise ValueError("No financial profile — cannot calculate score")
 
-    breakdown = _compute_breakdown(profile)
+    breakdown = _compute_breakdown(session, user_id, profile)
 
-    final_score = int(
-        breakdown["savings_ratio"] * 0.4
-        + breakdown["category_diversity"] * 0.2
-        + breakdown["expense_regularity"] * 0.2
-        + breakdown["income_coverage"] * 0.2
-    )
+    # Weighted average with re-normalization over non-null components.
+    # `savings_ratio` may be None when the user has no income-kind transactions
+    # (AC #2); in that case redistribute its weight over the remaining three
+    # components so the final score stays on a 0–100 scale.
+    weights = {
+        "savings_ratio": 0.4,
+        "category_diversity": 0.2,
+        "expense_regularity": 0.2,
+        "income_coverage": 0.2,
+    }
+    pairs = [
+        (breakdown[key], weights[key])
+        for key in weights
+        if breakdown[key] is not None
+    ]
+    total_weight = sum(w for _, w in pairs)
+    if total_weight > 0:
+        final_score = int(round(sum(s * w for s, w in pairs) / total_weight))
+    else:
+        final_score = 0
     final_score = max(0, min(100, final_score))
 
     health_score = FinancialHealthScore(
@@ -71,18 +85,42 @@ async def get_latest_score(
     return result.first()
 
 
-def _compute_breakdown(profile: FinancialProfile) -> dict[str, Any]:
-    """Compute the four component scores (each 0-100) from profile data."""
+def _compute_breakdown(
+    session: Session, user_id: uuid.UUID, profile: FinancialProfile
+) -> dict[str, int | None]:
+    """Compute the four component scores from profile/transaction data.
 
-    # --- Savings ratio (40%) ---
-    # total_expenses is negative (kopiykas), total_income is positive
-    if profile.total_income > 0:
-        # savings = income + expenses (expenses are negative, so this is net)
-        savings_rate = (profile.total_income + profile.total_expenses) / profile.total_income
-        # 50% savings rate = perfect 100; 0% = 0; negative = 0
-        savings_score = max(0, min(100, int(savings_rate * 200)))
+    Returns a dict with keys `savings_ratio`, `category_diversity`,
+    `expense_regularity`, `income_coverage`. `savings_ratio` is `int | None` —
+    `None` means the user has no `transaction_kind='income'` entries in the
+    period and the UI must render this as "Not enough data yet" while the
+    final score is re-normalized over the remaining three components (see
+    `calculate_health_score`).
+    """
+
+    # --- Savings ratio (40%) — read transaction_kind directly (Story 4.9) ---
+    # Short-circuit on empty profile: no period → no transactions → no data.
+    if profile.period_start is None or profile.period_end is None:
+        savings_score: int | None = None
     else:
-        savings_score = 0
+        kind_rows = session.exec(
+            select(
+                Transaction.transaction_kind,
+                func.sum(func.abs(Transaction.amount)),
+            )
+            .where(Transaction.user_id == user_id)
+            .where(Transaction.date >= profile.period_start)
+            .where(Transaction.date <= profile.period_end)
+            .group_by(Transaction.transaction_kind)
+        ).all()
+        kind_totals: dict[str, int] = {kind: int(total or 0) for kind, total in kind_rows}
+        income_total = kind_totals.get("income", 0)
+        savings_total = kind_totals.get("savings", 0)
+        if income_total == 0:
+            savings_score = None
+        else:
+            raw_ratio = min(1.0, max(0.0, savings_total / income_total))
+            savings_score = int(round(raw_ratio * 100))
 
     # --- Category diversity (20%) ---
     # Penalize if >50% of expenses in a single category
