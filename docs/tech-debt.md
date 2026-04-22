@@ -1178,6 +1178,8 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 **Surfaced in:** Story 4.9 code review (2026-04-22).
 
+**Update (2026-04-22, Story 4.10):** The analogous in-memory kind partition in `profile_service._upsert_profile` (Story 4.10) was intentionally NOT wrapped in timed structured logging either — same observability gap, same TD. No new TD opened; resolve both call sites under TD-066.
+
 ---
 
 ### TD-067 — AC #9 "no LLM card mentions transfers" is not verified end-to-end [MEDIUM]

@@ -125,7 +125,10 @@ def _compute_breakdown(
     # --- Category diversity (20%) ---
     # Penalize if >50% of expenses in a single category
     category_totals: dict[str, int] = profile.category_totals or {}
-    # Only consider expense categories (negative amounts)
+    # Since Story 4.10 `category_totals` contains only kind='spending' rows,
+    # which are non-positive by sign convention. The `v < 0` filter is kept
+    # as a legacy-user guard: pre-Epic-11 data defaults to kind='spending'
+    # regardless of sign, so positive rows (e.g. salary) can sneak in.
     expense_cats = {k: abs(v) for k, v in category_totals.items() if v < 0}
     total_expense_abs = sum(expense_cats.values())
 

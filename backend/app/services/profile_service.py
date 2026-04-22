@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -7,6 +8,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.models.financial_profile import FinancialProfile
 from app.models.transaction import Transaction
+
+logger = logging.getLogger(__name__)
 
 
 def build_or_update_profile(session: Session, user_id: uuid.UUID) -> FinancialProfile:
@@ -33,8 +36,9 @@ async def get_category_breakdown(
 ) -> list[dict] | None:
     """Return spending breakdown by category from the financial profile.
 
-    Reads from the materialized category_totals JSONB field.
-    Only expense categories (negative amounts) are included.
+    Reads from the materialized category_totals JSONB field. Since Story 4.10
+    that field contains only `kind='spending'` rows, so this breakdown
+    intrinsically excludes savings / transfer / income.
     Returns sorted list by absolute amount descending, or None if no profile.
     """
     profile = await get_profile_for_user(session, user_id)
@@ -43,7 +47,10 @@ async def get_category_breakdown(
 
     category_totals: dict[str, int] = profile.category_totals or {}
 
-    # Filter expenses only (negative amounts) and convert to positive kopiykas
+    # Sign guard for legacy users (pre-Epic-11): their rows all default to
+    # kind='spending' regardless of sign, so a salary row lands in
+    # category_totals with a positive amount. Drop it here so the UI keeps
+    # showing only outflows. Post-Epic-11 data is already spending-only.
     expenses = {
         cat: abs(amount)
         for cat, amount in category_totals.items()
@@ -206,19 +213,45 @@ def _upsert_profile(
     user_id: uuid.UUID,
     transactions: list[Transaction],
 ) -> FinancialProfile:
-    """Compute aggregates and upsert the profile row."""
-    total_income = sum(t.amount for t in transactions if t.amount > 0)
-    total_expenses = sum(t.amount for t in transactions if t.amount < 0)
+    """Compute aggregates and upsert the profile row.
+
+    Aggregates are partitioned by `transaction_kind` (the ground truth since
+    Story 11.2), not by amount sign. This keeps Category Diversity, Expense
+    Regularity, and Income Coverage honest when a user has `kind='savings'`
+    or `kind='transfer'` transactions: those rows influence Savings Ratio
+    (Story 4.9) and nothing else. `total_income` follows Story 4.9's
+    `abs()` contract; `total_expenses` preserves the non-positive
+    sign convention so `net_savings = total_income + total_expenses`
+    still computes correctly in `health_score_service._compute_breakdown`.
+    `period_start`/`period_end` span ALL transactions regardless of kind
+    so that kind-scoped queries in `_compute_breakdown` can see the full
+    data range.
+    """
+    total_income = sum(
+        abs(t.amount) for t in transactions if t.transaction_kind == "income"
+    )
+    total_expenses = sum(
+        t.amount for t in transactions if t.transaction_kind == "spending"
+    )
 
     category_totals: dict[str, int] = {}
     for t in transactions:
-        if t.amount >= 0:
-            continue  # only accumulate expenses; income/transfers skew category totals
+        if t.transaction_kind != "spending":
+            continue
         cat = t.category or "uncategorized"
         category_totals[cat] = category_totals.get(cat, 0) + t.amount
 
     period_start = min(t.date for t in transactions) if transactions else None
     period_end = max(t.date for t in transactions) if transactions else None
+
+    if transactions and total_income == 0:
+        logger.debug(
+            "profile.aggregate.no_income_kind",
+            extra={
+                "user_id": str(user_id),
+                "transaction_count": len(transactions),
+            },
+        )
 
     profile = session.exec(
         select(FinancialProfile).where(FinancialProfile.user_id == user_id)

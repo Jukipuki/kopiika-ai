@@ -98,6 +98,12 @@ async def get_data_summary(
     user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
     session: Annotated[SQLModelAsyncSession, Depends(get_db)],
 ) -> DataSummaryResponse:
+    """Aggregated user data summary for the /onboarding and settings screens.
+
+    `financial_profile` fields (`total_income` / `total_expenses` /
+    `category_totals`) reflect kind-based aggregates (spending / income) since
+    Story 4.10 — same passthrough, tighter semantics.
+    """
     # Upload count
     upload_result = await session.exec(
         sa_select(func.count()).select_from(Upload).where(Upload.user_id == user_id)

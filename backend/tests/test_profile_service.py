@@ -89,6 +89,7 @@ def _create_transaction_sync(
     amount: int,
     category: str | None = None,
     date: datetime | None = None,
+    kind: str = "spending",
 ):
     txn = Transaction(
         user_id=user_id,
@@ -98,6 +99,7 @@ def _create_transaction_sync(
         amount=amount,
         dedup_hash=uuid.uuid4().hex,
         category=category,
+        transaction_kind=kind,
     )
     session.add(txn)
     session.flush()
@@ -118,11 +120,11 @@ class TestBuildOrUpdateProfile:
         upload_id = _create_upload_sync(sync_session, user_id)
 
         _create_transaction_sync(sync_session, user_id, upload_id, amount=50000, category="salary",
-                                 date=datetime(2026, 1, 15))
+                                 date=datetime(2026, 1, 15), kind="income")
         _create_transaction_sync(sync_session, user_id, upload_id, amount=-15000, category="food",
-                                 date=datetime(2026, 1, 20))
+                                 date=datetime(2026, 1, 20), kind="spending")
         _create_transaction_sync(sync_session, user_id, upload_id, amount=-5000, category="transport",
-                                 date=datetime(2026, 1, 25))
+                                 date=datetime(2026, 1, 25), kind="spending")
         sync_session.commit()
 
         profile = build_or_update_profile(sync_session, user_id)
@@ -144,7 +146,7 @@ class TestBuildOrUpdateProfile:
         user_id = _create_user_sync(sync_session, "profile-update-sub")
         upload_id = _create_upload_sync(sync_session, user_id)
 
-        _create_transaction_sync(sync_session, user_id, upload_id, amount=10000, category="salary")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=10000, category="salary", kind="income")
         sync_session.commit()
 
         profile1 = build_or_update_profile(sync_session, user_id)
@@ -152,8 +154,8 @@ class TestBuildOrUpdateProfile:
 
         # Add more transactions (simulating second upload)
         upload_id2 = _create_upload_sync(sync_session, user_id)
-        _create_transaction_sync(sync_session, user_id, upload_id2, amount=20000, category="salary")
-        _create_transaction_sync(sync_session, user_id, upload_id2, amount=-8000, category="food")
+        _create_transaction_sync(sync_session, user_id, upload_id2, amount=20000, category="salary", kind="income")
+        _create_transaction_sync(sync_session, user_id, upload_id2, amount=-8000, category="food", kind="spending")
         sync_session.commit()
 
         profile2 = build_or_update_profile(sync_session, user_id)
@@ -200,10 +202,10 @@ class TestBuildOrUpdateProfile:
         user_id = _create_user_sync(sync_session, "profile-mixed-sub")
         upload_id = _create_upload_sync(sync_session, user_id)
 
-        _create_transaction_sync(sync_session, user_id, upload_id, amount=-10000, category="food")
-        _create_transaction_sync(sync_session, user_id, upload_id, amount=-5000, category="food")
-        _create_transaction_sync(sync_session, user_id, upload_id, amount=-3000, category="transport")
-        _create_transaction_sync(sync_session, user_id, upload_id, amount=80000, category="salary")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-10000, category="food", kind="spending")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-5000, category="food", kind="spending")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-3000, category="transport", kind="spending")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=80000, category="salary", kind="income")
         sync_session.commit()
 
         profile = build_or_update_profile(sync_session, user_id)
@@ -212,6 +214,142 @@ class TestBuildOrUpdateProfile:
         assert profile.category_totals["transport"] == -3000
         # Income categories are excluded from category_totals (expenses-only aggregate).
         assert "salary" not in profile.category_totals
+
+
+# ==================== Story 4.10: kind-partitioned aggregates ====================
+
+
+class TestProfileAggregatesByKind:
+    """Story 4.10: aggregates partition by transaction_kind, not amount sign."""
+
+    def test_savings_kind_excluded_from_expenses_and_categories(self, sync_session):
+        """kind='savings' outflow skips total_expenses and category_totals (AC #1, #3)."""
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user_sync(sync_session, "kind-savings-sub")
+        upload_id = _create_upload_sync(sync_session, user_id)
+
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=50000,
+                                 category="salary", kind="income")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-15000,
+                                 category="food", kind="spending")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-50000,
+                                 category="savings-deposit", kind="savings")
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+
+        assert profile.total_income == 50000
+        assert profile.total_expenses == -15000
+        assert profile.category_totals == {"food": -15000}
+
+    def test_transfer_kind_excluded_from_all_aggregates(self, sync_session):
+        """kind='transfer' rows do not influence income, expenses, or categories (AC #1)."""
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user_sync(sync_session, "kind-transfer-sub")
+        upload_id = _create_upload_sync(sync_session, user_id)
+
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=50000,
+                                 category="salary", kind="income")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-15000,
+                                 category="food", kind="spending")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-50000,
+                                 category="internal-transfer", kind="transfer")
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+
+        assert profile.total_income == 50000
+        assert profile.total_expenses == -15000
+        assert profile.category_totals == {"food": -15000}
+
+    def test_income_kind_with_negative_amount_uses_abs(self, sync_session):
+        """kind='income' edge case: negative amount → abs() (AC #2)."""
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user_sync(sync_session, "kind-income-neg-sub")
+        upload_id = _create_upload_sync(sync_session, user_id)
+
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-30000,
+                                 category="salary", kind="income")
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+
+        assert profile.total_income == 30000
+
+    def test_legacy_all_spending_default(self, sync_session):
+        """Legacy data (all default kind='spending') → income=0, expenses=sum, all categories (AC #5)."""
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user_sync(sync_session, "kind-legacy-sub")
+        upload_id = _create_upload_sync(sync_session, user_id)
+
+        # Default kind='spending' on every row — mimics pre-Epic-11 data.
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=50000, category="salary")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-15000, category="food")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-5000, category="transport")
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+
+        assert profile.total_income == 0
+        # Legacy: everything defaults to spending, so the salary row is
+        # accumulated into expenses/category_totals alongside the real spends.
+        assert profile.total_expenses == 50000 + (-15000) + (-5000)
+        assert profile.category_totals["salary"] == 50000
+        assert profile.category_totals["food"] == -15000
+        assert profile.category_totals["transport"] == -5000
+
+    def test_unexpected_kind_excluded(self, sync_session):
+        """AC #8 defensive path — an unexpected kind value is excluded from all aggregates.
+
+        SQLite (used in tests) does not enforce CHECK constraints, so we can
+        construct such a row directly to exercise this defensive branch.
+        """
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user_sync(sync_session, "kind-bogus-sub")
+        upload_id = _create_upload_sync(sync_session, user_id)
+
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-15000,
+                                 category="food", kind="spending")
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=50000,
+                                 category="salary", kind="income")
+        # Unreachable in Postgres (CHECK), reachable in SQLite tests.
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-9999,
+                                 category="mystery", kind="bogus")
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+
+        assert profile.total_income == 50000
+        assert profile.total_expenses == -15000
+        assert profile.category_totals == {"food": -15000}
+
+    def test_period_covers_all_kinds(self, sync_session):
+        """period_start/period_end span every kind, not just spending (Task 1.2)."""
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user_sync(sync_session, "kind-period-sub")
+        upload_id = _create_upload_sync(sync_session, user_id)
+
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-50000,
+                                 category="savings-deposit", kind="savings",
+                                 date=datetime(2026, 1, 5))
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=-15000,
+                                 category="food", kind="spending",
+                                 date=datetime(2026, 2, 15))
+        _create_transaction_sync(sync_session, user_id, upload_id, amount=50000,
+                                 category="salary", kind="income",
+                                 date=datetime(2026, 3, 20))
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+
+        assert profile.period_start == datetime(2026, 1, 5)
+        assert profile.period_end == datetime(2026, 3, 20)
 
 
 # ==================== Async Service Tests ====================

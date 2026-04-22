@@ -30,6 +30,9 @@ def _estimate_monthly_income_kopiykas(user_id: str) -> int | None:
 
     Returns None when no profile exists, total_income is 0, or the period is
     incomplete — the caller treats None as "no income, use absolute thresholds".
+
+    Since Story 4.10, `profile.total_income` reflects only `kind='income'`
+    rows (true salary/inflow signal), not every positive amount.
     """
     user_uuid = uuid.UUID(user_id)
     with get_sync_session() as session:

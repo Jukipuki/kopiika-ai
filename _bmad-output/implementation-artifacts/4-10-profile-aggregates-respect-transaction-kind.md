@@ -1,6 +1,6 @@
 # Story 4.10: Profile aggregates respect `transaction_kind` (diversity / regularity / coverage fix)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,64 +30,64 @@ so that a single deposit top-up or between-account transfer doesn't wreck the re
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Backend — rewrite `_upsert_profile` aggregates to partition by `transaction_kind` (AC: #1, #2, #5, #8)
-  - [ ] 1.1 In [backend/app/services/profile_service.py](backend/app/services/profile_service.py#L204-L240), replace the sign-based partition (lines 210-218) with kind-based partition:
+- [x] Task 1: Backend — rewrite `_upsert_profile` aggregates to partition by `transaction_kind` (AC: #1, #2, #5, #8)
+  - [x] 1.1 In [backend/app/services/profile_service.py](backend/app/services/profile_service.py#L204-L240), replace the sign-based partition (lines 210-218) with kind-based partition:
     - `total_income = sum(abs(t.amount) for t in transactions if t.transaction_kind == 'income')` — AC #2, matches Story 4.9's `abs()` contract.
     - `total_expenses = sum(t.amount for t in transactions if t.transaction_kind == 'spending')` — preserves the existing non-positive sign convention on the column (consumers like [health_score_service.py:164](backend/app/services/health_score_service.py#L164) still do `profile.total_income + profile.total_expenses`; flipping the sign would cascade).
     - `category_totals` loop: replace the `if t.amount >= 0: continue` guard with `if t.transaction_kind != 'spending': continue`. The inner write stays the same (`category_totals[cat] = category_totals.get(cat, 0) + t.amount`).
-  - [ ] 1.2 Keep `period_start` / `period_end` computed over ALL transactions (every kind). Rationale: the period is a "range of data the user has uploaded" concept, not a "range of spending". Savings Ratio in `_compute_breakdown` scopes its kind query by `[period_start, period_end]` (see health_score_service.py:112-113) — shrinking the period to spending-only would silently exclude savings/income rows from that query.
-  - [ ] 1.3 Leave the function signature, return type, commit behavior, and `profile.updated_at` stamping unchanged. No new columns, no migration.
-  - [ ] 1.4 Add a short docstring note on `_upsert_profile` explaining that partitioning is by `transaction_kind` (the ground truth since Story 11.2), not by amount sign — and that this is what keeps Category Diversity / Expense Regularity / Income Coverage honest when a user has savings or transfer rows.
+  - [x] 1.2 Keep `period_start` / `period_end` computed over ALL transactions (every kind). Rationale: the period is a "range of data the user has uploaded" concept, not a "range of spending". Savings Ratio in `_compute_breakdown` scopes its kind query by `[period_start, period_end]` (see health_score_service.py:112-113) — shrinking the period to spending-only would silently exclude savings/income rows from that query.
+  - [x] 1.3 Leave the function signature, return type, commit behavior, and `profile.updated_at` stamping unchanged. No new columns, no migration.
+  - [x] 1.4 Add a short docstring note on `_upsert_profile` explaining that partitioning is by `transaction_kind` (the ground truth since Story 11.2), not by amount sign — and that this is what keeps Category Diversity / Expense Regularity / Income Coverage honest when a user has savings or transfer rows.
 
-- [ ] Task 2: Backend — verify `_compute_breakdown` consumers still read correctly (AC: #3, #4, #7)
-  - [ ] 2.1 Re-read [health_score_service.py:125-172](backend/app/services/health_score_service.py#L125-L172). `category_totals` (diversity + regularity) and `profile.total_income + profile.total_expenses` (income coverage `net_savings`) flow through automatically with the new kind-partitioned aggregates — no code change in `_compute_breakdown` is required. Document this in Completion Notes with a one-line trace.
-  - [ ] 2.2 Confirm `net_savings = profile.total_income + profile.total_expenses` still behaves correctly: `total_income` is now a positive integer (from `abs`), `total_expenses` stays non-positive (spending sign convention). Sum still yields the right net. This is the exact place AC #4 targets — a deposit top-up (kind='savings', amount=-50000) no longer contributes to `total_expenses`, so `net_savings` no longer collapses for users who saved money.
-  - [ ] 2.3 Do NOT touch `_compute_breakdown`'s savings-ratio block or the re-normalization logic — those are Story 4.9's contract and remain stable.
+- [x] Task 2: Backend — verify `_compute_breakdown` consumers still read correctly (AC: #3, #4, #7)
+  - [x] 2.1 Re-read [health_score_service.py:125-172](backend/app/services/health_score_service.py#L125-L172). `category_totals` (diversity + regularity) and `profile.total_income + profile.total_expenses` (income coverage `net_savings`) flow through automatically with the new kind-partitioned aggregates — no code change in `_compute_breakdown` is required. Document this in Completion Notes with a one-line trace.
+  - [x] 2.2 Confirm `net_savings = profile.total_income + profile.total_expenses` still behaves correctly: `total_income` is now a positive integer (from `abs`), `total_expenses` stays non-positive (spending sign convention). Sum still yields the right net. This is the exact place AC #4 targets — a deposit top-up (kind='savings', amount=-50000) no longer contributes to `total_expenses`, so `net_savings` no longer collapses for users who saved money.
+  - [x] 2.3 Do NOT touch `_compute_breakdown`'s savings-ratio block or the re-normalization logic — those are Story 4.9's contract and remain stable.
 
-- [ ] Task 3: Backend — check other `FinancialProfile` consumers for semantic regressions (AC: #1, #2)
-  - [ ] 3.1 [backend/app/agents/triage/node.py:40-46](backend/app/agents/triage/node.py#L40-L46) computes `monthly_income = profile.total_income / months`. With kind-based income, this now reflects actual salary-kind inflows rather than "every positive row" — which is the correct signal for "severity thresholds scaled to income". No code change needed, but add a single-line comment here pointing to Story 4.10 so future readers understand the semantic shift.
-  - [ ] 3.2 [backend/app/api/v1/profile.py:81-89](backend/app/api/v1/profile.py#L81-L89) (`GET /api/v1/profile`) passes through `total_income` / `total_expenses` / `category_totals` unchanged — no API response-shape change, only value semantics. Add a note in the endpoint docstring: "Values reflect kind-based aggregates (spending / income) since Story 4.10."
-  - [ ] 3.3 [backend/app/api/v1/data_summary.py:146-148](backend/app/api/v1/data_summary.py#L146-L148) — same pass-through story. No code change; just verify no test asserts on a pre-4.10 value.
-  - [ ] 3.4 [backend/app/services/profile_service.py:31-70](backend/app/services/profile_service.py#L31-L70) `get_category_breakdown` reads `category_totals` — once partitioned by kind, the endpoint returns spending-only categories (AC #6). No code change in this function.
+- [x] Task 3: Backend — check other `FinancialProfile` consumers for semantic regressions (AC: #1, #2)
+  - [x] 3.1 [backend/app/agents/triage/node.py:40-46](backend/app/agents/triage/node.py#L40-L46) computes `monthly_income = profile.total_income / months`. With kind-based income, this now reflects actual salary-kind inflows rather than "every positive row" — which is the correct signal for "severity thresholds scaled to income". No code change needed, but add a single-line comment here pointing to Story 4.10 so future readers understand the semantic shift.
+  - [x] 3.2 [backend/app/api/v1/profile.py:81-89](backend/app/api/v1/profile.py#L81-L89) (`GET /api/v1/profile`) passes through `total_income` / `total_expenses` / `category_totals` unchanged — no API response-shape change, only value semantics. Add a note in the endpoint docstring: "Values reflect kind-based aggregates (spending / income) since Story 4.10."
+  - [x] 3.3 [backend/app/api/v1/data_summary.py:146-148](backend/app/api/v1/data_summary.py#L146-L148) — same pass-through story. No code change; just verify no test asserts on a pre-4.10 value.
+  - [x] 3.4 [backend/app/services/profile_service.py:31-70](backend/app/services/profile_service.py#L31-L70) `get_category_breakdown` reads `category_totals` — once partitioned by kind, the endpoint returns spending-only categories (AC #6). No code change in this function.
 
-- [ ] Task 4: Backend tests — add `TestProfileAggregatesByKind` in `test_profile_service.py` (AC: #1, #2, #3, #5, #8)
-  - [ ] 4.1 Extend `_create_transaction_sync` (see [test_profile_service.py:85-104](backend/tests/test_profile_service.py#L85-L104)) with an optional `kind: str = "spending"` parameter that sets `transaction_kind` on the row. This matches the fixture pattern used by `_add_transaction` in [test_health_score_service.py:109-130](backend/tests/test_health_score_service.py#L109-L130) — consistency across test modules.
-  - [ ] 4.2 Test: `kind='savings'` outflow is excluded from `total_expenses` and `category_totals`. Fixture: one `(amount=50000, kind='income')`, one `(amount=-15000, kind='spending', category='food')`, one `(amount=-50000, kind='savings', category='savings-deposit')`. Assert `total_income == 50000`, `total_expenses == -15000`, `category_totals == {'food': -15000}`. (AC #1, #3)
-  - [ ] 4.3 Test: `kind='transfer'` rows are excluded from all three aggregates. Same fixture shape but replacing `savings` with `transfer`. (AC #1)
-  - [ ] 4.4 Test: `kind='income'` with a negative amount (edge case) → `total_income = abs(amount)`. Fixture: `(amount=-30000, kind='income')`. Assert `total_income == 30000`. (AC #2)
-  - [ ] 4.5 Test: legacy all-`spending` default → `total_income == 0`, `total_expenses == sum(amounts)`, `category_totals` populated over all rows. Fixture: the exact scenario of `test_creates_profile_from_transactions` ([test_profile_service.py:113-138](backend/tests/test_profile_service.py#L113-L138)) but WITHOUT setting kind (i.e. everything defaults to `'spending'`). Assert the new kind-aware values (AC #5). Note: this is a breaking change to that existing test — Task 5 migrates it.
-  - [ ] 4.6 Test: AC #8 defensive path — feed a transaction with an unexpected kind (bypass CHECK by constructing the row directly in Python; SQLite used in tests does not enforce CHECK, which makes this test possible). Assert it is excluded from all three aggregates rather than being treated as spending.
-  - [ ] 4.7 Test: period scoping unchanged — `period_start` / `period_end` cover the oldest and newest transactions across ALL kinds (Task 1.2). Fixture: savings on 2026-01-05, spending on 2026-02-15, income on 2026-03-20. Assert `period_start == 2026-01-05`, `period_end == 2026-03-20`.
+- [x] Task 4: Backend tests — add `TestProfileAggregatesByKind` in `test_profile_service.py` (AC: #1, #2, #3, #5, #8)
+  - [x] 4.1 Extend `_create_transaction_sync` (see [test_profile_service.py:85-104](backend/tests/test_profile_service.py#L85-L104)) with an optional `kind: str = "spending"` parameter that sets `transaction_kind` on the row. This matches the fixture pattern used by `_add_transaction` in [test_health_score_service.py:109-130](backend/tests/test_health_score_service.py#L109-L130) — consistency across test modules.
+  - [x] 4.2 Test: `kind='savings'` outflow is excluded from `total_expenses` and `category_totals`. Fixture: one `(amount=50000, kind='income')`, one `(amount=-15000, kind='spending', category='food')`, one `(amount=-50000, kind='savings', category='savings-deposit')`. Assert `total_income == 50000`, `total_expenses == -15000`, `category_totals == {'food': -15000}`. (AC #1, #3)
+  - [x] 4.3 Test: `kind='transfer'` rows are excluded from all three aggregates. Same fixture shape but replacing `savings` with `transfer`. (AC #1)
+  - [x] 4.4 Test: `kind='income'` with a negative amount (edge case) → `total_income = abs(amount)`. Fixture: `(amount=-30000, kind='income')`. Assert `total_income == 30000`. (AC #2)
+  - [x] 4.5 Test: legacy all-`spending` default → `total_income == 0`, `total_expenses == sum(amounts)`, `category_totals` populated over all rows. Fixture: the exact scenario of `test_creates_profile_from_transactions` ([test_profile_service.py:113-138](backend/tests/test_profile_service.py#L113-L138)) but WITHOUT setting kind (i.e. everything defaults to `'spending'`). Assert the new kind-aware values (AC #5). Note: this is a breaking change to that existing test — Task 5 migrates it.
+  - [x] 4.6 Test: AC #8 defensive path — feed a transaction with an unexpected kind (bypass CHECK by constructing the row directly in Python; SQLite used in tests does not enforce CHECK, which makes this test possible). Assert it is excluded from all three aggregates rather than being treated as spending.
+  - [x] 4.7 Test: period scoping unchanged — `period_start` / `period_end` cover the oldest and newest transactions across ALL kinds (Task 1.2). Fixture: savings on 2026-01-05, spending on 2026-02-15, income on 2026-03-20. Assert `period_start == 2026-01-05`, `period_end == 2026-03-20`.
 
-- [ ] Task 5: Backend tests — migrate existing `test_profile_service.py` fixtures to set `kind` explicitly (AC: #1, #2, #5)
-  - [ ] 5.1 `test_creates_profile_from_transactions`: set `kind='income'` on the salary row, `kind='spending'` on food/transport. Expected values (50000 income, -20000 expenses, food/transport categories) stay the same post-migration.
-  - [ ] 5.2 `test_updates_existing_profile`: set `kind='income'` on both salary rows, `kind='spending'` on food. Expected totals unchanged.
-  - [ ] 5.3 `test_mixed_categories`: set `kind='spending'` on the three expense rows, `kind='income'` on the salary row. Expected categories unchanged.
-  - [ ] 5.4 `test_uncategorized_transactions`: set `kind='spending'` on both (the semantic is "uncategorized spending"). Expected `category_totals == {'uncategorized': -8000}` unchanged.
-  - [ ] 5.5 `test_empty_transactions`: no change — still asserts zero state.
-  - [ ] 5.6 Verify the four `TestGetCategoryBreakdown` / `TestGetMonthlyComparison` tests that construct profiles by hand (e.g. [test_profile_service.py:311-313](backend/tests/test_profile_service.py#L311), `category_totals={...}`) are unaffected — they set `category_totals` directly rather than round-tripping through `_upsert_profile`.
+- [x] Task 5: Backend tests — migrate existing `test_profile_service.py` fixtures to set `kind` explicitly (AC: #1, #2, #5)
+  - [x] 5.1 `test_creates_profile_from_transactions`: set `kind='income'` on the salary row, `kind='spending'` on food/transport. Expected values (50000 income, -20000 expenses, food/transport categories) stay the same post-migration.
+  - [x] 5.2 `test_updates_existing_profile`: set `kind='income'` on both salary rows, `kind='spending'` on food. Expected totals unchanged.
+  - [x] 5.3 `test_mixed_categories`: set `kind='spending'` on the three expense rows, `kind='income'` on the salary row. Expected categories unchanged.
+  - [x] 5.4 `test_uncategorized_transactions`: set `kind='spending'` on both (the semantic is "uncategorized spending"). Expected `category_totals == {'uncategorized': -8000}` unchanged.
+  - [x] 5.5 `test_empty_transactions`: no change — still asserts zero state.
+  - [x] 5.6 Verify the four `TestGetCategoryBreakdown` / `TestGetMonthlyComparison` tests that construct profiles by hand (e.g. [test_profile_service.py:311-313](backend/tests/test_profile_service.py#L311), `category_totals={...}`) are unaffected — they set `category_totals` directly rather than round-tripping through `_upsert_profile`.
 
-- [ ] Task 6: Backend tests — update `test_health_score_service.py` profile fixtures (AC: #3, #4, #7)
-  - [ ] 6.1 Current pattern (e.g. [test_health_score_service.py:145-161](backend/tests/test_health_score_service.py#L145-L161)) constructs a `FinancialProfile` directly via `_create_profile` and then adds transactions via `_add_transaction`. Since this bypasses `build_or_update_profile`, the profile's `total_income`/`total_expenses`/`category_totals` are already hand-set and do NOT depend on Story 4.10's partition change. No migration needed for these fixtures.
-  - [ ] 6.2 Add a new test `test_category_diversity_ignores_savings_kind`: build a profile via `build_or_update_profile` (NOT hand-constructed) with one `(income)`, three `(spending, distinct categories)`, and one huge `(savings)` row. Assert `category_totals` has three entries (not four), and `score.breakdown["category_diversity"]` reflects the three-spending-category distribution (should be non-zero — distinct from the single-category floor that a pre-4.10 run would produce). (AC #3)
-  - [ ] 6.3 Add `test_income_coverage_ignores_savings_kind`: profile via `build_or_update_profile` with `(income=60000)`, `(spending=-10000 food)`, `(spending=-10000 transport)`, `(savings=-40000)` over a ~90-day period. Assert `score.breakdown["income_coverage"] > 0` (post-4.10 behavior). Write a brief comment noting that pre-4.10 this would have been `0` because the `-40000` savings row inflated `total_expenses` to `-60000`, crushing `net_savings` to `0`. (AC #4)
-  - [ ] 6.4 Add `test_end_to_end_health_score_via_build_or_update_profile`: full pipeline — `_add_transaction` for every row, then `build_or_update_profile`, then `calculate_health_score`. Asserts Savings Ratio unchanged from Story 4.9, and the three other components reflect spending-only activity. (AC #7)
+- [x] Task 6: Backend tests — update `test_health_score_service.py` profile fixtures (AC: #3, #4, #7)
+  - [x] 6.1 Current pattern (e.g. [test_health_score_service.py:145-161](backend/tests/test_health_score_service.py#L145-L161)) constructs a `FinancialProfile` directly via `_create_profile` and then adds transactions via `_add_transaction`. Since this bypasses `build_or_update_profile`, the profile's `total_income`/`total_expenses`/`category_totals` are already hand-set and do NOT depend on Story 4.10's partition change. No migration needed for these fixtures.
+  - [x] 6.2 Add a new test `test_category_diversity_ignores_savings_kind`: build a profile via `build_or_update_profile` (NOT hand-constructed) with one `(income)`, three `(spending, distinct categories)`, and one huge `(savings)` row. Assert `category_totals` has three entries (not four), and `score.breakdown["category_diversity"]` reflects the three-spending-category distribution (should be non-zero — distinct from the single-category floor that a pre-4.10 run would produce). (AC #3)
+  - [x] 6.3 Add `test_income_coverage_ignores_savings_kind`: profile via `build_or_update_profile` with `(income=60000)`, `(spending=-10000 food)`, `(spending=-10000 transport)`, `(savings=-40000)` over a ~90-day period. Assert `score.breakdown["income_coverage"] > 0` (post-4.10 behavior). Write a brief comment noting that pre-4.10 this would have been `0` because the `-40000` savings row inflated `total_expenses` to `-60000`, crushing `net_savings` to `0`. (AC #4)
+  - [x] 6.4 Add `test_end_to_end_health_score_via_build_or_update_profile`: full pipeline — `_add_transaction` for every row, then `build_or_update_profile`, then `calculate_health_score`. Asserts Savings Ratio unchanged from Story 4.9, and the three other components reflect spending-only activity. (AC #7)
 
-- [ ] Task 7: Backend tests — verify `test_profile_api.py` and `test_data_summary_api.py` are not impacted (AC: #1, #2)
-  - [ ] 7.1 Both test modules construct `FinancialProfile` rows directly with `total_income`/`total_expenses`/`category_totals` set by hand (e.g. [test_profile_api.py:99-101](backend/tests/test_profile_api.py#L99-L101)). They do NOT round-trip through `build_or_update_profile`, so the aggregate-partition change has no effect. Run these suites as-is and document in Completion Notes.
+- [x] Task 7: Backend tests — verify `test_profile_api.py` and `test_data_summary_api.py` are not impacted (AC: #1, #2)
+  - [x] 7.1 Both test modules construct `FinancialProfile` rows directly with `total_income`/`total_expenses`/`category_totals` set by hand (e.g. [test_profile_api.py:99-101](backend/tests/test_profile_api.py#L99-L101)). They do NOT round-trip through `build_or_update_profile`, so the aggregate-partition change has no effect. Run these suites as-is and document in Completion Notes.
 
-- [ ] Task 8: Backend tests — triage node impact (AC: #2)
-  - [ ] 8.1 Check any tests covering `_compute_monthly_income` / triage severity thresholds. If a test constructs a profile with `total_income` set by hand (not via `build_or_update_profile`), the value flows through unchanged — no migration needed. If a test round-trips through `build_or_update_profile` with mixed-kind transactions, verify the computed `total_income` matches kind-based semantics (salary only).
+- [x] Task 8: Backend tests — triage node impact (AC: #2)
+  - [x] 8.1 Check any tests covering `_compute_monthly_income` / triage severity thresholds. If a test constructs a profile with `total_income` set by hand (not via `build_or_update_profile`), the value flows through unchanged — no migration needed. If a test round-trips through `build_or_update_profile` with mixed-kind transactions, verify the computed `total_income` matches kind-based semantics (salary only).
 
-- [ ] Task 9: Observability & tech-debt hygiene
-  - [ ] 9.1 Log a single structured DEBUG line in `_upsert_profile` when `total_income == 0 AND len(transactions) > 0` — candidate signal for "user has data but no kind='income' rows" (legacy or misclassified). Keep it DEBUG (not INFO) to avoid noise; operators who care can bump the level. Use the existing structured-logger pattern in the codebase (see Story 6.4 logging conventions).
-  - [ ] 9.2 If Story 4.9's TD-066 (observability on the `GROUP BY transaction_kind` query in `_compute_breakdown`) is still open, append a note to the TD-066 entry in [docs/tech-debt.md](docs/tech-debt.md) that this story does NOT add observability to `_upsert_profile`'s aggregation — same gap, same TD. Don't open a duplicate TD.
+- [x] Task 9: Observability & tech-debt hygiene
+  - [x] 9.1 Log a single structured DEBUG line in `_upsert_profile` when `total_income == 0 AND len(transactions) > 0` — candidate signal for "user has data but no kind='income' rows" (legacy or misclassified). Keep it DEBUG (not INFO) to avoid noise; operators who care can bump the level. Use the existing structured-logger pattern in the codebase (see Story 6.4 logging conventions).
+  - [x] 9.2 If Story 4.9's TD-066 (observability on the `GROUP BY transaction_kind` query in `_compute_breakdown`) is still open, append a note to the TD-066 entry in [docs/tech-debt.md](docs/tech-debt.md) that this story does NOT add observability to `_upsert_profile`'s aggregation — same gap, same TD. Don't open a duplicate TD.
 
-- [ ] Task 10: End-to-end verification (AC: #7)
-  - [ ] 10.1 Activate `backend/.venv` and run `pytest backend/tests/` — zero regressions expected (existing tests migrated in Task 5/6, new tests added in Task 4/6).
-  - [ ] 10.2 Run `pytest backend/tests/test_profile_service.py backend/tests/test_health_score_service.py backend/tests/test_profile_api.py backend/tests/test_data_summary_api.py -v` in isolation for focused signal.
-  - [ ] 10.3 Document new test count delta in Completion Notes.
-  - [ ] 10.4 Frontend: no frontend changes in this story (the `FinancialProfile` fields are not consumed by the current Next.js app — verified via `grep` for `total_income|total_expenses|category_totals` in `frontend/src/`, zero matches). If `npm test --run` passes without changes, note that explicitly in Completion Notes.
+- [x] Task 10: End-to-end verification (AC: #7)
+  - [x] 10.1 Activate `backend/.venv` and run `pytest backend/tests/` — zero regressions expected (existing tests migrated in Task 5/6, new tests added in Task 4/6).
+  - [x] 10.2 Run `pytest backend/tests/test_profile_service.py backend/tests/test_health_score_service.py backend/tests/test_profile_api.py backend/tests/test_data_summary_api.py -v` in isolation for focused signal.
+  - [x] 10.3 Document new test count delta in Completion Notes.
+  - [x] 10.4 Frontend: no frontend changes in this story (the `FinancialProfile` fields are not consumed by the current Next.js app — verified via `grep` for `total_income|total_expenses|category_totals` in `frontend/src/`, zero matches). If `npm test --run` passes without changes, note that explicitly in Completion Notes.
 
 ## Dev Notes
 
@@ -228,10 +228,48 @@ _None at story-creation time. If the dev finds during implementation that a cons
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.7 (1M context)
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- **Task 1** — `_upsert_profile` now partitions by `transaction_kind`. `total_income = sum(abs(amount) where kind=='income')`, `total_expenses = sum(amount where kind=='spending')` (sign-preserving), `category_totals` accumulates only `kind=='spending'` rows. `period_start`/`period_end` span every kind (Task 1.2). Added docstring explaining the contract. Dependencies, function signature, commit behavior unchanged.
+- **Task 2** — Verified `_compute_breakdown` consumers: `category_totals` flows into diversity + regularity; `profile.total_income + profile.total_expenses` still yields `net_savings` correctly since `total_expenses` kept its non-positive sign convention. No code change in `health_score_service.py`.
+- **Task 3.1** — Added a docstring note in `triage/node.py::_estimate_monthly_income_kopiykas` pointing at Story 4.10's kind-based semantic.
+- **Task 3.2** — Added a docstring note on `GET /api/v1/profile` about kind-based aggregates. `data_summary.py` passthrough unchanged (no docstring change needed — endpoint is a plain pass-through of the same fields).
+- **Task 4** — Added 6 new tests in `TestProfileAggregatesByKind` covering savings exclusion, transfer exclusion, income-abs edge case, legacy default, defensive unexpected-kind path, and period scoping across kinds.
+- **Task 5** — Migrated `test_creates_profile_from_transactions`, `test_updates_existing_profile`, `test_mixed_categories` to set `kind=` explicitly. `test_uncategorized_transactions` and `test_empty_transactions` needed no change (defaults match their semantics).
+- **Task 6** — Added 3 end-to-end tests in `TestHealthScoreWithKindPartitionedProfile` exercising the real `build_or_update_profile → calculate_health_score` pipeline. Existing hand-constructed-profile tests untouched (they bypass `_upsert_profile`).
+- **Task 7** — `test_profile_api.py` and `test_data_summary_api.py` construct profiles by hand; they passed unchanged (16/16).
+- **Task 8** — No triage tests round-trip through `build_or_update_profile` with mixed-kind transactions; no migration needed.
+- **Task 9.1** — Added a DEBUG structured log (`profile.aggregate.no_income_kind`) in `_upsert_profile` when the user has transactions but zero `kind='income'` rows. Uses `logging.getLogger(__name__)` (standard pattern in `app/services/`).
+- **Task 9.2** — Appended a note to TD-066 in `docs/tech-debt.md` noting the analogous in-memory partition in `_upsert_profile` shares the same observability gap. No duplicate TD opened.
+- **Task 10** — Full `backend/tests/` suite: **843 passed, 9 deselected**. (3 pre-existing `test_auth.py` teardown errors unrelated to this story — they pass cleanly when that module is run in isolation.) Focused suite (`test_profile_service.py` + `test_health_score_service.py` + `test_profile_api.py` + `test_data_summary_api.py`): **70 passed**. New test count delta: +6 in `test_profile_service.py`, +3 in `test_health_score_service.py`.
+- **Frontend** — No changes. `grep` for `total_income|total_expenses|category_totals` in `frontend/src/` returns zero matches.
+
 ### File List
+
+- backend/app/services/profile_service.py
+- backend/app/agents/triage/node.py
+- backend/app/api/v1/profile.py
+- backend/tests/test_profile_service.py
+- backend/tests/test_health_score_service.py
+- docs/tech-debt.md
+- VERSION
+
+### Code Review (2026-04-22)
+
+Adversarial review by Claude Opus 4.7. 8/8 ACs verified implemented; all [x] tasks verified against code and tests. File List matches git exactly. Findings + fixes:
+
+- **[MEDIUM] M1 — Weak AC #4 assertion** — fixed: `test_income_coverage_ignores_savings_kind` now asserts `income_coverage >= 95` (deterministic expected ≈100) instead of `>0`. [test_health_score_service.py:636-647](backend/tests/test_health_score_service.py#L636-L647)
+- **[MEDIUM] M2 — Stale docstring in `get_category_breakdown`** — fixed: docstring now reflects kind-based semantic; the remaining sign-filter annotated as a legacy-user guard. [profile_service.py:37-57](backend/app/services/profile_service.py#L37-L57)
+- **[MEDIUM] M3 — `data_summary.py` missing Task 3.2-style docstring** — fixed: `get_data_summary` docstring now notes kind-based aggregate semantics since Story 4.10. [data_summary.py:100-106](backend/app/api/v1/data_summary.py#L100-L106)
+- **[LOW] L1 — `health_score_service._compute_breakdown` sign filter looks dead** — fixed (bonus): added a comment explaining it is a legacy-user guard, preventing a well-meaning future cleanup from breaking `test_legacy_all_spending_default`. [health_score_service.py:127-131](backend/app/services/health_score_service.py#L127-L131)
+- **[LOW] L2 — E2E test doesn't assert DB persistence of `FinancialHealthScore`** — kept story-local. AC #7 persistence clause is already covered by Story 4.5's own tests; re-asserting here is belt-and-suspenders with low upside. Not promoted to TD.
+
+All 54 tests in `test_profile_service.py` + `test_health_score_service.py` pass post-fix.
+
+### Change Log
+
+- 2026-04-22 — Story 4.10 implementation. `_upsert_profile` now partitions aggregates by `transaction_kind` (spending / income), not by amount sign. `total_income` follows Story 4.9's `abs()` contract; `total_expenses` keeps its non-positive sign convention. `category_totals` contains only `kind='spending'` rows, so Category Diversity, Expense Regularity, and Income Coverage no longer collapse when the user has `kind='savings'` or `kind='transfer'` rows in the period. Added TestProfileAggregatesByKind (6 tests) and TestHealthScoreWithKindPartitionedProfile (3 end-to-end tests). Migrated existing fixtures to set `kind=` explicitly. Added a TD-066 update note (same observability gap applies to the new in-memory partition). Version bumped from 1.29.0 to 1.30.0 per story completion.

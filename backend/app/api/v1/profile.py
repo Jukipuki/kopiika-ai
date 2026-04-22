@@ -69,7 +69,10 @@ async def get_profile(
     user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
     session: Annotated[SQLModelAsyncSession, Depends(get_db)],
 ) -> ProfileResponse:
-    """Get the financial profile for the authenticated user."""
+    """Get the financial profile for the authenticated user.
+
+    Values reflect kind-based aggregates (spending / income) since Story 4.10.
+    """
     profile = await get_profile_for_user(session=session, user_id=user_id)
 
     if not profile:

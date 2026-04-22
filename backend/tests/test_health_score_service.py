@@ -575,3 +575,111 @@ class TestGetScoreHistory:
         result = await get_score_history(async_session, user_a)
         assert len(result) == 1
         assert result[0].score == 70
+
+
+# ==================== Story 4.10: aggregates via build_or_update_profile ====================
+
+
+class TestHealthScoreWithKindPartitionedProfile:
+    """Story 4.10 end-to-end: profile built via build_or_update_profile, then scored.
+
+    These tests go through the real aggregation path so the kind-based
+    partition in _upsert_profile is exercised — not the hand-constructed
+    FinancialProfile fixtures used elsewhere in this module.
+    """
+
+    def test_category_diversity_ignores_savings_kind(self, sync_session):
+        """Large savings row does not bucket as a spending category (AC #3)."""
+        from app.services.health_score_service import calculate_health_score
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user(sync_session, "e2e-diversity-sub")
+        upload_id = _create_upload(sync_session, user_id)
+
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income",
+                         date=datetime(2026, 1, 5))
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending",
+                         category="food", date=datetime(2026, 1, 10))
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending",
+                         category="transport", date=datetime(2026, 2, 10))
+        _add_transaction(sync_session, user_id, upload_id, -5000, "spending",
+                         category="utilities", date=datetime(2026, 3, 10))
+        _add_transaction(sync_session, user_id, upload_id, -80000, "savings",
+                         category="savings-deposit", date=datetime(2026, 3, 15))
+        sync_session.commit()
+
+        profile = build_or_update_profile(sync_session, user_id)
+        assert set(profile.category_totals.keys()) == {"food", "transport", "utilities"}
+
+        score = calculate_health_score(sync_session, user_id)
+        # Three-way roughly-equal split → diversity not penalized to 0.
+        assert score.breakdown["category_diversity"] > 0
+
+    def test_income_coverage_ignores_savings_kind(self, sync_session):
+        """Savings outflow doesn't inflate total_expenses → net_savings stays positive (AC #4).
+
+        Pre-4.10 the -40000 savings row would have crushed net_savings to 0;
+        post-4.10 it's partitioned out and income_coverage is non-zero.
+        """
+        from app.services.health_score_service import calculate_health_score
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user(sync_session, "e2e-coverage-sub")
+        upload_id = _create_upload(sync_session, user_id)
+
+        _add_transaction(sync_session, user_id, upload_id, 60000, "income",
+                         date=datetime(2026, 1, 5))
+        _add_transaction(sync_session, user_id, upload_id, -10000, "spending",
+                         category="food", date=datetime(2026, 2, 5))
+        _add_transaction(sync_session, user_id, upload_id, -10000, "spending",
+                         category="transport", date=datetime(2026, 3, 5))
+        _add_transaction(sync_session, user_id, upload_id, -40000, "savings",
+                         category="savings-deposit", date=datetime(2026, 4, 5))
+        sync_session.commit()
+
+        build_or_update_profile(sync_session, user_id)
+        score = calculate_health_score(sync_session, user_id)
+
+        # Deterministic expected value:
+        #   total_income = 60000, total_expenses = -20000 (savings partitioned out)
+        #   net_savings = 40000
+        #   period = Jan 5 → Apr 5 ≈ 90 days → months = 3
+        #   avg_monthly_expense = 20000 / 3 ≈ 6666.67
+        #   months_covered = 40000 / 6666.67 ≈ 6.0 → score ≈ 100
+        # Pre-4.10, the -40000 savings row crushed net_savings to 0 and
+        # income_coverage to 0. Guard against silent regressions with a
+        # tight lower bound rather than ">0".
+        assert score.breakdown["income_coverage"] >= 95
+
+    def test_end_to_end_health_score_via_build_or_update_profile(self, sync_session):
+        """Full pipeline: transactions → build_or_update_profile → calculate_health_score (AC #7).
+
+        Savings Ratio reflects Story 4.9 semantics (kind-scoped query); the
+        other three components reflect spending-only activity.
+        """
+        from app.services.health_score_service import calculate_health_score
+        from app.services.profile_service import build_or_update_profile
+
+        user_id = _create_user(sync_session, "e2e-full-sub")
+        upload_id = _create_upload(sync_session, user_id)
+
+        _add_transaction(sync_session, user_id, upload_id, 50000, "income",
+                         date=datetime(2026, 1, 1))
+        _add_transaction(sync_session, user_id, upload_id, -8000, "spending",
+                         category="food", date=datetime(2026, 1, 15))
+        _add_transaction(sync_session, user_id, upload_id, -4000, "spending",
+                         category="transport", date=datetime(2026, 2, 10))
+        _add_transaction(sync_session, user_id, upload_id, -4000, "spending",
+                         category="utilities", date=datetime(2026, 3, 10))
+        _add_transaction(sync_session, user_id, upload_id, -20000, "savings",
+                         category="savings-deposit", date=datetime(2026, 3, 20))
+        sync_session.commit()
+
+        build_or_update_profile(sync_session, user_id)
+        score = calculate_health_score(sync_session, user_id)
+
+        # Savings Ratio (20000 saved / 50000 income = 40%).
+        assert score.breakdown["savings_ratio"] == 40
+        assert score.breakdown["category_diversity"] > 0
+        assert score.breakdown["expense_regularity"] > 0
+        assert score.breakdown["income_coverage"] > 0

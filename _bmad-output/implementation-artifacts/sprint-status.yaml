@@ -133,7 +133,7 @@ development_status:
   4-7-month-over-month-spending-comparison: done
   4-8-category-spending-breakdown: done
   4-9-savings-ratio-wired-to-transaction-kind: done
-  4-10-profile-aggregates-respect-transaction-kind: ready-for-dev
+  4-10-profile-aggregates-respect-transaction-kind: done
   epic-4-retrospective: optional
 
   # Epic 5: Data Privacy, Trust & Consent
