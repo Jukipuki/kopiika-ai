@@ -183,7 +183,7 @@ development_status:
   # — see _bmad-output/planning-artifacts/epics.md and SP run 2026-04-19.
   epic-9: in-progress
   9-1-rag-evaluation-harness: done
-  9-2-baseline-current-embeddings: review
+  9-2-baseline-current-embeddings: done
   9-3-embedding-model-comparison-spike: backlog
   9-4-agentcore-bedrock-region-availability-spike: backlog
   9-5a-llm-py-provider-routing-refactor: backlog

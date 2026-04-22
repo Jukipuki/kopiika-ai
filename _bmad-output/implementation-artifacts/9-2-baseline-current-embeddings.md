@@ -1,6 +1,6 @@
 # Story 9.2: Baseline Current Embeddings Through Harness
 
-Status: review
+Status: done
 Created: 2026-04-22
 Epic: 9 — AI Infra Readiness (Bedrock Provider, RAG Eval Harness, Embedding Decision)
 
