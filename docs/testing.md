@@ -38,6 +38,8 @@ harness also breaks results down per-language (en vs uk), per-topic, and
 per-question-type, and includes a `worst_10` list of the lowest-scored answers
 to drive fixture-expansion decisions.
 
+The current RAG baseline lives at [`backend/tests/fixtures/rag_eval/baselines/text-embedding-3-small.json`](../backend/tests/fixtures/rag_eval/baselines/text-embedding-3-small.json) — captured by Story 9.2.
+
 ## Adding a new harness
 
 When adding a third harness (e.g. insight-quality under Epic 12), follow the

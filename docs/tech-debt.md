@@ -1196,6 +1196,20 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
+### TD-068 — Pre-existing ruff drift on backend main branch [LOW]
+
+**Where:** [backend/](../backend/) — `uv run ruff check .` reports 44 errors on current `main` (HEAD = `1371598`), 36 of them auto-fixable with `--fix`. Representative violation: unused import `app.core.exceptions.RegistrationError`.
+
+**Problem:** The backend no longer passes `ruff check` cleanly. The drift is unrelated to any single story — it accumulated across recent merges — but it means stories whose tasks include "ruff check clean" as a gate cannot honestly tick that box without either fixing the drift or rewording the gate. Story 9.2's Task 5.2 ran into exactly this.
+
+**Why deferred:** Fixing 44 violations (including 8 that require `--unsafe-fixes` or manual review) is out of scope for an artifact-capture story. Belongs in a dedicated cleanup PR so the diff is reviewable and the risk is isolated from story work.
+
+**Fix shape:** (1) `cd backend && uv run ruff check --fix .` for the 36 auto-fixable ones; (2) hand-resolve the remaining 8; (3) verify `uv run pytest tests/ -q` still green; (4) add `ruff check` as a CI gate so drift does not silently re-accumulate.
+
+**Surfaced in:** Story 9.2 code review (2026-04-22).
+
+---
+
 ## Resolved
 
 ### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]
