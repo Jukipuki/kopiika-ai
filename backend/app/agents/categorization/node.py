@@ -12,7 +12,13 @@ from typing import Any
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.agents.categorization.counterparty_patterns import edrpou_kind
-from app.agents.categorization.mcc_mapping import VALID_CATEGORIES, get_mcc_category
+from app.agents.categorization.mcc_mapping import (
+    VALID_CATEGORIES,
+    VALID_KINDS,
+    get_mcc_category,
+    kind_by_sign,
+    validate_kind_category,
+)
 from app.agents.categorization.pre_pass import classify_pre_pass
 from app.agents.circuit_breaker import CircuitBreakerOpenError, record_failure, record_success
 from app.agents.llm import get_fallback_llm_client, get_llm_client
@@ -20,37 +26,6 @@ from app.agents.state import FinancialPipelineState
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-
-VALID_KINDS: frozenset[str] = frozenset({"spending", "income", "savings", "transfer"})
-
-# Per tech spec §2.3 — which categories are valid for each transaction_kind.
-# `spending` is a catch-all *except* `savings` (savings transfers are their own kind).
-# `income` only ever lands in `other` or `uncategorized` (incoming flows aren't
-# bucketed by merchant category). `savings` and `transfer` are 1:1 with their
-# eponymous categories.
-KIND_CATEGORY_RULES: dict[str, frozenset[str]] = {
-    "spending": VALID_CATEGORIES - frozenset({"savings"}),
-    "income": frozenset({"other", "uncategorized"}),
-    "savings": frozenset({"savings"}),
-    "transfer": frozenset({"transfers"}),
-}
-
-
-def kind_by_sign(amount: int) -> str:
-    """Sign-based default for `transaction_kind` until the LLM emits one (Story 11.3)."""
-    return "income" if amount > 0 else "spending"
-
-
-def validate_kind_category(kind: str, category: str) -> bool:
-    """Return True if (kind, category) is a valid combination per the matrix.
-
-    Does not raise — callers decide whether to raise or fall back.
-    """
-    allowed = KIND_CATEGORY_RULES.get(kind)
-    if allowed is None:
-        return False
-    return category in allowed
 
 
 _FEW_SHOT_BLOCK = """Few-shot examples:
@@ -443,7 +418,10 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
 
     transactions = state["transactions"]
     batch_size = settings.CATEGORIZATION_BATCH_SIZE
-    confidence_threshold = settings.CATEGORIZATION_CONFIDENCE_THRESHOLD
+    # Story 11.8: three-tier routing replaces the single
+    # CATEGORIZATION_CONFIDENCE_THRESHOLD. See config.py for semantics.
+    soft_flag_threshold = settings.CATEGORIZATION_SOFT_FLAG_THRESHOLD
+    auto_apply_threshold = settings.CATEGORIZATION_AUTO_APPLY_THRESHOLD
 
     categorized: list[dict] = []
     needs_llm: list[dict] = []
@@ -568,20 +546,59 @@ def categorization_node(state: FinancialPipelineState) -> FinancialPipelineState
                         "uncategorized_reason": "llm_unavailable",
                     })
 
-        # Apply flagging threshold, set reason, override category for flagged transactions.
+        # Story 11.8: three-tier routing on LLM confidence.
+        #   >= AUTO_APPLY                         → silent accept
+        #   [SOFT_FLAG, AUTO_APPLY)               → accept + emit soft-flag telemetry
+        #   < SOFT_FLAG                           → route to review queue
+        #                                           (flagged, uncategorized,
+        #                                            suggested_category/kind carried)
         # Rows stamped with `deterministic_rule` (Story 11.10 Rule 5/6) skip the
         # threshold gate — a deterministic counterparty verdict must not be
-        # clobbered by an operator raising the confidence threshold.
+        # clobbered by an operator raising a threshold.
         for r in llm_results:
             if r.pop("deterministic_rule", None) is not None:
                 r["flagged"] = False
                 categorized.append(r)
                 continue
-            r["flagged"] = r["confidence_score"] < confidence_threshold
-            if r["flagged"]:
-                if r.get("uncategorized_reason") is None:
-                    r["uncategorized_reason"] = "low_confidence"
+
+            # Pre-existing non-low-confidence flags (llm_unavailable, parse_failure)
+            # short-circuit: they bypass the tier decision entirely — the row is
+            # already uncategorized with no suggestion to carry.
+            if r.get("uncategorized_reason") is not None:
+                r["flagged"] = True
                 r["category"] = "uncategorized"
+                categorized.append(r)
+                continue
+
+            conf = r["confidence_score"]
+            tx_ev_ctx = {
+                **log_ctx,
+                "tx_id": r.get("transaction_id"),
+                "confidence": conf,
+            }
+
+            if conf >= auto_apply_threshold:
+                r["flagged"] = False
+            elif conf >= soft_flag_threshold:
+                # Soft-flag: keep the LLM's category/kind, no flag, emit telemetry.
+                r["flagged"] = False
+                logger.info(
+                    "categorization.confidence_tier",
+                    extra={**tx_ev_ctx, "tier": "soft-flag"},
+                )
+            else:
+                # Queue tier: preserve original suggestion for the persist path
+                # to insert into uncategorized_review_queue, then overwrite the
+                # live row with uncategorized per Story 6.3 contract.
+                r["suggested_category"] = r.get("category")
+                r["suggested_kind"] = r.get("transaction_kind")
+                r["flagged"] = True
+                r["uncategorized_reason"] = "low_confidence"
+                r["category"] = "uncategorized"
+                logger.info(
+                    "categorization.confidence_tier",
+                    extra={**tx_ev_ctx, "tier": "queue"},
+                )
             categorized.append(r)
 
     completed = list(state.get("completed_nodes", []))

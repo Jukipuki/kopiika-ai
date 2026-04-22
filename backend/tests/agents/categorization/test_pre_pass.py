@@ -68,16 +68,16 @@ def test_cash_substring_without_withdrawal_does_not_match():
 
 def test_pre_pass_confidence_is_above_default_threshold():
     """Lock the invariant that pre-pass confidence is high enough that the
-    downstream flagging threshold would never flip a pre-pass result to
-    `uncategorized` if it were ever routed through that loop. Guards against
-    a future bump to CATEGORIZATION_CONFIDENCE_THRESHOLD silently making
-    pre-pass results low-confidence on paper while node.py skips the check.
+    downstream three-tier threshold (Story 11.8) would never route a pre-pass
+    result into the review queue or soft-flag tier even if node.py started
+    sending pre-pass rows through that loop. Pre-pass confidence MUST stay
+    >= the AUTO_APPLY threshold.
     """
     from app.core.config import settings
 
     result = classify_pre_pass(_txn("Cash withdrawal X"))
     assert result is not None
-    assert result["confidence_score"] >= settings.CATEGORIZATION_CONFIDENCE_THRESHOLD
+    assert result["confidence_score"] >= settings.CATEGORIZATION_AUTO_APPLY_THRESHOLD
     assert result["flagged"] is False
 
 

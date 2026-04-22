@@ -13,6 +13,7 @@ from app.models.insight import Insight
 from app.models.pattern_finding import PatternFinding
 from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
+from app.models.uncategorized_review_queue import UncategorizedReviewQueue
 from app.models.upload import Upload
 from app.models.user import User
 from app.models.user_iban_registry import UserIbanRegistry
@@ -33,6 +34,7 @@ __all__ = [
     "PatternFinding",
     "ProcessingJob",
     "Transaction",
+    "UncategorizedReviewQueue",
     "Upload",
     "User",
     "UserConsent",

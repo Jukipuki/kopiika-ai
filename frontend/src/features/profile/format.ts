@@ -54,6 +54,10 @@ const KNOWN_CATEGORIES = new Set([
   "fuel",
   "atm_cash",
   "government",
+  "transfers",
+  "transfers_p2p",
+  "savings",
+  "charity",
   "other",
   "uncategorized",
 ]);

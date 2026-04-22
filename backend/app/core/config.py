@@ -38,7 +38,12 @@ class Settings(BaseSettings):
     # LLM API Keys
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
-    CATEGORIZATION_CONFIDENCE_THRESHOLD: float = 0.7
+    # Story 11.8 three-tier thresholds (replaces single CATEGORIZATION_CONFIDENCE_THRESHOLD):
+    #   confidence >= AUTO_APPLY      → silently accept LLM suggestion
+    #   SOFT_FLAG <= confidence < AUTO_APPLY → accept LLM suggestion, emit telemetry
+    #   confidence < SOFT_FLAG        → route to uncategorized_review_queue
+    CATEGORIZATION_SOFT_FLAG_THRESHOLD: float = 0.6
+    CATEGORIZATION_AUTO_APPLY_THRESHOLD: float = 0.85
     CATEGORIZATION_BATCH_SIZE: int = 50
 
     # Deployment environment (local | dev | staging | prod). Gates the local-only

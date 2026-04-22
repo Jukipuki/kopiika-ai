@@ -243,6 +243,32 @@
       "feedbackFreeTextEntry": "{date} · Card {cardRef} — {text}",
       "empty": "No data yet. Upload a bank statement to get started."
     },
+    "reviewQueue": {
+      "title": "{count, plural, one {# transaction to review} other {# transactions to review}}",
+      "description": "We weren't confident about these — pick a category or dismiss.",
+      "openLink": "Review",
+      "pageTitle": "Review uncategorized transactions",
+      "pageDescription": "We weren't confident about categorizing these. Pick a category or dismiss — the more you correct, the better your insights get.",
+      "empty": "Nothing to review. You're all caught up.",
+      "suggestedLabel": "Suggested",
+      "confidenceLabel": "{percent}%",
+      "categoryLabel": "Category",
+      "kindLabel": "Kind",
+      "resolveButton": "Save",
+      "dismissButton": "Dismiss",
+      "editButton": "Edit",
+      "cancelButton": "Cancel",
+      "loadMore": "Load more",
+      "loadError": "Failed to load the review queue. Please try again.",
+      "matrixError": "That category isn't allowed for this kind.",
+      "resolveError": "Couldn't save — please try again.",
+      "kinds": {
+        "spending": "Spending",
+        "income": "Income",
+        "savings": "Savings",
+        "transfer": "Transfer"
+      }
+    },
     "deleteData": {
       "title": "Danger Zone",
       "description": "Permanently delete your account and all associated data. This action cannot be undone.",
@@ -276,6 +302,10 @@
       "fuel": "Fuel",
       "atm_cash": "ATM / Cash",
       "government": "Government",
+      "transfers": "Transfers",
+      "transfers_p2p": "P2P transfers",
+      "savings": "Savings",
+      "charity": "Charity",
       "other": "Other",
       "uncategorized": "Uncategorized"
     },

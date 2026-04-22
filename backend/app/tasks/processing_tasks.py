@@ -20,6 +20,7 @@ from app.core.redis import publish_job_progress
 from app.models.insight import Insight
 from app.models.processing_job import ProcessingJob
 from app.models.transaction import Transaction
+from app.models.uncategorized_review_queue import UncategorizedReviewQueue
 from app.models.upload import Upload
 from app.models.user import User
 from app.services.format_detector import (
@@ -40,6 +41,52 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _maybe_build_review_queue_entry(
+    *, cat: dict, txn: Transaction
+) -> UncategorizedReviewQueue | None:
+    """Return a queue entry for a low-confidence row if one is warranted.
+
+    Story 11.8 AC #4: route rows with ``uncategorized_reason='low_confidence'``
+    AND a non-null LLM suggestion into the review queue. Infrastructure-failure
+    flags (``llm_unavailable``, ``parse_failure``, ``currency_unknown``) are
+    skipped — they have no suggestion for the user to act on.
+    """
+    if cat.get("uncategorized_reason") != "low_confidence":
+        return None
+    suggested_category = cat.get("suggested_category")
+    suggested_kind = cat.get("suggested_kind")
+    if not suggested_category or not suggested_kind:
+        return None
+    return UncategorizedReviewQueue(
+        user_id=txn.user_id,
+        transaction_id=txn.id,
+        categorization_confidence=cat["confidence_score"],
+        suggested_category=suggested_category,
+        suggested_kind=suggested_kind,
+        status="pending",
+    )
+
+
+def _existing_queue_txn_ids(
+    session, txn_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Return the subset of `txn_ids` that already have ANY queue row.
+
+    Used to dedup queue inserts on ``resume_upload`` (which re-runs the
+    categorization pipeline against transactions that may already have been
+    queued on the first pass). Queries for any status — a row that was
+    already resolved/dismissed shouldn't be re-queued either.
+    """
+    if not txn_ids:
+        return set()
+    rows = session.exec(
+        select(UncategorizedReviewQueue.transaction_id).where(
+            UncategorizedReviewQueue.transaction_id.in_(txn_ids),
+        )
+    ).all()
+    return set(rows)
 
 
 def _build_state_transactions(
@@ -264,6 +311,10 @@ def process_upload(self, job_id: str) -> dict:
                 txns = session.exec(
                     select(Transaction).where(Transaction.upload_id == upload.id)
                 ).all()
+                queue_entries: list[UncategorizedReviewQueue] = []
+                already_queued = _existing_queue_txn_ids(
+                    session, [t.id for t in txns]
+                )
                 for txn in txns:
                     cat = cat_lookup.get(str(txn.id))
                     if cat:
@@ -299,7 +350,28 @@ def process_upload(self, job_id: str) -> dict:
                                 txn.is_flagged_for_review = cat.get("flagged", False)
                                 txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
+                        if not mismatch and txn.id not in already_queued:
+                            entry = _maybe_build_review_queue_entry(cat=cat, txn=txn)
+                            if entry is not None:
+                                session.add(entry)
+                                queue_entries.append(entry)
+                                already_queued.add(txn.id)
                 session.commit()
+                # Story 11.8 AC #10: emit review_queue_insert *after* the commit,
+                # so failed rollbacks don't pollute the telemetry.
+                for entry in queue_entries:
+                    logger.info(
+                        "categorization.review_queue_insert",
+                        extra={
+                            "job_id": job_id,
+                            "upload_id": str(upload.id),
+                            "user_id": str(entry.user_id),
+                            "transaction_id": str(entry.transaction_id),
+                            "categorization_confidence": entry.categorization_confidence,
+                            "suggested_category": entry.suggested_category,
+                            "suggested_kind": entry.suggested_kind,
+                        },
+                    )
 
                 categorization_count = len(result_state["categorized_transactions"])
                 flagged_count_categorization = sum(
@@ -712,6 +784,10 @@ def resume_upload(self, job_id: str) -> dict:
                 txns = session.exec(
                     select(Transaction).where(Transaction.upload_id == upload_id)
                 ).all()
+                queue_entries: list[UncategorizedReviewQueue] = []
+                already_queued = _existing_queue_txn_ids(
+                    session, [t.id for t in txns]
+                )
                 for txn in txns:
                     cat = cat_lookup.get(str(txn.id))
                     if cat and txn.category in (None, "uncategorized"):
@@ -744,7 +820,26 @@ def resume_upload(self, job_id: str) -> dict:
                                 txn.is_flagged_for_review = cat.get("flagged", False)
                                 txn.uncategorized_reason = cat.get("uncategorized_reason")
                         session.add(txn)
+                        if not mismatch and txn.id not in already_queued:
+                            entry = _maybe_build_review_queue_entry(cat=cat, txn=txn)
+                            if entry is not None:
+                                session.add(entry)
+                                queue_entries.append(entry)
+                                already_queued.add(txn.id)
                 session.commit()
+                for entry in queue_entries:
+                    logger.info(
+                        "categorization.review_queue_insert",
+                        extra={
+                            "job_id": job_id,
+                            "upload_id": str(upload_id),
+                            "user_id": str(entry.user_id),
+                            "transaction_id": str(entry.transaction_id),
+                            "categorization_confidence": entry.categorization_confidence,
+                            "suggested_category": entry.suggested_category,
+                            "suggested_kind": entry.suggested_kind,
+                        },
+                    )
 
             # Persist insight cards
             insight_cards = result_state.get("insight_cards", [])

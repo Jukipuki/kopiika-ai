@@ -13,6 +13,37 @@ VALID_CATEGORIES: frozenset[str] = frozenset({
     "uncategorized",
 })
 
+
+VALID_KINDS: frozenset[str] = frozenset({"spending", "income", "savings", "transfer"})
+
+# Per tech spec §2.3 — which categories are valid for each transaction_kind.
+# `spending` is a catch-all *except* `savings` (savings transfers are their own kind).
+# `income` only ever lands in `other` or `uncategorized` (incoming flows aren't
+# bucketed by merchant category). `savings` and `transfer` are 1:1 with their
+# eponymous categories.
+KIND_CATEGORY_RULES: dict[str, frozenset[str]] = {
+    "spending": VALID_CATEGORIES - frozenset({"savings"}),
+    "income": frozenset({"other", "uncategorized"}),
+    "savings": frozenset({"savings"}),
+    "transfer": frozenset({"transfers"}),
+}
+
+
+def kind_by_sign(amount: int) -> str:
+    """Sign-based default for `transaction_kind` until the LLM emits one (Story 11.3)."""
+    return "income" if amount > 0 else "spending"
+
+
+def validate_kind_category(kind: str, category: str) -> bool:
+    """Return True if (kind, category) is a valid combination per the matrix.
+
+    Does not raise — callers decide whether to raise or fall back.
+    """
+    allowed = KIND_CATEGORY_RULES.get(kind)
+    if allowed is None:
+        return False
+    return category in allowed
+
 # DO NOT add MCCs 4816 (Computer Network Services) or 6012 (Financial
 # Institutions - Merchandise). Both cover too many distinct real-world
 # behaviors (ISP vs SaaS vs payment-processor passthrough for 4816;

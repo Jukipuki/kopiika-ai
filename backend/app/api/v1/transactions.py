@@ -53,7 +53,17 @@ class FlaggedTransactionResponse(BaseModel):
     currency_unknown_raw: Optional[str] = None
 
 
-@router.get("/flagged", response_model=list[FlaggedTransactionResponse])
+@router.get(
+    "/flagged",
+    response_model=list[FlaggedTransactionResponse],
+    description=(
+        "List all flagged transactions for the authenticated user, regardless "
+        "of reason (low_confidence, llm_unavailable, parse_failure, "
+        "currency_unknown, kind_category_mismatch). Operator-oriented: use "
+        "`/transactions/review-queue` for the user-facing low-confidence "
+        "review workflow with LLM suggestions."
+    ),
+)
 async def list_flagged_transactions(
     user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
     session: Annotated[SQLModelAsyncSession, Depends(get_db)],

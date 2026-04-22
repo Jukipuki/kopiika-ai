@@ -7,17 +7,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.agents.categorization.mcc_mapping import (
+    KIND_CATEGORY_RULES,
     MCC_TO_CATEGORY,
     VALID_CATEGORIES,
-    get_mcc_category,
-)
-from app.agents.categorization.node import (
-    KIND_CATEGORY_RULES,
     VALID_KINDS,
+    get_mcc_category,
     kind_by_sign,
-    categorization_node,
     validate_kind_category,
 )
+from app.agents.categorization.node import categorization_node
 
 
 def _make_transaction(mcc=None, description="Test", amount=-10000) -> dict:

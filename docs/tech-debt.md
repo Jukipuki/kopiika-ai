@@ -274,7 +274,7 @@ Note: the team's **intentional stance** is that value quality outranks strict br
 3. Update all model `_utcnow()` helpers to return `datetime.now(UTC)` (keep tzinfo).
 4. Grep for `datetime.utcnow()` (deprecated in Python 3.12) and replace.
 
-**Surfaced in:** Story 7.1 code review (2026-04-17)
+**Surfaced in:** Story 7.1 code review (2026-04-17). Re-confirmed in Story 11.8 code review (2026-04-22) — `uncategorized_review_queue` migration uses `DateTime(timezone=True)` on the DB side (good), but the model/service/task still `_utcnow = datetime.now(UTC).replace(tzinfo=None)` and the API serialiser appends a manual `"Z"` suffix. Both fall under this TD.
 
 ### TD-017 — `card_feedback.created_at` is frozen on vote flip, obscuring vote-change time [LOW]
 
@@ -1084,6 +1084,48 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 **Fix shape:** Route crypto through a context-scoped settings provider, or isolate the test in its own process (mark serial) when xdist lands.
 
 **Surfaced in:** Story 11.10 code review (2026-04-21)
+
+---
+
+### TD-063 — Review-queue resolve uses native `<select>` dropdowns [LOW]
+
+**Where:** [frontend/src/features/review-queue/components/ReviewQueuePage.tsx](frontend/src/features/review-queue/components/ReviewQueuePage.tsx)
+
+**Problem:** Story 11.8 Task 7.3 called for reusing the existing category-picker component if one existed. None did, so the resolve editor ships with native `<select>` elements for category and kind. This works but looks inconsistent with the rest of the app's shadcn UI and doesn't afford search/keyboard-nav on long category lists.
+
+**Why deferred:** Building a shadcn `Select`/`Combobox` variant for the full 19-category taxonomy is its own polish pass; blocking Story 11.8 on it would have delayed the feature. The user-facing impact today is minor because the queue is a low-traffic page.
+
+**Fix shape:** Replace both `<select>` elements with the shadcn `Select` primitive (or a `Combobox` with search when the number of categories grows further). Share the picker with anywhere else the user edits categories (profile-level category override will likely need the same control).
+
+**Surfaced in:** Story 11.8 (2026-04-22)
+
+---
+
+### TD-064 — `_utcnow()` helper duplicated across model / service / task modules [LOW]
+
+**Where:** [backend/app/models/uncategorized_review_queue.py:18](backend/app/models/uncategorized_review_queue.py#L18), [backend/app/services/review_queue_service.py:52](backend/app/services/review_queue_service.py#L52), [backend/app/tasks/processing_tasks.py:42](backend/app/tasks/processing_tasks.py#L42), plus older copies scattered across other models/services.
+
+**Problem:** Each module defines its own `_utcnow()` returning `datetime.now(UTC).replace(tzinfo=None)`. The logic is identical everywhere, so any future change (e.g. moving to aware datetimes as part of TD-016) must touch N files. Easy to forget one.
+
+**Why deferred:** Pure DRY nit — no runtime behaviour to fix, just a refactor. Story 11.8 added three new copies; hoisting to a shared helper is a cheap follow-up that pairs naturally with the TD-016 cleanup.
+
+**Fix shape:** Introduce `app/core/time.py` exposing a single `utcnow()` (aware) and `utcnow_naive()` (until TD-016 lands). Grep for `def _utcnow` and `datetime.now(UTC)` across `app/**` and replace in-place.
+
+**Surfaced in:** Story 11.8 code review (2026-04-22)
+
+---
+
+### TD-065 — No partial unique index guarding against duplicate pending review-queue entries [LOW]
+
+**Where:** [backend/alembic/versions/z2a3b4c5d6e7_add_uncategorized_review_queue.py](backend/alembic/versions/z2a3b4c5d6e7_add_uncategorized_review_queue.py), [backend/app/tasks/processing_tasks.py:_existing_queue_txn_ids](backend/app/tasks/processing_tasks.py)
+
+**Problem:** The `uncategorized_review_queue` table has no uniqueness constraint on `(transaction_id)` or `(transaction_id) WHERE status='pending'`. Dedup lives in application code (`_existing_queue_txn_ids` on the persist path). A future direct inserter that forgets to call the dedup helper can create duplicate "review me" rows for the same transaction.
+
+**Why deferred:** Application-layer dedup fixes the only current re-entry point (`resume_upload`) and was a faster Story 11.8 fix. A partial unique index would be belt-and-suspenders.
+
+**Fix shape:** Add an Alembic migration: `CREATE UNIQUE INDEX ix_uncat_queue_txn_pending ON uncategorized_review_queue(transaction_id) WHERE status = 'pending';`. Re-check the dedup helper in `processing_tasks.py` and consider collapsing it to a let-the-db-enforce pattern once the index exists.
+
+**Surfaced in:** Story 11.8 code review (2026-04-22)
 
 ---
 

@@ -237,12 +237,12 @@ def test_golden_set_accuracy() -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(
-    strict=False,
+@pytest.mark.skip(
     reason=(
-        "Sonnet is not a production candidate (per Story 11.3 retrospective + "
-        "Story 11.3a close). Haiku is the shipping model; this test remains as "
-        "a dormant comparison only — xfail indefinitely."
+        "Sonnet is not a production candidate — Haiku consistently outperforms "
+        "it on this fixture and is the shipping model. Disabled to avoid "
+        "burning tokens on a comparison we don't act on. Re-enable if a model "
+        "swap is on the table."
     ),
 )
 def test_golden_set_accuracy_sonnet(monkeypatch) -> None:
