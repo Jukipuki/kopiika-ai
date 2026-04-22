@@ -1,0 +1,70 @@
+name: CI Backend Eval (RAG)
+
+# Story 9.1: RAG evaluation harness.
+# Runs the full retrieval + LLM-as-judge harness against a seeded pgvector
+# corpus. Not on every PR — manually triggered and on a nightly schedule
+# (cron disabled by default; uncomment when team budgets for recurring spend).
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 5 * * *"  # 05:00 UTC nightly — uncomment to enable
+
+jobs:
+  rag-eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kopiika
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # The app's sync URL is derived from DATABASE_URL via Settings.SYNC_DATABASE_URL,
+      # which replaces `postgresql+asyncpg://` → `postgresql+psycopg2://`. Use asyncpg
+      # here to match local dev and keep the derivation path exercised. Setting
+      # SYNC_DATABASE_URL directly has no effect — it's a computed @property.
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/kopiika
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Apply Alembic migrations
+        run: uv run alembic upgrade head
+
+      - name: Seed RAG corpus
+        run: uv run python -m app.rag.seed
+
+      - name: Run RAG eval harness
+        run: uv run pytest tests/eval/rag/ -v -m eval -s
+
+      - name: Upload run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-run-reports
+          path: backend/tests/fixtures/rag_eval/runs/*.json
+          retention-days: 90

@@ -35,6 +35,7 @@ addopts = "-m 'not integration'"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: hits live external services (LLMs, APIs); excluded from default sweep, run with '-m integration'",
+    "eval: evaluation harnesses (RAG eval, insight-quality eval); opt-in via '-m eval', combined with integration",
 ]
 
 [dependency-groups]

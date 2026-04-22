@@ -52,3 +52,6 @@ htmlcov/
 
 # Categorization golden-set evaluation harness — local run reports only
 backend/tests/fixtures/categorization_golden_set/runs/*.json
+
+# RAG evaluation harness — local run reports only (Story 9.1)
+backend/tests/fixtures/rag_eval/runs/*.json

@@ -181,8 +181,8 @@ development_status:
   # Epic 9: AI Infra Readiness (Bedrock Provider, RAG Eval Harness, Embedding Decision)
   # Story 9.5 split into 9.5a/b/c (refactor → Bedrock add → cross-provider regression suite)
   # — see _bmad-output/planning-artifacts/epics.md and SP run 2026-04-19.
-  epic-9: backlog
-  9-1-rag-evaluation-harness: backlog
+  epic-9: in-progress
+  9-1-rag-evaluation-harness: done
   9-2-baseline-current-embeddings: backlog
   9-3-embedding-model-comparison-spike: backlog
   9-4-agentcore-bedrock-region-availability-spike: backlog
