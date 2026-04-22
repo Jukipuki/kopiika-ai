@@ -78,9 +78,11 @@ class AIDetectedParser(AbstractParser):
     """Applies a detected mapping to parse a CSV statement.
 
     The mapping is produced by `app.services.schema_detection.resolve_bank_format`
-    and contains the canonical keys from tech spec §2.4. The delimiter on the
-    mapping overrides the caller-supplied delimiter — the LLM saw the raw file
-    and is authoritative.
+    and contains the canonical column-mapping keys from tech spec §2.4. The
+    delimiter is NOT taken from the mapping — the LLM never sees raw file bytes
+    (the prompt shows cells already parsed and re-joined with " | "), so its
+    delimiter guess is unreliable. The caller-supplied delimiter from the
+    format detector is the authoritative source.
     """
 
     def __init__(self, mapping: dict):
@@ -88,9 +90,6 @@ class AIDetectedParser(AbstractParser):
 
     def parse(self, file_bytes: bytes, encoding: str, delimiter: str) -> ParseResult:
         mapping = self._mapping
-        mapping_delimiter = mapping.get("delimiter") or delimiter
-        if mapping_delimiter == "\\t":
-            mapping_delimiter = "\t"
 
         try:
             text = file_bytes.decode(encoding)
@@ -103,7 +102,7 @@ class AIDetectedParser(AbstractParser):
         if text.startswith("\ufeff"):
             text = text[1:]
 
-        reader = csv.reader(io.StringIO(text), delimiter=mapping_delimiter)
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
         try:
             header = next(reader)
         except StopIteration:

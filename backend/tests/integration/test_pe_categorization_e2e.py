@@ -41,7 +41,6 @@ pytestmark = pytest.mark.integration
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "pe_statement_extended_sample.csv"
 _MAPPING = {
-    "delimiter": ";",
     "date_column": "Дата операції",
     "date_format": "%d.%m.%Y",
     "amount_column": "Сума",

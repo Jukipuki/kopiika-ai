@@ -198,15 +198,14 @@ def _select_parser_and_parse(
                 pass
             else:
                 ai_parser = AIDetectedParser(mapping=resolved.mapping)
-                # Let the mapping's delimiter override (it came from the LLM
-                # reading the actual file), but fall back to the detected one.
-                mapping_delim = resolved.mapping.get("delimiter")
-                if mapping_delim == "\\t":
-                    mapping_delim = "\t"
+                # Delimiter comes from the format detector, which sniffed the
+                # raw bytes. The LLM only sees pre-parsed cells serialized with
+                # " | " in the prompt, so anything it claimed about delimiters
+                # was a guess based on our own serialization — don't trust it.
                 effective = FormatDetectionResult(
                     bank_format=format_result.bank_format,
                     encoding=format_result.encoding,
-                    delimiter=mapping_delim or format_result.delimiter,
+                    delimiter=format_result.delimiter,
                     column_count=len(header),
                     confidence_score=format_result.confidence_score,
                     header_row=header,

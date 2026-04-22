@@ -13,7 +13,6 @@ _PE_ROWS = (
 )
 
 _MAPPING = {
-    "delimiter": ";",
     "date_column": "Дата",
     "date_format": "%Y-%m-%d",
     "amount_column": "Сума",

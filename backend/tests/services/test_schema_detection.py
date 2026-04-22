@@ -52,7 +52,6 @@ _VALID_LLM_PAYLOAD = {
     "currency_column": "Валюта",
     "mcc_column": None,
     "balance_column": "Залишок",
-    "delimiter": ";",
     "encoding_hint": "windows-1251",
     "confidence": 0.92,
     "bank_hint": "pe_statement",

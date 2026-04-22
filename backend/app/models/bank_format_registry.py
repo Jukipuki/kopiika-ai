@@ -36,7 +36,7 @@ class BankFormatRegistry(SQLModel, table=True):
         default=None, sa_column=Column(_JSON_TYPE, nullable=True)
     )
     detection_confidence: Optional[float] = Field(default=None)
-    detected_bank_hint: Optional[str] = Field(default=None, max_length=64)
+    detected_bank_hint: Optional[str] = Field(default=None, max_length=255)
     sample_header: str
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)

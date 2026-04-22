@@ -108,7 +108,7 @@ CREATE TABLE bank_format_registry (
   detected_mapping JSONB NOT NULL,              -- LLM-produced column mapping
   override_mapping JSONB,                       -- operator-edited override, takes precedence
   detection_confidence REAL,                    -- 0.0–1.0 from LLM
-  detected_bank_hint VARCHAR(64),               -- LLM best guess, display only
+  detected_bank_hint VARCHAR(255),              -- LLM best guess, display only (widened from 64 in 2026-04-22)
   sample_header TEXT NOT NULL,                  -- raw header for operator inspection
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

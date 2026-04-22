@@ -55,7 +55,6 @@ _REQUIRED_MAPPING_KEYS: tuple[str, ...] = (
     "currency_column",
     "mcc_column",
     "balance_column",
-    "delimiter",
     "encoding_hint",
 )
 
@@ -139,7 +138,6 @@ Return ONLY a JSON object matching this shape:
   "currency_column": "<header>" | null,
   "mcc_column": "<header>" | null,
   "balance_column": "<header>" | null,
-  "delimiter": ";" | "," | "\\t",
   "encoding_hint": "<encoding>",
   "counterparty_name_column": "<header>" | null,
   "counterparty_tax_id_column": "<header>" | null,
@@ -267,6 +265,11 @@ def detect_schema(
         ) from exc
 
     bank_hint = payload.get("bank_hint")
+    # Defensive truncation: the column is VARCHAR(255) (widened from 64 on
+    # 2026-04-22). LLM prompts evolve; cap the free-text hint so any future
+    # prompt drift can't surface as a StringDataRightTruncation at write time.
+    if isinstance(bank_hint, str) and len(bank_hint) > 255:
+        bank_hint = bank_hint[:255]
     # Assemble the canonical mapping: required keys first, then any
     # counterparty keys the LLM populated. Drop `confidence` and `bank_hint`
     # from the persisted mapping itself — those live on their own columns.
