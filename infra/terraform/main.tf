@@ -130,4 +130,7 @@ module "ecs" {
   secrets_arns          = module.secrets.secret_arns
   aws_region            = var.aws_region
   github_repo           = var.github_repo
+
+  enable_observability_alarms = var.enable_observability_alarms
+  observability_sns_topic_arn = var.observability_sns_topic_arn
 }

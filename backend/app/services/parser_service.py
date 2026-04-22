@@ -284,9 +284,16 @@ def _parse_and_build_records(
     descriptions = [txn.description or "" for txn in validation.accepted]
     mojibake_flag, mojibake_rate = detect_mojibake(descriptions)
     if mojibake_flag:
+        # Detection-time event — fires the moment mojibake is spotted so an
+        # operator can open the offending upload. An aggregate summary event
+        # with the same name is emitted from processing_tasks.py at upload
+        # completion; the two are deliberately kept distinct (Story 11.9).
         logger.warning(
-            "encoding.mojibake_detected",
+            "parser.mojibake_detected",
             extra={
+                "user_id": str(user_id),
+                "upload_id": str(upload_id),
+                "encoding": effective_format.encoding,
                 "replacement_char_rate": mojibake_rate,
                 "transaction_count": len(validation.accepted),
             },
@@ -327,6 +334,18 @@ def _parse_and_build_records(
         )
         for fr in validation.rejected_rows
     ]
+    # Story 11.9: one structured event per rejected row so operators can chart
+    # validation rejection rate by reason in CloudWatch Insights.
+    for fr in validation.rejected_rows:
+        logger.info(
+            "parser.validation_rejected",
+            extra={
+                "user_id": str(user_id),
+                "upload_id": str(upload_id),
+                "row_number": fr.row_number,
+                "reason": fr.reason,
+            },
+        )
 
     parser_flagged = [
         FlaggedImportRow(

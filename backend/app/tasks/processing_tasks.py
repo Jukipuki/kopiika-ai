@@ -327,12 +327,13 @@ def process_upload(self, job_id: str) -> dict:
                             # (uncategorized, <by-sign>, confidence=0.0). Chosen over
                             # raising so one bad LLM pair doesn't abort the whole upload.
                             logger.warning(
-                                "kind_category_mismatch_fallback",
+                                "categorization.kind_mismatch",
                                 extra={
                                     "job_id": job_id,
-                                    "transaction_id": str(txn.id),
-                                    "kind": kind,
-                                    "category": category,
+                                    "user_id": str(job.user_id),
+                                    "tx_id": str(txn.id),
+                                    "returned_kind": kind,
+                                    "returned_category": category,
                                 },
                             )
                             category = "uncategorized"
@@ -575,6 +576,8 @@ def process_upload(self, job_id: str) -> dict:
                     "categorization_ms": categorization_ms,
                     "education_ms": education_ms,
                     "total_ms": total_ms,
+                    "total_rows": result.total_rows,
+                    "categorization_count": categorization_count,
                 },
             )
 
@@ -797,12 +800,13 @@ def resume_upload(self, job_id: str) -> dict:
                         mismatch = not validate_kind_category(kind, category)
                         if mismatch:
                             logger.warning(
-                                "kind_category_mismatch_fallback",
+                                "categorization.kind_mismatch",
                                 extra={
                                     "job_id": job_id,
-                                    "transaction_id": str(txn.id),
-                                    "kind": kind,
-                                    "category": category,
+                                    "user_id": str(job.user_id),
+                                    "tx_id": str(txn.id),
+                                    "returned_kind": kind,
+                                    "returned_category": category,
                                 },
                             )
                             category = "uncategorized"
@@ -954,6 +958,8 @@ def resume_upload(self, job_id: str) -> dict:
                     "categorization_ms": categorization_ms,
                     "education_ms": education_ms,
                     "total_ms": total_ms,
+                    "total_rows": prior_result.get("total_rows", 0),
+                    "categorization_count": prior_result.get("categorization_count", 0),
                 },
             )
 

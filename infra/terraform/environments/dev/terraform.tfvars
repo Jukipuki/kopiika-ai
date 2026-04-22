@@ -27,3 +27,7 @@ cognito_refresh_token_validity = 30
 
 # SES
 ses_sender_email = ""
+
+# Observability (Story 11.9) — dev stays quiet; opt in per-session with -var.
+enable_observability_alarms = false
+observability_sns_topic_arn = ""

@@ -136,3 +136,16 @@ variable "ses_sender_email" {
   type        = string
   default     = ""
 }
+
+# Observability (Story 11.9)
+variable "enable_observability_alarms" {
+  description = "Create CloudWatch alarms for categorization/parser signals. Defaults to false (set true in prod/staging tfvars)."
+  type        = bool
+  default     = false
+}
+
+variable "observability_sns_topic_arn" {
+  description = "SNS topic ARN for observability alarm actions. Empty = no alarm action wired."
+  type        = string
+  default     = ""
+}

@@ -237,7 +237,7 @@ development_status:
   11-6-encoding-detection-with-mojibake-flagging: done
   11-7-ai-assisted-schema-detection-bank-format-registry: done
   11-8-low-confidence-categorization-review-queue: done
-  11-9-observability-signals-for-ingestion-categorization: backlog
+  11-9-observability-signals-for-ingestion-categorization: done
   # Story 11.10 (2026-04-21): added from TD-049 — counterparty-aware categorization
   # for PE account statements. Depends on Story 11.7 (schema detection persists
   # counterparty columns, AIDetectedParser stashes values in raw_data). Scope

@@ -1129,6 +1129,43 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
+### TD-050 — Categorization confidence median alarm is a proxy, not a true median [MEDIUM]
+
+**Where:** [infra/terraform/modules/ecs/observability.tf](../infra/terraform/modules/ecs/observability.tf) — `aws_cloudwatch_metric_alarm.categorization_low_confidence_median`.
+
+**Problem:** Story 11.9 ships a rate-based alarm — `(queue + soft_flag) / total > 0.5 over 24h` — as a proxy for "median categorization confidence < 0.85". It catches the same drift signal but trips only when at least 50% of categorizations fall below the auto-apply threshold; an actual median-below-0.85 could already be happening at 49% without firing.
+
+**Ideal shape:** Emit categorization confidence as a numeric metric using CloudWatch Embedded Metric Format (EMF). The worker's `JsonFormatter` would publish a `categorization.confidence_score` log with an `_aws.CloudWatchMetrics` block; CloudWatch ingests the numeric `confidence_score` into a real metric stream supporting `p50` / `p95` statistics. Alarm then sits directly on `p50(ConfidenceScore) < 0.85`.
+
+**Why deferred:** EMF integration is a logging-infra change (extend `backend/app/core/logging.py` to conditionally format log records as EMF JSON) and out of scope for Epic 11. The count-ratio proxy catches the same sustained-drift signal and is good enough for the current signal/noise budget.
+
+**Fix shape:**
+1. Extend `JsonFormatter` to recognize an `emf` key in `extra={}` and emit an `_aws.CloudWatchMetrics` block in the JSON payload.
+2. Emit `categorization.confidence_score` per categorization decision in `app/agents/categorization/node.py` with numeric `confidence_score` dimension.
+3. Add a new metric filter-free alarm in Terraform on `p50(ConfidenceScore) < 0.85` over 24h.
+4. Retire the proxy alarm (`categorization_low_confidence_median`) once the EMF-backed alarm has been quiet for 30 days.
+
+**Surfaced in:** Story 11.9 implementation (2026-04-22).
+
+---
+
+### TD-051 — Live CloudWatch spot-checks for Story 11.9 observability wiring [LOW]
+
+**Where:** [infra/terraform/modules/ecs/observability.tf](../infra/terraform/modules/ecs/observability.tf), [docs/operator-runbook.md §Ingestion & Categorization Observability](operator-runbook.md).
+
+**Problem:** Story 11.9 AC #7 required a live spot-check of a real CloudWatch log event against the metric-filter patterns before landing Terraform, and AC #14 required each Insights query to be executed once against the dev worker log group. Neither gate could be satisfied at authoring time because dev had no recent worker traffic. Both were deferred to post-merge verification.
+
+**Why deferred:** Dev traffic is sporadic. The review-stage code audit (2026-04-22) caught two follow-on field-name bugs (`$.levelname` → `$.level` and `pipeline_completed` missing `categorization_count` / `total_rows`); both were fixed in-review. A live trace would have caught them earlier.
+
+**Fix shape:**
+1. After the next dev upload produces a fresh log burst, open one `categorization.confidence_tier` event in the CloudWatch Logs console and confirm the JSON top-level keys exactly match the metric-filter patterns (`level`, `message`, `tier`, `source`, etc.).
+2. Execute each of the five Insights queries in `docs/operator-runbook.md` §Ingestion & Categorization Observability against the dev worker log group; attach the query-run screenshots to a follow-up PR.
+3. If any query returns zero rows against non-empty traffic, fix the query (likely an escaping or field-name drift) and land the fix alongside the screenshots.
+
+**Surfaced in:** Story 11.9 code review (2026-04-22).
+
+---
+
 ## Resolved
 
 ### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]

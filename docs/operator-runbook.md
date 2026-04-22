@@ -535,3 +535,125 @@ lock sweep.
   post-rotation verification pass completes. KMS retains old versions for
   decrypt; deleting too early breaks old ciphertexts that weren't yet
   re-encrypted (shouldn't happen after a clean run, but defense in depth).
+
+## Ingestion & Categorization Observability (Story 11.9)
+
+Five structured log events drive the ingestion/categorization dashboards:
+
+| Event | Source | Level | Purpose |
+|-------|--------|-------|---------|
+| `categorization.confidence_tier` | `app/agents/categorization/node.py` | INFO | Tier decision (`soft-flag` / `queue`) per txn |
+| `categorization.review_queue_insert` | `app/tasks/processing_tasks.py` | INFO | Post-commit row into the review queue |
+| `categorization.kind_mismatch` | `app/tasks/processing_tasks.py` | WARNING | LLM returned an invalid (kind, category) pair; fallback applied |
+| `parser.schema_detection` | `app/services/schema_detection.py` | INFO | Schema resolution outcome (cache / llm / fallback_generic) |
+| `parser.validation_rejected` | `app/services/parser_service.py` | INFO | Single row failed post-parse validation |
+| `parser.mojibake_detected` | `app/services/parser_service.py` + task aggregate in `processing_tasks.py` | WARNING | Replacement-char density over threshold |
+
+All events land in the worker log group `/ecs/kopiika-<env>-worker`. The
+following "panels" are Insights queries — paste into the CloudWatch console
+after selecting the worker log group.
+
+> **Note on the Grafana reference in epic docs.** Epic 11's text mentions a
+> "Grafana dashboard". No Grafana instance is deployed in this infrastructure
+> (see `infra/terraform/modules/` — no grafana/prometheus module). The
+> canonical substrate is CloudWatch Insights + metric-filter alarms. If
+> Grafana is adopted later, the queries below port 1-for-1.
+
+### Panel 1 — Categorization confidence distribution (24h)
+
+```
+fields @timestamp, tier, tx_id
+| filter message = "categorization.confidence_tier"
+| stats count(*) as n by tier
+| sort n desc
+```
+
+Read: the paired alarm fires when `(queue + soft-flag) / total > 50%` over
+24h (see Alarms section below). If you see the distribution drifting toward
+that threshold, investigate LLM drift early — re-run the golden-set harness
+(see Panel 2).
+
+### Panel 2 — Golden-set accuracy trend
+
+There is no CloudWatch query for this. The golden-set harness runs in CI,
+not in the worker; each run writes a JSON artifact under
+`backend/tests/fixtures/categorization_golden_set/runs/<timestamp>.json`.
+Inspect the last 10 runs' artifacts in GitHub Actions (or locally via
+`ls backend/tests/fixtures/categorization_golden_set/runs/ | tail -10`).
+The harness source is [test_golden_set.py](../backend/tests/agents/categorization/test_golden_set.py).
+
+### Panel 3 — Unknown-format detection rate + cache hit rate
+
+```
+fields @timestamp, source, detection_confidence, latency_ms
+| filter message = "parser.schema_detection"
+| stats count(*) as n by source
+| sort n desc
+```
+
+`source` values: `cached_detected`, `cached_override`, `llm_detected`,
+`fallback_generic`. Falling `cache*` share with rising `llm_detected` means
+new formats are being seen and cached; rising `fallback_generic` means
+detection is failing and needs investigation.
+
+### Panel 4 — Validation rejection rate by reason
+
+```
+fields @timestamp, reason, row_number, upload_id
+| filter message = "parser.validation_rejected"
+| stats count(*) as rejected by reason
+| sort rejected desc
+```
+
+### Panel 5 — Uploads with mojibake detected (last 7d)
+
+```
+fields @timestamp, upload_id, encoding, replacement_char_rate, transaction_count
+| filter message = "parser.mojibake_detected"
+| stats count(*) as n by upload_id, encoding
+| sort n desc
+```
+
+A true per-upload rate would require joining against `pipeline_completed`;
+the list form above is the pragmatic version.
+
+### Operational playbooks
+
+**(a) Reading the confidence distribution panel.**
+The three tier thresholds are defined in [`backend/app/core/config.py`](../backend/app/core/config.py)
+as `CATEGORIZATION_AUTO_APPLY_THRESHOLD` and `CATEGORIZATION_SOFT_FLAG_THRESHOLD`.
+Always read the deployed config for current values — thresholds may be
+tuned without a runbook update. Rough intuition as of Story 11.8:
+≥0.85 → auto-apply (no event), 0.60–0.84 → soft-flag event, <0.60 → queue event.
+
+**(b) Inspecting `bank_format_registry` and applying overrides.**
+See the existing section [Overriding a detected bank format mapping (Story 11.7)](#overriding-a-detected-bank-format-mapping-story-117)
+for the `psql` workflow. Don't duplicate the procedure here.
+
+**(c) Triaging a high validation-rejection alarm.**
+1. Confirm the alarm firing window and count in CloudWatch Alarms.
+2. Run Panel 4 scoped to the alarm window (add `| filter @timestamp > X`).
+3. If one `reason` dominates, join to `FlaggedImportRow` in Postgres:
+   ```sql
+   select row_number, reason, raw_data
+   from flagged_import_row
+   where upload_id = '<id>'
+   order by row_number
+   limit 50;
+   ```
+4. If reasons are widely distributed across uploads, suspect a pipeline
+   regression — bisect recent deploys / rollbacks.
+
+### Alarms
+
+Two CloudWatch alarms are provisioned by `infra/terraform/modules/ecs/observability.tf`:
+
+- `{project}-{env}-categorization-low-confidence-median` — fires when
+  (queue+soft-flag) / total > 0.5 over 24h. Proxy for median confidence
+  < 0.85; see TD-050 for the EMF-based follow-on.
+- `{project}-{env}-validation-rejection-rate-high` — fires when
+  rejected/total > 0.15 over 24h.
+
+Both gated on `var.enable_observability_alarms` (false in dev, true in
+staging/prod). Neither has an SNS action wired by default; set
+`var.observability_sns_topic_arn` when the notification pipeline is ready.

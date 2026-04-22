@@ -51,3 +51,16 @@ variable "github_repo" {
   type        = string
   default     = ""
 }
+
+# Story 11.9 — observability toggles.
+variable "enable_observability_alarms" {
+  description = "Create CloudWatch alarms for categorization/parser signals. Disabled in dev by default to avoid noise on a single-developer workload."
+  type        = bool
+  default     = false
+}
+
+variable "observability_sns_topic_arn" {
+  description = "SNS topic ARN for observability alarm actions. Empty string = no action (alarms visible in AWS console only)."
+  type        = string
+  default     = ""
+}
