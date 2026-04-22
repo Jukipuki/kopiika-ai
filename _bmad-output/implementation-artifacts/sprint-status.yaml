@@ -133,7 +133,7 @@ development_status:
   4-7-month-over-month-spending-comparison: done
   4-8-category-spending-breakdown: done
   4-9-savings-ratio-wired-to-transaction-kind: done
-  4-10-profile-aggregates-respect-transaction-kind: backlog
+  4-10-profile-aggregates-respect-transaction-kind: ready-for-dev
   epic-4-retrospective: optional
 
   # Epic 5: Data Privacy, Trust & Consent
@@ -254,5 +254,27 @@ development_status:
   # Cross-epic: code lives in backend/app/agents/education/ (Epic 3 surface)
   # but the fix is a direct consumer of Story 11.2's transaction_kind, so
   # filed under Epic 11.
-  11-11-exclude-transfers-from-insight-generation: ready-for-dev
+  11-11-exclude-transfers-from-insight-generation: done
   epic-11-retrospective: optional
+
+  # Epic 12: Testing & Quality Harnesses
+  # Cross-cutting quality harnesses for aspects of product quality not owned by
+  # a single feature epic. Phased rollout:
+  #   Phase 1 (now): Insight-output quality harness — motivated by Story 11.11.
+  #     12.1 tier-1 deterministic golden fixtures (ready-for-dev, depends on 11.11)
+  #     12.2 tier-2 LLM-as-judge scoring (backlog, advisory until 12.3)
+  #     12.3 tier-3 human-label judge calibration (backlog)
+  #   Phase 2 (after Epics 9 + 10 complete): revisit scope. Likely additions:
+  #     end-to-end pipeline regression, cross-agent composition tests, adversarial
+  #     fixture expansion. Exact stories TBD at that checkpoint.
+  # SCOPE BOUNDARY — this epic does NOT own:
+  #   - Categorization golden-set (Epic 11 Story 11.1)
+  #   - RAG retrieval eval (Epic 9 Story 9.3)
+  #   - Chat jailbreak red-team corpus (Epic 10)
+  #   - Per-agent unit tests (feature epics)
+  epic-12: in-progress
+  12-1-insight-quality-eval-harness-tier-1: ready-for-dev
+  12-2-insight-quality-llm-as-judge-scoring: backlog
+  12-3-insight-quality-judge-calibration: backlog
+  epic-12-phase-2-revisit: blocked-on-epic-9-and-10
+  epic-12-retrospective: optional

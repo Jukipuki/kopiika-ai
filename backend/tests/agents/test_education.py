@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.agents.education.node import (
+    MOSTLY_TRANSFERS_THRESHOLD,
+    _build_mostly_transfers_card,
     _build_spending_summary,
+    _compute_kind_totals,
     _parse_insight_cards,
     education_node,
 )
@@ -584,3 +587,301 @@ def test_education_node_primary_fails_uses_fallback():
         result = education_node(state)
 
     assert len(result["insight_cards"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Story 11.11 — transaction_kind filtering and mostly-transfers card
+# ---------------------------------------------------------------------------
+
+
+_MIXED_IDS = [str(uuid.uuid4()) for _ in range(5)]
+
+
+def _make_mixed_kind_transactions() -> list[dict]:
+    return [
+        {"id": _MIXED_IDS[0], "mcc": "5411", "description": "ATB", "amount": -450000, "date": "2026-03-15"},
+        {"id": _MIXED_IDS[1], "mcc": "5812", "description": "Cafe", "amount": -120000, "date": "2026-03-16"},
+        {"id": _MIXED_IDS[2], "mcc": "0000", "description": "Salary", "amount": 2500000, "date": "2026-03-17"},
+        {"id": _MIXED_IDS[3], "mcc": "0000", "description": "Savings deposit", "amount": -300000, "date": "2026-03-18"},
+        {"id": _MIXED_IDS[4], "mcc": "0000", "description": "Transfer to own card", "amount": -800000, "date": "2026-03-19"},
+    ]
+
+
+def _make_mixed_kind_categorized() -> list[dict]:
+    return [
+        {"transaction_id": _MIXED_IDS[0], "category": "groceries", "transaction_kind": "spending", "confidence_score": 1.0, "flagged": False},
+        {"transaction_id": _MIXED_IDS[1], "category": "restaurants", "transaction_kind": "spending", "confidence_score": 0.9, "flagged": False},
+        {"transaction_id": _MIXED_IDS[2], "category": "other", "transaction_kind": "income", "confidence_score": 0.95, "flagged": False},
+        {"transaction_id": _MIXED_IDS[3], "category": "savings", "transaction_kind": "savings", "confidence_score": 0.95, "flagged": False},
+        {"transaction_id": _MIXED_IDS[4], "category": "transfers", "transaction_kind": "transfer", "confidence_score": 0.98, "flagged": False},
+    ]
+
+
+def test_build_spending_summary_filters_by_kind():
+    summary = _build_spending_summary(_make_mixed_kind_transactions(), _make_mixed_kind_categorized())
+    # Only spending rows are in the top-categories totals.
+    assert "groceries" in summary
+    assert "restaurants" in summary
+    # Total spending == 4500 + 1200 = 5700 UAH; excluded kinds must not inflate it.
+    assert "Total spending: ₴5,700.00" in summary
+    # Excluded footer in deterministic order income → savings → transfer.
+    assert "(excluded from analysis)" in summary
+    lines = summary.split("\n")
+    footer_idx = lines.index("(excluded from analysis)")
+    footer = lines[footer_idx + 1:]
+    kinds_in_order = [ln.split(":")[0].lstrip("- ") for ln in footer]
+    assert kinds_in_order == ["income", "savings", "transfer"]
+
+
+def test_build_spending_summary_all_spending_omits_footer():
+    summary = _build_spending_summary(_make_transactions(), _make_categorized_transactions())
+    assert "(excluded from analysis)" not in summary
+
+
+def test_build_spending_summary_missing_kind_defaults_to_spending():
+    # Rows without transaction_kind behave as pre-11.2 spending.
+    txns = [{"id": _MIXED_IDS[0], "amount": -100000}]
+    cats = [{"transaction_id": _MIXED_IDS[0], "category": "groceries"}]
+    summary = _build_spending_summary(txns, cats)
+    assert "groceries" in summary
+    assert "Total spending: ₴1,000.00" in summary
+    assert "(excluded from analysis)" not in summary
+
+
+def test_build_spending_summary_reads_kind_not_sign():
+    # Negative-amount row with kind=income is excluded from spending totals.
+    txns = [
+        {"id": _MIXED_IDS[0], "amount": -100000},
+        {"id": _MIXED_IDS[1], "amount": -200000},
+    ]
+    cats = [
+        {"transaction_id": _MIXED_IDS[0], "category": "groceries", "transaction_kind": "spending"},
+        {"transaction_id": _MIXED_IDS[1], "category": "other", "transaction_kind": "income"},
+    ]
+    summary = _build_spending_summary(txns, cats)
+    assert "Total spending: ₴1,000.00" in summary
+    assert "- income: ₴2,000.00" in summary
+
+
+def test_build_spending_summary_empty_does_not_crash():
+    summary = _build_spending_summary([], [])
+    assert "Total spending: ₴0.00" in summary
+    assert "(excluded from analysis)" not in summary
+
+
+# --- _build_mostly_transfers_card ------------------------------------------
+
+
+def test_mostly_transfers_card_above_threshold():
+    card = _build_mostly_transfers_card({"spending": 29, "transfer": 71}, locale="en")
+    assert card is not None
+    assert card["card_type"] == "structuralCard"
+    assert card["category"] == "transfers"
+    assert card["severity"] == "info"
+    assert "71%" in card["key_metric"]
+
+
+def test_mostly_transfers_card_exactly_at_threshold_returns_none():
+    card = _build_mostly_transfers_card({"spending": 30, "transfer": 70}, locale="en")
+    assert card is None
+
+
+def test_mostly_transfers_card_below_threshold_returns_none():
+    card = _build_mostly_transfers_card({"spending": 50, "transfer": 50}, locale="en")
+    assert card is None
+
+
+def test_mostly_transfers_card_all_transfer():
+    card = _build_mostly_transfers_card({"transfer": 100}, locale="en")
+    assert card is not None
+    assert "100%" in card["key_metric"]
+
+
+def test_mostly_transfers_card_empty_totals():
+    assert _build_mostly_transfers_card({}, locale="en") is None
+    assert _build_mostly_transfers_card({"spending": 0, "transfer": 0}, locale="en") is None
+
+
+def test_mostly_transfers_card_locale_copy():
+    en = _build_mostly_transfers_card({"spending": 10, "transfer": 90}, locale="en")
+    uk = _build_mostly_transfers_card({"spending": 10, "transfer": 90}, locale="uk")
+    assert "mostly transfers" in en["headline"]
+    assert "переважно перекази" in uk["headline"]
+
+
+def test_mostly_transfers_threshold_constant():
+    assert MOSTLY_TRANSFERS_THRESHOLD == 0.70
+
+
+# --- _compute_kind_totals ---------------------------------------------------
+
+
+def test_compute_kind_totals_groups_by_kind():
+    spending, kinds = _compute_kind_totals(
+        _make_mixed_kind_transactions(), _make_mixed_kind_categorized()
+    )
+    assert spending == {"groceries": 450000, "restaurants": 120000}
+    assert kinds["spending"] == 570000
+    assert kinds["income"] == 2500000
+    assert kinds["savings"] == 300000
+    assert kinds["transfer"] == 800000
+
+
+# --- Integration: mostly-transfers regression ------------------------------
+
+
+def _make_regression_fixture(n_transfers: int, n_spending: int):
+    txn_ids = [str(uuid.uuid4()) for _ in range(n_transfers + n_spending)]
+    transactions = []
+    categorized = []
+    for i in range(n_transfers):
+        transactions.append({"id": txn_ids[i], "amount": -100000, "mcc": "0000", "description": "transfer"})
+        categorized.append({"transaction_id": txn_ids[i], "category": "transfers", "transaction_kind": "transfer", "confidence_score": 0.98, "flagged": False})
+    for j in range(n_spending):
+        idx = n_transfers + j
+        transactions.append({"id": txn_ids[idx], "amount": -50000, "mcc": "5411", "description": "spending"})
+        categorized.append({"transaction_id": txn_ids[idx], "category": "groceries", "transaction_kind": "spending", "confidence_score": 0.95, "flagged": False})
+    return transactions, categorized
+
+
+def test_education_node_mostly_transfers_emits_one_structural_card_and_no_llm_cards():
+    """97 transfers + 3 spending: 3 spending rows exist, so the LLM IS invoked on the
+    spending-only summary. We assert the structural card is present and the LLM's
+    (empty) output is honoured."""
+    txns, cats = _make_regression_fixture(n_transfers=97, n_spending=3)
+    state = _make_state(transactions=txns, categorized_transactions=cats, locale="uk")
+
+    mock_response = MagicMock()
+    mock_response.content = json.dumps([])  # LLM legitimately has nothing to say
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        result = education_node(state)
+
+    cards = result["insight_cards"]
+    assert len(cards) == 1
+    assert cards[0]["card_type"] == "structuralCard"
+    assert cards[0]["category"] == "transfers"
+    assert cards[0]["severity"] == "info"
+    assert "%" in cards[0]["key_metric"]
+
+
+def test_education_node_all_transfers_short_circuits_llm():
+    """100% transfers, zero spending: LLM and RAG must NOT be invoked.
+
+    Asserts via `assert_not_called()` directly — earlier this test relied on
+    AssertionError raised from patched dependencies, but the node's broad
+    `except Exception` would catch it and the except-branch returns the same
+    `subscription_cards + structural_cards` shape as the short-circuit, so the
+    test passed whether the short-circuit worked or not.
+    """
+    txns, cats = _make_regression_fixture(n_transfers=50, n_spending=0)
+    state = _make_state(transactions=txns, categorized_transactions=cats, locale="uk")
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs") as mock_retrieve,
+        patch("app.agents.education.node.get_llm_client") as mock_llm,
+        patch("app.agents.education.node.get_fallback_llm_client") as mock_fallback,
+        patch("app.agents.education.node.logger") as mock_logger,
+    ):
+        result = education_node(state)
+
+    mock_retrieve.assert_not_called()
+    mock_llm.assert_not_called()
+    mock_fallback.assert_not_called()
+
+    info_calls = mock_logger.info.call_args_list
+    assert any(
+        c.args and c.args[0] == "education_mostly_transfers_short_circuit"
+        for c in info_calls
+    ), "expected short-circuit log event 'education_mostly_transfers_short_circuit'"
+
+    cards = result["insight_cards"]
+    assert len(cards) == 1
+    assert cards[0]["card_type"] == "structuralCard"
+    assert cards[0]["category"] == "transfers"
+    assert result["failed_node"] is None  # short-circuit, not error path
+
+
+def test_education_node_moderate_transfers_no_structural_card():
+    """40% transfers: no structural card, LLM cards flow through."""
+    # 4 transfers × 100000 = 400000; 6 spending × 100000 = 600000 → 40% transfers.
+    txn_ids = [str(uuid.uuid4()) for _ in range(10)]
+    transactions = []
+    categorized = []
+    for i in range(4):
+        transactions.append({"id": txn_ids[i], "amount": -100000})
+        categorized.append({"transaction_id": txn_ids[i], "category": "transfers", "transaction_kind": "transfer"})
+    for j in range(6):
+        idx = 4 + j
+        transactions.append({"id": txn_ids[idx], "amount": -100000})
+        categorized.append({"transaction_id": txn_ids[idx], "category": "groceries", "transaction_kind": "spending"})
+
+    state = _make_state(transactions=transactions, categorized_transactions=categorized, locale="uk")
+    mock_response = MagicMock()
+    mock_response.content = json.dumps(MOCK_INSIGHT_CARDS)
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        result = education_node(state)
+
+    cards = result["insight_cards"]
+    assert all(c.get("card_type") != "structuralCard" for c in cards)
+    assert all(c.get("category") != "transfers" for c in cards)
+    assert len(cards) == len(MOCK_INSIGHT_CARDS)
+
+
+def test_education_node_no_llm_card_mentions_transfer_keyword():
+    """80% transfers: structural card present; LLM cards don't mention transfers."""
+    txns, cats = _make_regression_fixture(n_transfers=8, n_spending=2)
+    state = _make_state(transactions=txns, categorized_transactions=cats, locale="en")
+
+    clean_card = {
+        "headline": "Groceries are up",
+        "key_metric": "₴1,000",
+        "why_it_matters": "Your grocery costs increased.",
+        "deep_dive": "Consider meal planning to reduce food spend.",
+        "severity": "medium",
+        "category": "groceries",
+    }
+    mock_response = MagicMock()
+    mock_response.content = json.dumps([clean_card])
+
+    with (
+        patch("app.agents.education.node.retrieve_relevant_docs", return_value=MOCK_RAG_DOCS),
+        patch("app.agents.education.node.get_llm_client") as mock_llm_fn,
+    ):
+        mock_llm_fn.return_value.invoke.return_value = mock_response
+        result = education_node(state)
+
+    cards = result["insight_cards"]
+    structural = [c for c in cards if c.get("card_type") == "structuralCard"]
+    non_structural = [c for c in cards if c.get("card_type") != "structuralCard"]
+    assert len(structural) == 1
+    for c in non_structural:
+        blob = " ".join(
+            str(c.get(k, "")) for k in ("headline", "key_metric", "why_it_matters", "deep_dive")
+        ).lower()
+        assert "transfer" not in blob
+        assert "переказ" not in blob
+
+
+# --- Prompt: no-transfer-volume rule ---------------------------------------
+
+
+def test_prompts_contain_no_transfer_volume_rule_english():
+    for literacy in ("beginner", "intermediate"):
+        p = get_prompt("en", literacy)
+        assert "Do NOT generate insights about transfer, income, or savings volume" in p
+
+
+def test_prompts_contain_no_transfer_volume_rule_ukrainian():
+    for literacy in ("beginner", "intermediate"):
+        p = get_prompt("uk", literacy)
+        assert "Не створюй інсайти про обсяг переказів" in p

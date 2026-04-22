@@ -16,6 +16,8 @@ Avoid jargon; when financial terms are needed, define them briefly.
 Focus on foundational habits: budgeting basics, understanding where money goes.
 Use an encouraging, supportive tone.
 
+Do NOT generate insights about transfer, income, or savings volume. These are shown as context only, and a separate card already handles the mostly-transfers case when relevant.
+
 Return ONLY a JSON array (no markdown, no explanation):
 [{{
   "headline": "Short factual observation about their spending",
@@ -42,6 +44,8 @@ The user has experience with their finances; use precise financial terminology.
 Focus on optimization strategies, trend analysis, and comparative insights.
 Reference strategies like 50/30/20 budgeting, savings rate, category ratios.
 Be direct and analytical; skip basic definitions.
+
+Do NOT generate insights about transfer, income, or savings volume. These are shown as context only, and a separate card already handles the mostly-transfers case when relevant.
 
 Return ONLY a JSON array (no markdown, no explanation):
 [{{
@@ -70,6 +74,8 @@ UKRAINIAN_BEGINNER_PROMPT = """\
 Зосередься на основних звичках: основи бюджетування, розуміння куди йдуть гроші.
 Використовуй підбадьорливий, підтримуючий тон.
 
+Не створюй інсайти про обсяг переказів, доходу або заощаджень. Вони показані лише як контекст; якщо переказів більшість, про це вже сказано окремою карткою.
+
 Поверни ТІЛЬКИ JSON масив (без markdown, без пояснень):
 [{{
   "headline": "Коротке фактичне спостереження про витрати",
@@ -96,6 +102,8 @@ UKRAINIAN_INTERMEDIATE_PROMPT = """\
 Зосередься на стратегіях оптимізації, аналізі трендів та порівняльних висновках.
 Посилайся на стратегії як-от бюджетування 50/30/20, норму заощаджень, співвідношення категорій.
 Будь прямим та аналітичним; пропускай базові визначення.
+
+Не створюй інсайти про обсяг переказів, доходу або заощаджень. Вони показані лише як контекст; якщо переказів більшість, про це вже сказано окремою карткою.
 
 Поверни ТІЛЬКИ JSON масив (без markdown, без пояснень):
 [{{

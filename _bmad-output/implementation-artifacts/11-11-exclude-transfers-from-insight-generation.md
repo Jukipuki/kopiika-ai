@@ -1,6 +1,6 @@
 # Story 11.11: Exclude transfers (and other non-spending kinds) from insight generation
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -38,12 +38,12 @@ This story is analogous to Story 4.9 (savings ratio wired to `transaction_kind`)
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1**: Refactor `_build_spending_summary` to filter by `transaction_kind` (AC: #1, #2, #7)
-  - [ ] 1.1 In [backend/app/agents/education/node.py:20-52](backend/app/agents/education/node.py#L20), change the signature to return `tuple[str, dict[str, int]]` OR introduce a small sibling helper `_compute_kind_totals(transactions, categorized_transactions) -> dict[str, int]` that returns `{spending: kopiykas, income: kopiykas, savings: kopiykas, transfer: kopiykas}`. Prefer the sibling helper — the caller (`education_node`) needs the kind totals for the mostly-transfers threshold check (Task 2) in addition to the formatted string, so extracting a pure helper avoids shape-shifting the existing return type.
-  - [ ] 1.2 Build `cat_lookup` as `{transaction_id: (category, transaction_kind)}` instead of just `{transaction_id: category}`. For entries missing `transaction_kind`, default to `'spending'` (AC #7, matches DB default).
-  - [ ] 1.3 Replace the current `if amount >= 0: continue` guard (line 35) with a `transaction_kind == 'spending'` guard: only rows whose looked-up `transaction_kind` is `'spending'` contribute to `totals[category]`. Drop the amount-sign filter entirely — kind is now the source of truth (AC #1, #7).
-  - [ ] 1.4 While iterating, accumulate a parallel `excluded_totals: dict[str, int]` summing `abs(amount)` grouped by the non-spending kinds (`income`, `savings`, `transfer`). Return both `spending_totals` (for the formatted summary) and `excluded_totals` from `_compute_kind_totals`.
-  - [ ] 1.5 In `_build_spending_summary`, after the existing "Total spending" and "Number of transactions" lines, append (only when any of the non-spending kinds has a non-zero total):
+- [x] **Task 1**: Refactor `_build_spending_summary` to filter by `transaction_kind` (AC: #1, #2, #7)
+  - [x] 1.1 In [backend/app/agents/education/node.py:20-52](backend/app/agents/education/node.py#L20), change the signature to return `tuple[str, dict[str, int]]` OR introduce a small sibling helper `_compute_kind_totals(transactions, categorized_transactions) -> dict[str, int]` that returns `{spending: kopiykas, income: kopiykas, savings: kopiykas, transfer: kopiykas}`. Prefer the sibling helper — the caller (`education_node`) needs the kind totals for the mostly-transfers threshold check (Task 2) in addition to the formatted string, so extracting a pure helper avoids shape-shifting the existing return type.
+  - [x] 1.2 Build `cat_lookup` as `{transaction_id: (category, transaction_kind)}` instead of just `{transaction_id: category}`. For entries missing `transaction_kind`, default to `'spending'` (AC #7, matches DB default).
+  - [x] 1.3 Replace the current `if amount >= 0: continue` guard (line 35) with a `transaction_kind == 'spending'` guard: only rows whose looked-up `transaction_kind` is `'spending'` contribute to `totals[category]`. Drop the amount-sign filter entirely — kind is now the source of truth (AC #1, #7).
+  - [x] 1.4 While iterating, accumulate a parallel `excluded_totals: dict[str, int]` summing `abs(amount)` grouped by the non-spending kinds (`income`, `savings`, `transfer`). Return both `spending_totals` (for the formatted summary) and `excluded_totals` from `_compute_kind_totals`.
+  - [x] 1.5 In `_build_spending_summary`, after the existing "Total spending" and "Number of transactions" lines, append (only when any of the non-spending kinds has a non-zero total):
     ```
     (excluded from analysis)
     - income: ₴<uah>
@@ -51,58 +51,58 @@ This story is analogous to Story 4.9 (savings ratio wired to `transaction_kind`)
     - transfer: ₴<uah>
     ```
     Enumerate kinds in the fixed order `income`, `savings`, `transfer`; **omit** any kind whose total is `0`. If all three are zero, omit the entire "(excluded from analysis)" block (AC #2).
-  - [ ] 1.6 Update the `Number of transactions:` line to reflect only spending-kind transactions (since the totals above are spending-only), OR keep it as "Number of transactions (analyzed): N" for clarity. Pick the phrasing that reads well in both locales — document the choice in Completion Notes.
+  - [x] 1.6 Update the `Number of transactions:` line to reflect only spending-kind transactions (since the totals above are spending-only), OR keep it as "Number of transactions (analyzed): N" for clarity. Pick the phrasing that reads well in both locales — document the choice in Completion Notes.
 
-- [ ] **Task 2**: Add deterministic "mostly-transfers" structural card builder (AC: #3, #4, #5, #8)
-  - [ ] 2.1 In [backend/app/agents/education/node.py](backend/app/agents/education/node.py), add a new helper `_build_mostly_transfers_card(kind_totals: dict[str, int], locale: str, threshold: float = 0.70) -> dict | None` that returns a single card dict or `None` when the threshold is not met. Follow the shape of `_build_subscription_cards` (lines 84-122) exactly — pre-rendered headline/key_metric/why_it_matters/deep_dive, `severity='info'`, `category='transfers'`, `card_type='structuralCard'`.
-  - [ ] 2.2 Threshold logic: let `total_abs = sum(kind_totals.values())`; let `non_spending_abs = total_abs - kind_totals.get('spending', 0)`. If `total_abs == 0` or `non_spending_abs / total_abs <= threshold`, return `None`. Otherwise compute `transfer_pct = round(100 * non_spending_abs / total_abs)` and render the card. Define the threshold `0.70` as a module-level constant `MOSTLY_TRANSFERS_THRESHOLD = 0.70` so future tuning is a one-line change.
-  - [ ] 2.3 Card copy (localize by `locale`):
+- [x] **Task 2**: Add deterministic "mostly-transfers" structural card builder (AC: #3, #4, #5, #8)
+  - [x] 2.1 In [backend/app/agents/education/node.py](backend/app/agents/education/node.py), add a new helper `_build_mostly_transfers_card(kind_totals: dict[str, int], locale: str, threshold: float = 0.70) -> dict | None` that returns a single card dict or `None` when the threshold is not met. Follow the shape of `_build_subscription_cards` (lines 84-122) exactly — pre-rendered headline/key_metric/why_it_matters/deep_dive, `severity='info'`, `category='transfers'`, `card_type='structuralCard'`.
+  - [x] 2.2 Threshold logic: let `total_abs = sum(kind_totals.values())`; let `non_spending_abs = total_abs - kind_totals.get('spending', 0)`. If `total_abs == 0` or `non_spending_abs / total_abs <= threshold`, return `None`. Otherwise compute `transfer_pct = round(100 * non_spending_abs / total_abs)` and render the card. Define the threshold `0.70` as a module-level constant `MOSTLY_TRANSFERS_THRESHOLD = 0.70` so future tuning is a one-line change.
+  - [x] 2.3 Card copy (localize by `locale`):
     - **en**: `headline="Your statement is mostly transfers"`, `key_metric="{transfer_pct}% of activity"`, `why_it_matters="{transfer_pct}% of this upload's activity moved between accounts rather than being spent. Insights below focus only on the remaining spending."`, `deep_dive="When most of a statement is transfers, spending-pattern insights get noisy. We've filtered them out; if you want insights on transfers themselves, upload a statement from the destination account."`
     - **uk**: translate in tone with existing Ukrainian strings (warm, informative, not clinical). Put the exact Ukrainian copy in the Dev Notes Localization block below and update if a better phrasing emerges during implementation.
-  - [ ] 2.4 In `education_node` (lines 125-226), immediately after `subscription_cards = _build_subscription_cards(...)` (line 132), compute `kind_totals` via the helper from Task 1 and call `structural_cards = []; mostly_transfers = _build_mostly_transfers_card(kind_totals, locale); if mostly_transfers: structural_cards.append(mostly_transfers)`.
-  - [ ] 2.5 In the final card assembly (line 188 `all_cards = subscription_cards + cards`), change to `all_cards = subscription_cards + structural_cards + cards`. Subscription cards remain first (highest-urgency, per Story 8.3 ordering), structural cards next, LLM cards last (AC #3).
-  - [ ] 2.6 Short-circuit for the fully-empty-spending case (AC #8): if `kind_totals.get('spending', 0) == 0` AND `mostly_transfers is not None`, skip the RAG retrieval + LLM invocation block and return early with `all_cards = subscription_cards + structural_cards`. Rationale: an empty spending summary produces junk LLM output, and the structural card already tells the user exactly what happened. This saves LLM tokens on the degenerate case AND is the primary way AC #9 is satisfied for the 97%-transfers fixture.
-  - [ ] 2.7 Make sure the exception handler (lines 217-226) also surfaces `structural_cards` alongside `subscription_cards` when the LLM path raises — a deterministic transfers notice is too useful to drop on an LLM error. Update: `return {**state, "insight_cards": subscription_cards + structural_cards, ...}`.
+  - [x] 2.4 In `education_node` (lines 125-226), immediately after `subscription_cards = _build_subscription_cards(...)` (line 132), compute `kind_totals` via the helper from Task 1 and call `structural_cards = []; mostly_transfers = _build_mostly_transfers_card(kind_totals, locale); if mostly_transfers: structural_cards.append(mostly_transfers)`.
+  - [x] 2.5 In the final card assembly (line 188 `all_cards = subscription_cards + cards`), change to `all_cards = subscription_cards + structural_cards + cards`. Subscription cards remain first (highest-urgency, per Story 8.3 ordering), structural cards next, LLM cards last (AC #3).
+  - [x] 2.6 Short-circuit for the fully-empty-spending case (AC #8): if `kind_totals.get('spending', 0) == 0` AND `mostly_transfers is not None`, skip the RAG retrieval + LLM invocation block and return early with `all_cards = subscription_cards + structural_cards`. Rationale: an empty spending summary produces junk LLM output, and the structural card already tells the user exactly what happened. This saves LLM tokens on the degenerate case AND is the primary way AC #9 is satisfied for the 97%-transfers fixture.
+  - [x] 2.7 Make sure the exception handler (lines 217-226) also surfaces `structural_cards` alongside `subscription_cards` when the LLM path raises — a deterministic transfers notice is too useful to drop on an LLM error. Update: `return {**state, "insight_cards": subscription_cards + structural_cards, ...}`.
 
-- [ ] **Task 3**: Update all 4 prompt templates with the "no transfer-volume insights" rule (AC: #6)
-  - [ ] 3.1 In [backend/app/agents/education/prompts.py](backend/app/agents/education/prompts.py), insert a single line in each of the 4 templates, positioned **immediately before** the "Return ONLY a JSON array" line (so it's part of the behavioural instructions, not the schema block):
+- [x] **Task 3**: Update all 4 prompt templates with the "no transfer-volume insights" rule (AC: #6)
+  - [x] 3.1 In [backend/app/agents/education/prompts.py](backend/app/agents/education/prompts.py), insert a single line in each of the 4 templates, positioned **immediately before** the "Return ONLY a JSON array" line (so it's part of the behavioural instructions, not the schema block):
     - **English** (both beginner/intermediate): `Do NOT generate insights about transfer, income, or savings volume. These are shown as context only, and a separate card already handles the mostly-transfers case when relevant.`
     - **Ukrainian** (both beginner/intermediate): `Не створюй інсайти про обсяг переказів, доходу або заощаджень. Вони показані лише як контекст; якщо переказів більшість, про це вже сказано окремою карткою.`
-  - [ ] 3.2 Keep all existing instructions intact (card count, key_metric format, etc.). This is a strictly additive change — 4 single-line insertions, one per template.
+  - [x] 3.2 Keep all existing instructions intact (card count, key_metric format, etc.). This is a strictly additive change — 4 single-line insertions, one per template.
 
-- [ ] **Task 4**: Verify `transaction_kind` plumbing end-to-end (AC: #7)
-  - [ ] 4.1 Read [backend/app/agents/state.py:9](backend/app/agents/state.py#L9) and confirm `categorized_transactions` is documented to include `transaction_kind`. (It is — this task is a **belt-and-braces verification**, not a code change.)
-  - [ ] 4.2 Grep the categorization node output path (`backend/app/agents/categorization/node.py`) to confirm every code path that appends to `categorized_transactions` sets `transaction_kind`. If any path omits it, file a TD-### entry in [docs/tech-debt.md](docs/tech-debt.md) referencing Story 3.10 — **do not fix in this story** (out of scope; Story 11.2 is the owner). Default-to-`spending` handling in Task 1.2 covers us either way.
-  - [ ] 4.3 No code change expected. Record findings in Completion Notes.
+- [x] **Task 4**: Verify `transaction_kind` plumbing end-to-end (AC: #7)
+  - [x] 4.1 Read [backend/app/agents/state.py:9](backend/app/agents/state.py#L9) and confirm `categorized_transactions` is documented to include `transaction_kind`. (It is — this task is a **belt-and-braces verification**, not a code change.)
+  - [x] 4.2 Grep the categorization node output path (`backend/app/agents/categorization/node.py`) to confirm every code path that appends to `categorized_transactions` sets `transaction_kind`. If any path omits it, file a TD-### entry in [docs/tech-debt.md](docs/tech-debt.md) referencing Story 3.10 — **do not fix in this story** (out of scope; Story 11.2 is the owner). Default-to-`spending` handling in Task 1.2 covers us either way.
+  - [x] 4.3 No code change expected. Record findings in Completion Notes.
 
-- [ ] **Task 5**: Unit tests for `_build_spending_summary` and `_compute_kind_totals` (AC: #1, #2, #7, #8)
-  - [ ] 5.1 In [backend/tests/agents/test_education.py](backend/tests/agents/test_education.py), extend `_make_categorized_transactions()` or add a sibling `_make_mixed_kind_categorized()` helper that yields a fixture with: 2 `spending`, 1 `income`, 1 `savings`, 1 `transfer`. Use explicit `transaction_kind` on every row.
-  - [ ] 5.2 Test: `_build_spending_summary` on mixed kinds — assert the top-categories section contains only the 2 spending categories, the "Total spending" equals `abs(amount)` sum of only the spending rows, and the returned string contains `(excluded from analysis)` with one line each for `income`, `savings`, `transfer` in that order (AC #1, #2).
-  - [ ] 5.3 Test: all-spending input — assert the returned string has NO `(excluded from analysis)` footer (AC #2 "kinds with zero total are omitted").
-  - [ ] 5.4 Test: input where some rows omit `transaction_kind` — assert they're treated as spending (default) and appear in totals (AC #7).
-  - [ ] 5.5 Test: input where `transaction_kind='income'` has a **negative** amount sign (shouldn't happen in practice but proves we read kind not sign) — assert that row is excluded from spending totals and shown in the income line of the footer (AC #7 — reads kind, not sign).
-  - [ ] 5.6 Test: empty `categorized_transactions` — assert helper returns the empty-state string without crashing (AC #8).
+- [x] **Task 5**: Unit tests for `_build_spending_summary` and `_compute_kind_totals` (AC: #1, #2, #7, #8)
+  - [x] 5.1 In [backend/tests/agents/test_education.py](backend/tests/agents/test_education.py), extend `_make_categorized_transactions()` or add a sibling `_make_mixed_kind_categorized()` helper that yields a fixture with: 2 `spending`, 1 `income`, 1 `savings`, 1 `transfer`. Use explicit `transaction_kind` on every row.
+  - [x] 5.2 Test: `_build_spending_summary` on mixed kinds — assert the top-categories section contains only the 2 spending categories, the "Total spending" equals `abs(amount)` sum of only the spending rows, and the returned string contains `(excluded from analysis)` with one line each for `income`, `savings`, `transfer` in that order (AC #1, #2).
+  - [x] 5.3 Test: all-spending input — assert the returned string has NO `(excluded from analysis)` footer (AC #2 "kinds with zero total are omitted").
+  - [x] 5.4 Test: input where some rows omit `transaction_kind` — assert they're treated as spending (default) and appear in totals (AC #7).
+  - [x] 5.5 Test: input where `transaction_kind='income'` has a **negative** amount sign (shouldn't happen in practice but proves we read kind not sign) — assert that row is excluded from spending totals and shown in the income line of the footer (AC #7 — reads kind, not sign).
+  - [x] 5.6 Test: empty `categorized_transactions` — assert helper returns the empty-state string without crashing (AC #8).
 
-- [ ] **Task 6**: Unit tests for `_build_mostly_transfers_card` and threshold logic (AC: #3, #4, #5)
-  - [ ] 6.1 Test: transfers at exactly 71% of activity → returns a card dict with `card_type='structuralCard'`, `category='transfers'`, `severity='info'`, and `key_metric` containing the rounded percentage.
-  - [ ] 6.2 Test: transfers at exactly 70% → returns `None` (threshold is strict `>`, not `>=`) (AC #5).
-  - [ ] 6.3 Test: transfers at 50% → returns `None` (AC #5).
-  - [ ] 6.4 Test: all-transfer input (100%) → returns a card with `key_metric` containing `"100%"`.
-  - [ ] 6.5 Test: empty kind_totals (all zero) → returns `None` (no division by zero).
-  - [ ] 6.6 Test: locale='en' renders English copy; locale='uk' renders Ukrainian copy.
+- [x] **Task 6**: Unit tests for `_build_mostly_transfers_card` and threshold logic (AC: #3, #4, #5)
+  - [x] 6.1 Test: transfers at exactly 71% of activity → returns a card dict with `card_type='structuralCard'`, `category='transfers'`, `severity='info'`, and `key_metric` containing the rounded percentage.
+  - [x] 6.2 Test: transfers at exactly 70% → returns `None` (threshold is strict `>`, not `>=`) (AC #5).
+  - [x] 6.3 Test: transfers at 50% → returns `None` (AC #5).
+  - [x] 6.4 Test: all-transfer input (100%) → returns a card with `key_metric` containing `"100%"`.
+  - [x] 6.5 Test: empty kind_totals (all zero) → returns `None` (no division by zero).
+  - [x] 6.6 Test: locale='en' renders English copy; locale='uk' renders Ukrainian copy.
 
-- [ ] **Task 7**: Integration test for the "mostly-transfers" regression (AC: #3, #4, #8, #9)
-  - [ ] 7.1 In [backend/tests/agents/test_education.py](backend/tests/agents/test_education.py), add a new test `test_education_node_mostly_transfers_emits_one_structural_card_and_no_llm_cards`. Fixture: 97 `transaction_kind='transfer'` + 3 `transaction_kind='spending'` transactions (mirrors the PE-account regression). Mock the LLM to raise `AssertionError("LLM should not be invoked on all-transfer statements")` if called — this proves the short-circuit from Task 2.6 works for the fully-empty-spending edge case. For the heavy-but-not-empty case (e.g. 90% transfers + some spending), let the LLM return zero cards and assert downstream behavior.
-  - [ ] 7.2 Assertions: `insight_cards` contains exactly one element; that element has `card_type='structuralCard'`, `category='transfers'`, `severity='info'`; `key_metric` contains a percentage; headline matches the expected localized string. (AC #3, #9)
-  - [ ] 7.3 Second test `test_education_node_moderate_transfers_no_structural_card`: 40% transfers + 60% spending, LLM mocked to return 2 spending-only cards. Assertions: `insight_cards` contains exactly the 2 LLM cards plus any subscription cards, NO `structuralCard` of `category='transfers'`. (AC #5)
-  - [ ] 7.4 Third test `test_education_node_transfer_keyword_not_in_llm_cards`: 80% transfers + 20% spending; LLM mocked to return a card whose headline is "Groceries are up" (no transfer keyword — passes). Assertions: structural card present; no LLM card headline/body contains `"transfer"` (en) or `"переказ"` (uk). This asserts AC #9's "no LLM card mentions transfers" at the test-fixture level (we're trusting the prompt change from Task 3 + the spending-only summary to enforce this in production; the mock lets us verify the assertion mechanism).
+- [x] **Task 7**: Integration test for the "mostly-transfers" regression (AC: #3, #4, #8, #9)
+  - [x] 7.1 In [backend/tests/agents/test_education.py](backend/tests/agents/test_education.py), add a new test `test_education_node_mostly_transfers_emits_one_structural_card_and_no_llm_cards`. Fixture: 97 `transaction_kind='transfer'` + 3 `transaction_kind='spending'` transactions (mirrors the PE-account regression). Mock the LLM to raise `AssertionError("LLM should not be invoked on all-transfer statements")` if called — this proves the short-circuit from Task 2.6 works for the fully-empty-spending edge case. For the heavy-but-not-empty case (e.g. 90% transfers + some spending), let the LLM return zero cards and assert downstream behavior.
+  - [x] 7.2 Assertions: `insight_cards` contains exactly one element; that element has `card_type='structuralCard'`, `category='transfers'`, `severity='info'`; `key_metric` contains a percentage; headline matches the expected localized string. (AC #3, #9)
+  - [x] 7.3 Second test `test_education_node_moderate_transfers_no_structural_card`: 40% transfers + 60% spending, LLM mocked to return 2 spending-only cards. Assertions: `insight_cards` contains exactly the 2 LLM cards plus any subscription cards, NO `structuralCard` of `category='transfers'`. (AC #5)
+  - [x] 7.4 Third test `test_education_node_transfer_keyword_not_in_llm_cards`: 80% transfers + 20% spending; LLM mocked to return a card whose headline is "Groceries are up" (no transfer keyword — passes). Assertions: structural card present; no LLM card headline/body contains `"transfer"` (en) or `"переказ"` (uk). This asserts AC #9's "no LLM card mentions transfers" at the test-fixture level (we're trusting the prompt change from Task 3 + the spending-only summary to enforce this in production; the mock lets us verify the assertion mechanism).
 
-- [ ] **Task 8**: Update any existing education tests that relied on the amount-sign filter (AC: #7)
-  - [ ] 8.1 Existing fixtures in [backend/tests/agents/test_education.py:54-62](backend/tests/agents/test_education.py#L54) don't set `transaction_kind`. With the Task 1.2 default-to-`spending` behaviour, these tests should still pass unchanged — **verify** this is the case and update only if a test fails. Do NOT add `transaction_kind` everywhere gratuitously — leave the default path exercised by existing tests.
-  - [ ] 8.2 If any existing test fails, document why in Completion Notes and make the minimal fix (likely: add `transaction_kind='spending'` to the one affected fixture).
+- [x] **Task 8**: Update any existing education tests that relied on the amount-sign filter (AC: #7)
+  - [x] 8.1 Existing fixtures in [backend/tests/agents/test_education.py:54-62](backend/tests/agents/test_education.py#L54) don't set `transaction_kind`. With the Task 1.2 default-to-`spending` behaviour, these tests should still pass unchanged — **verify** this is the case and update only if a test fails. Do NOT add `transaction_kind` everywhere gratuitously — leave the default path exercised by existing tests.
+  - [x] 8.2 If any existing test fails, document why in Completion Notes and make the minimal fix (likely: add `transaction_kind='spending'` to the one affected fixture).
 
-- [ ] **Task 9**: Update [_bmad-output/implementation-artifacts/sprint-status.yaml](_bmad-output/implementation-artifacts/sprint-status.yaml) (DoD)
-  - [ ] 9.1 Mark `11-11-exclude-transfers-from-insight-generation` as `done` after code review. (The create-story workflow already added the entry at the end of Epic 11 as `ready-for-dev`.)
+- [x] **Task 9**: Update [_bmad-output/implementation-artifacts/sprint-status.yaml](_bmad-output/implementation-artifacts/sprint-status.yaml) (DoD)
+  - [x] 9.1 Mark `11-11-exclude-transfers-from-insight-generation` as `done` after code review. (The create-story workflow already added the entry at the end of Epic 11 as `ready-for-dev`.)
 
 ## Dev Notes
 
@@ -158,10 +158,46 @@ Dev may refine during implementation — keep tone aligned with existing `profil
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-7 (1M context)
 
 ### Debug Log References
 
+- Full backend test suite run: 836 passed, 9 deselected (see `pytest -q` output).
+- Education-only tests: 51 passed.
+
 ### Completion Notes List
 
+- **Task 1** — Introduced `_compute_kind_totals(transactions, categorized_transactions)` returning `(spending_totals_by_category, totals_by_kind)`. `_build_spending_summary` now delegates to it, filters top-categories by `transaction_kind == 'spending'`, and appends a deterministic `(excluded from analysis)` footer (ordered `income → savings → transfer`; zero-value kinds omitted). The "Number of transactions" line was re-phrased to "Number of transactions (analyzed): N" and counts spending-kind rows only — matches Task 1.6 "keep it explicit in both locales" choice.
+- **Task 2** — Added `_build_mostly_transfers_card(kind_totals, locale, threshold=MOSTLY_TRANSFERS_THRESHOLD)`; strict `>` comparison, returns `None` at/below threshold or when `total_abs == 0`. Module constant `MOSTLY_TRANSFERS_THRESHOLD = 0.70`. In `education_node`, kind totals are computed once; the structural card is prepended to LLM cards via `subscription_cards + structural_cards + cards`. When `spending == 0` AND a mostly-transfers card was built, the node short-circuits *before* RAG/LLM (no wasted tokens). The exception handler also surfaces `structural_cards` so a deterministic transfers notice survives LLM failures.
+- **Task 3** — Added the "no transfer/income/savings volume" instruction line to all four templates in `backend/app/agents/education/prompts.py`, positioned immediately before the "Return ONLY a JSON array" line. Strictly additive; no other prompt text changed.
+- **Task 4** — Verified: every append site in `backend/app/agents/categorization/node.py` sets `transaction_kind` (lines 301, 335, 349, 359, 372, 457, 504, 531, 544; plus pre_pass line 32). No TD entry needed. Default-to-`spending` handling in `_compute_kind_totals` is a belt-and-braces safety net only.
+- **Tasks 5–7** — Added 16 new tests in `backend/tests/agents/test_education.py`:
+  - `_compute_kind_totals` grouping
+  - `_build_spending_summary` mixed kinds (footer order), all-spending (no footer), missing-kind default, kind-over-sign (negative amount with `kind=income` excluded), empty
+  - `_build_mostly_transfers_card` above/at/below threshold, all-transfer (100%), empty totals, en/uk locale copy, threshold constant
+  - Integration: 97t+3s (LLM invoked with empty return, one structural card), all-transfer short-circuit (LLM must not be invoked — fixture raises if it is), 40% transfers (no structural card), 80% transfers (no LLM card contains `"transfer"` / `"переказ"`)
+  - Prompt rule presence (en + uk, both literacy levels)
+- **Task 8** — Existing tests in `test_education.py` exercised the default-to-`spending` path and **all passed unchanged**. No fixture required `transaction_kind` additions.
+- **Regression suite** — 836 passed, 9 deselected, 2 unrelated deprecation warnings (FastAPI `HTTP_422_UNPROCESSABLE_ENTITY` — pre-existing). No regressions.
+- Frontend: `card_type='structuralCard'` renders through the same generic path as `subscriptionAlert` (per story Dev Notes). No frontend change made; spot-check recommended during QA but not gating.
+
+### Code Review (2026-04-22) — fixes applied
+
+- **M1 — Short-circuit test was tautological.** `test_education_node_all_transfers_short_circuits_llm` previously patched dependencies with `side_effect=AssertionError(...)`. The node's broad `except Exception` swallowed the AssertionError, so the test couldn't distinguish "short-circuit fired" from "exception path absorbed the assertion" — both produced the same `subscription_cards + structural_cards` output. Rewritten to use `assert_not_called()` on `retrieve_relevant_docs`, `get_llm_client`, and `get_fallback_llm_client`, plus an explicit assertion that the `education_mostly_transfers_short_circuit` log event fired and `failed_node is None`.
+- **M2 — Broad `except Exception` swallowed `AssertionError`.** Added an explicit `if isinstance(exc, AssertionError): raise` next to the existing `CircuitBreakerOpenError` re-raise in [backend/app/agents/education/node.py:342](backend/app/agents/education/node.py#L342). Tests can now use AssertionError on patched dependencies to prove a code path is NOT taken without being silently absorbed by the error handler.
+- **M3 — AC #9 coverage gap.** `test_education_node_no_llm_card_mentions_transfer_keyword` mocks the LLM to return a pre-cleaned card (`"Groceries are up"`) that already lacks "transfer"/"переказ", so the assertion is partially tautological. The structural-card half of AC #9 (exactly one `structuralCard`/`category=transfers` card) IS verified end-to-end, but the prompt-rule half (no LLM card mentions transfer volume) relies on the prompt change in `prompts.py` and the spending-only summary feeding the LLM — not on a live LLM call. Promoted to [TD-067](../../docs/tech-debt.md): extend Story 11.1's golden-set / LLM-replay harness to cover the education prompt rule end-to-end.
+- **M4 — Silent default for unknown `transaction_id` in `_compute_kind_totals`.** Removed the silent `("other", "spending")` fallback. Transactions whose id is missing from `cat_lookup` (or have no id at all) now log a structured `education_uncategorized_transaction` warning and are skipped entirely instead of inflating spending totals. Story 11.11's whole purpose is removing implicit kind proxies; this closes a small but matching footgun.
+
 ### File List
+
+- backend/app/agents/education/node.py
+- backend/app/agents/education/prompts.py
+- backend/tests/agents/test_education.py
+- _bmad-output/implementation-artifacts/11-11-exclude-transfers-from-insight-generation.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- VERSION
+
+### Change Log
+
+- 2026-04-22 — Story 11.11 implemented: `_build_spending_summary` filters by `transaction_kind`; deterministic mostly-transfers structural card added (70% threshold); all 4 education prompts gained a "no transfer-volume insights" rule; 16 new tests covering kind filtering, threshold logic, locale copy, and the PE-account regression scenario.
+- 2026-04-22 — Version bumped from 1.28.0 to 1.29.0 per story completion (minor: new user-visible behaviour — mostly-transfers structural card).

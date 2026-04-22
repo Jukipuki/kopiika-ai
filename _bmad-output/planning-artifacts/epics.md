@@ -377,6 +377,12 @@ Structural fixes to the parsing and categorization pipeline identified in the Ap
 **Dependencies:** Epic 2 (ingestion pipeline), Epic 3 (categorization agent)
 **Cross-epic consumer:** Story 4.9 (Savings Ratio wiring) in Epic 4
 
+### Epic 12: Testing & Quality Harnesses
+Cross-cutting quality harnesses for aspects of product quality not owned by a single feature epic. Starting scope focuses on *insight-output* quality (surfaced by Epic 11 UAT — see Story 11.11), phased as: **tier 1** deterministic golden-fixture assertions (Story 12.1), **tier 2** LLM-as-judge scoring on qualitative axes (Story 12.2), **tier 3** human-label calibration of the judge (Story 12.3). Phase 2 of this epic — scheduled after Epics 9 and 10 land — will revisit scope to cover gaps those epics expose (likely candidates: end-to-end pipeline regression, cross-agent composition tests, adversarial fixture expansion).
+**Scope boundary — this epic does NOT own:** categorization golden-set (owned by Epic 11 Story 11.1), RAG retrieval eval (owned by Epic 9 Story 9.3), chat jailbreak red-team corpus (owned by Epic 10), per-agent unit tests (owned by each feature epic). Epic 12 fills gaps and owns cross-cutting harnesses only.
+**FRs covered:** none directly — this is a quality-assurance epic. Implicitly strengthens FR10, FR14, FR59 (insight-quality guarantees) and NFR Reliability (regression prevention via CI gates).
+**Dependencies:** Story 11.11 (provides the flagship regression fixture for Story 12.1). Phase 2 revisit depends on completion of Epics 9 and 10.
+
 ## Epic 1: Project Foundation & User Authentication
 
 Users can register, log in, reset their password, manage their account settings, select language, and securely access the application. This is the foundational epic — everything else builds on it. Includes project scaffolding, infrastructure setup, and the complete auth flow.

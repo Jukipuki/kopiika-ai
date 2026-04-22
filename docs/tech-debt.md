@@ -1180,6 +1180,20 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
+### TD-067 — AC #9 "no LLM card mentions transfers" is not verified end-to-end [MEDIUM]
+
+**Where:** [backend/tests/agents/test_education.py:823-855](../backend/tests/agents/test_education.py#L823-L855), [backend/app/agents/education/prompts.py](../backend/app/agents/education/prompts.py)
+
+**Problem:** Story 11.11 AC #9 requires that, under the mostly-transfers regime, zero LLM-generated cards mention transfer/income/savings volume — enforced in production by the 4 prompt additions in `prompts.py` plus the spending-only `user_context`. The test `test_education_node_no_llm_card_mentions_transfer_keyword` asserts this at 80% transfers, but it mocks the LLM to return a pre-cleaned card (`"Groceries are up"`) that already lacks the forbidden keywords. The assertion reduces to "if I don't inject the keyword, no keyword appears" — tautological. The structural-card half of AC #9 (exactly one `structuralCard`/`category=transfers`) IS verified, but the prompt-rule half rides on trust, not evidence.
+
+**Why deferred:** A real verification requires a live LLM call (expensive, flaky, not suitable for unit tests) or a recorded-response / golden-set harness that doesn't exist yet in this repo. Story 11.1's golden-set framework is categorization-scoped, not education-scoped.
+
+**Fix shape:** Extend the Story 11.1 golden-set harness (or create a sibling) to run the education prompts against a small set of fixtures (mostly-transfers, mixed, all-spending) through a real or recorded LLM response, and assert no headline/key_metric/why_it_matters/deep_dive contains `transfer`/`переказ`/`income`/`доход`/`savings`/`заощадження`. Gate it behind an env flag so CI stays hermetic. Alternatively, integrate into the upcoming LLM-replay harness referenced in TD-012.
+
+**Surfaced in:** Story 11.11 code review (2026-04-22).
+
+---
+
 ## Resolved
 
 ### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]
