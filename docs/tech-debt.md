@@ -1258,6 +1258,48 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
+### TD-082 — `models.yaml` roles beyond `agent_default` are data-only until Epic 10 [LOW]
+
+**Where:** [`backend/app/agents/models.yaml`](../backend/app/agents/models.yaml), [`backend/app/agents/llm.py`](../backend/app/agents/llm.py).
+
+**Problem:** Story 9.5a populated `agent_cheap` and `chat_default` rows in `models.yaml` for all three providers, but the factory (`get_llm_client` / `get_fallback_llm_client`) only resolves `agent_default`. The other roles are reserved for Story 10.4a (chat session handler) and any future cost-tiered agent. Until they are consumed, a typo or stale value in those rows silently survives because no code path exercises them.
+
+**Why deferred:** Minimum-diff scope for 9.5a. The seam is in place; wiring `chat_default` in 10.4a is a one-line `_resolve_model_id("chat_default", provider)` call.
+
+**Fix shape:** Story 10.4a consumes `chat_default` via the same factory; when it does, revisit the `chat_default.anthropic` / `chat_default.openai` best-guesses (`claude-sonnet-4-6` / `gpt-4o`) and replace them with values validated against whatever sonnet-tier endpoint is actually invoked. Optionally, `agent_cheap` gets wired when a cost-tiered agent is introduced.
+
+**Surfaced in:** Story 9.5a (2026-04-23) — pointer back to [`_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md`](../_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md).
+
+---
+
+### TD-083 — Opposite-of-primary fallback topology is hardcoded in Python, not expressed in YAML [LOW]
+
+**Where:** [`backend/app/agents/llm.py`](../backend/app/agents/llm.py) `_FALLBACK_MAP`.
+
+**Problem:** The fallback provider for `get_fallback_llm_client()` is a two-entry Python dict (`{"anthropic": "openai", "openai": "anthropic", "bedrock": "bedrock"}`). This hardcodes the topology: every role gets the same fallback policy, and changing it requires a Python edit rather than a YAML/config edit. Story 9.5b may want a per-role `fallback_provider` field (e.g., `chat_default` falling back to a smaller model on the same provider, or Bedrock falling back to direct Anthropic during region outages).
+
+**Why deferred:** Minimum-diff scope for 9.5a. The current runtime topology (anthropic primary → openai fallback) is preserved bit-for-bit by this rule, and no caller yet needs per-role variation. Promoting to YAML now would be speculative.
+
+**Fix shape:** Extend the `models.yaml` schema with an optional `fallback:` sibling on each role: `agent_default: { anthropic: …, openai: …, bedrock: …, fallback: openai }`. Update `get_fallback_llm_client()` to resolve the fallback provider from the role entry, defaulting to the opposite-of-primary rule if absent.
+
+**Surfaced in:** Story 9.5a (2026-04-23) — pointer back to [`_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md`](../_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md).
+
+---
+
+### TD-084 — `chat_default.bedrock` ARN in `models.yaml` is missing the `-v*:0` version suffix [LOW]
+
+**Where:** [`backend/app/agents/models.yaml:26`](../backend/app/agents/models.yaml#L26).
+
+**Problem:** The `chat_default.bedrock` value is `arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6` — no trailing `-v1:0` (or equivalent) version suffix, unlike the Haiku ARNs on `agent_default.bedrock` / `agent_cheap.bedrock` which end in `-v1:0`. The value was carried forward verbatim from Story 9.4's pins (Sonnet 4-6 was flagged unavailable in eu-central-1 during that spike). Story 9.5a never exercises it because the Bedrock branch raises `NotImplementedError`, so the malformed ARN is unobserved until 9.5b wires `ChatBedrock`.
+
+**Why deferred:** 9.5a's scope forbids touching Bedrock IDs — that's Story 9.5b's territory once the inference profile actually exists in region.
+
+**Fix shape:** In Story 9.5b (or sooner if Sonnet becomes available in eu-central-1), re-run the Story 9.4 invoke-test harness against `claude-sonnet-4-6` to discover the correct inference-profile ARN suffix, then update the `chat_default.bedrock` entry. Until then, keep the placeholder but document in the YAML comment that it is known-invalid.
+
+**Surfaced in:** Story 9.5a (2026-04-23) code review — pointer back to [`_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md`](../_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md).
+
+---
+
 ## Resolved
 
 ### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]

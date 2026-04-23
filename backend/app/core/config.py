@@ -1,5 +1,5 @@
 import os
-from typing import ClassVar, Optional
+from typing import ClassVar, Literal, Optional
 
 from pydantic_settings import BaseSettings
 
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # LLM API Keys
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
+    LLM_PROVIDER: Literal["anthropic", "openai", "bedrock"] = "anthropic"
     # Story 11.8 three-tier thresholds (replaces single CATEGORIZATION_CONFIDENCE_THRESHOLD):
     #   confidence >= AUTO_APPLY      → silently accept LLM suggestion
     #   SOFT_FLAG <= confidence < AUTO_APPLY → accept LLM suggestion, emit telemetry

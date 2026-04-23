@@ -186,8 +186,9 @@ development_status:
   9-2-baseline-current-embeddings: done
   9-3-embedding-model-comparison-spike: done
   9-4-agentcore-bedrock-region-availability-spike: done
-  9-5a-llm-py-provider-routing-refactor: backlog
+  9-5a-llm-py-provider-routing-refactor: done
   # Story 9.4 (2026-04-23): region=eu-central-1, haiku=eu.anthropic.claude-haiku-4-5-20251001-v1:0, sonnet=eu.anthropic.claude-sonnet-4-6; see docs/decisions/agentcore-bedrock-region-availability-2026-04.md
+  # Story 9.5a factory ready; 9.5b adds the bedrock: branch in llm.py
   # Story 9.5b cross-region path blocked on ADR-0003 (docs/adr/0003-cross-region-inference-data-residency.md) flipping to Accepted
   9-5b-add-bedrock-provider-path: backlog
   9-5c-cross-provider-regression-suite: backlog
