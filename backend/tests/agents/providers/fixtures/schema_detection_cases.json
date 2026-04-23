@@ -1,0 +1,24 @@
+[
+  {
+    "name": "monobank_like",
+    "header_row": ["Date", "Time", "Description", "MCC", "Amount (UAH)", "Currency", "Balance (UAH)"],
+    "sample_rows": [
+      ["12.03.2026", "10:15:23", "АТБ-Маркет", "5411", "-250.50", "UAH", "12345.67"],
+      ["13.03.2026", "14:22:05", "Нова Пошта", "4215", "-85.00", "UAH", "12260.67"],
+      ["15.03.2026", "09:01:00", "Зарплата ТОВ Абс", "0", "+45000.00", "UAH", "57260.67"]
+    ],
+    "encoding": "utf-8",
+    "expected_field_map_keys": ["date", "amount", "description"]
+  },
+  {
+    "name": "generic_unknown",
+    "header_row": ["Txn Date", "Payee", "Amount", "Memo"],
+    "sample_rows": [
+      ["2026-03-01", "COFFEE SHOP", "-4.50", "morning coffee"],
+      ["2026-03-02", "PAYROLL", "2500.00", "salary"],
+      ["2026-03-03", "UBER", "-18.25", "ride"]
+    ],
+    "encoding": "utf-8",
+    "expected_field_map_keys": ["date", "amount", "description"]
+  }
+]

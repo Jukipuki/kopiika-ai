@@ -192,7 +192,7 @@ development_status:
   # Story 9.5b cross-region path blocked on ADR-0003 (docs/adr/0003-cross-region-inference-data-residency.md) flipping to Accepted
   9-5b-add-bedrock-provider-path: done
   # Story 9.5b: Bedrock path wired; 9.5c can now loop LLM_PROVIDER ∈ {anthropic,openai,bedrock}.
-  9-5c-cross-provider-regression-suite: backlog
+  9-5c-cross-provider-regression-suite: done
   # Story 9.6 GATED AS "MIGRATE" per Story 9.3 decision doc (2026-04-23,
   # post-diagnostic revision). Winner: text-embedding-3-large (3072 dims).
   # Production storage MUST use halfvec(3072) + halfvec_cosine_ops HNSW —

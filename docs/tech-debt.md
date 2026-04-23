@@ -1300,6 +1300,68 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 **Surfaced in:** Story 9.5b (2026-04-23) — pointer back to [`_bmad-output/implementation-artifacts/9-5b-add-bedrock-provider-path.md`](../_bmad-output/implementation-artifacts/9-5b-add-bedrock-provider-path.md) + [`docs/decisions/bedrock-provider-smoke-2026-04.md`](./decisions/bedrock-provider-smoke-2026-04.md).
 
+**Update (Story 9.5c, 2026-04-23):** First committed test surface exercising Nova Micro at `agent_fallback.bedrock` — `test_categorization_matrix.py::test_categorization_matches_golden_set[True-bedrock]`. When `provider=bedrock` + `use_fallback=True`, the matrix forces a primary `ValueError` and routes through `get_fallback_llm_client()` → Nova Micro, asserting the same schema+label contract as the primary.
+
+**Empirical result (2026-04-23, local run):** Nova Micro **passed 5/5** categorization cases on the Story 9.5c fixture corpus (`transfers / savings / savings / charity / transfers_p2p` — the Ukrainian-locale + English-locale + charity-jar + P2P edge cases). Run-report: `backend/tests/agents/providers/runs/categorization-fallback-bedrock-20260423T*.json`. No truncation, no schema violations, all `transaction_kind` values matched gold. TD-085's "best-guess tier" concern is empirically cleared for the 9.5c fixture shape — but this fixture has 5 rows, not the 90-row Story 11.1 golden set, so a larger-sample probe under real pre-prod traffic is still worth doing before flipping `LLM_PROVIDER=bedrock` in production. TD-085 **remains open** pending that broader sample; status narrowed from "best-guess, unsmoked" to "smoke-passes-5-case-fixture, needs-production-sample".
+
+---
+
+### TD-086 — Bedrock OIDC role not yet provisioned for CI [MEDIUM]
+
+**Where:** [`.github/workflows/ci-backend-provider-matrix.yml`](../.github/workflows/ci-backend-provider-matrix.yml) — `env.LLM_PROVIDER_MATRIX_PROVIDERS: "anthropic,openai"` (Bedrock disabled) and the gated `aws-actions/configure-aws-credentials` step.
+
+**Problem:** Cross-provider regression matrix (Story 9.5c) covers three providers locally but only two in CI. The Bedrock param is skipped server-side via `LLM_PROVIDER_MATRIX_PROVIDERS` because no `AWS_ROLE_TO_ASSUME` secret / GitHub OIDC federation role is provisioned on the repo yet. Any cross-provider regression that only surfaces against Bedrock will slip CI until this gap closes.
+
+**Why deferred:** Provisioning the OIDC role is an AWS infra change (Terraform `aws_iam_openid_connect_provider` + `aws_iam_role` scoped to `bedrock:InvokeModel` on `eu.*` ARNs) owned by Story 9.7's IAM track, not by 9.5c's test-surface scope.
+
+**Fix shape:**
+1. Add `aws_iam_openid_connect_provider.github` (GitHub OIDC endpoint) in Terraform.
+2. Add `aws_iam_role.github_bedrock_ci` with a trust policy scoped to this repo + `main` branch + allowed workflows (`ci-backend-provider-matrix`); permissions policy allows `bedrock:InvokeModel` on `arn:aws:bedrock:eu-*:*:inference-profile/eu.*`.
+3. Write the role ARN to the repo's `AWS_ROLE_TO_ASSUME` GitHub secret.
+4. In the workflow `env:` block, flip `LLM_PROVIDER_MATRIX_PROVIDERS` to `"anthropic,openai,bedrock"` (or delete the key entirely — conftest default is all three).
+5. Manually trigger the workflow once and confirm the `bedrock` param runs to green.
+
+**Surfaced in:** Story 9.5c (2026-04-23). Story 9.7 (`Bedrock IAM + Observability Plumbing`) may absorb this if scope aligns.
+
+---
+
+### TD-087 — Cross-provider equivalence is schema+label only; no semantic parity signal [LOW]
+
+**Where:** [`backend/tests/agents/providers/`](../backend/tests/agents/providers/) — matrix assertion surface per Story 9.5c AC #2.
+
+**Problem:** The matrix asserts `category ∈ acceptable_categories` + `transaction_kind == gold` + card-schema validity + `field_map` key presence. It does NOT detect a class of semantic regression — e.g. provider emits a correctly-labeled category but a `kind_reason` prose that would confuse a user; provider emits schema-valid cards whose `why_it_matters` is off-topic for the user's spending. Prose-level equivalence is physically impossible with non-deterministic LLMs, but a richer LLM-as-judge layer (reusing [`backend/tests/eval/rag/judge.py`](../backend/tests/eval/rag/judge.py)'s groundedness/relevance/language_correctness/overall rubric) could score each provider's output against a common reference.
+
+**Why deferred:** Schema+label is the strongest bar non-deterministic LLMs can sustain cheaply; layering an LLM-as-judge doubles cost and introduces judge-noise into the regression signal. Not justified for the batch-agent scope of 9.5c. Becomes load-bearing if/when Epic 10's chat-safety tier requires semantic cross-provider parity before production flip.
+
+**Fix shape:** Add a `test_semantic_parity.py` that picks a pinned provider as reference (anthropic-haiku), runs the other two providers on the same prompts, scores both outputs against the reference via `judge.py`'s rubric, and gates on a judge-score delta threshold. The gate threshold would need its own calibration pass (like Story 12.3) to separate regression-noise from real semantic drift.
+
+**Surfaced in:** Story 9.5c (2026-04-23). Promote to MEDIUM if Epic 10 planning determines semantic parity is required before production Bedrock flip.
+
+---
+
+### TD-088 — Education-prompt severity enum not enforced across providers [LOW]
+
+**Where:** [`backend/app/agents/education/prompts.py`](../backend/app/agents/education/prompts.py) — the `severity` field in the education prompt vocabulary.
+
+**Problem:** Story 9.5c's cross-provider matrix (`test_education_matrix.py`) surfaced **two drift signals** from the education prompt's card contract:
+
+1. **Severity vocabulary drift:** Bedrock-routed Haiku 4.5 emits `{low, medium, high}` severities while AC #2 asks for `{critical, warning, info}`. Anthropic-direct and OpenAI-direct runs default to `info` (the card parser's default) when the LLM emits nothing, so they *appear* to conform — but they aren't actively producing the enum either.
+2. **Missing body field:** OpenAI `gpt-4o-mini` occasionally omits the `why_it_matters` field on cards (content still shows up in `deep_dive`). The card-parser's default `""` masks this as a non-error at runtime.
+
+Both stem from the same root cause: the education prompt doesn't enforce its own schema vocabulary strongly. The 9.5c matrix narrowed the card bar to "headline present AND severity present AND body-bearing field non-empty (either `why_it_matters` OR `deep_dive`)" — the strongest bar every provider sustains today. A follow-up story should tighten the prompt so every provider emits the full card shape with a consistent severity enum.
+
+**Why deferred:** Fixing this requires editing `backend/app/agents/education/prompts.py`, which Story 9.5c AC #11 explicitly forbids (the matrix must consume the three agent files unchanged). A focused prompt-tightening story can close this in a small diff.
+
+**Fix shape:**
+1. Add an explicit "severity MUST be exactly one of: `critical`, `warning`, `info`" sentence to the education prompt template, with a 1-line few-shot row demonstrating the enum.
+2. Add an explicit "Every card MUST include a non-empty `why_it_matters` AND `deep_dive` field" sentence, with the few-shot example reflecting both.
+3. Re-run the 9.5c matrix on all three providers and confirm the full card schema conforms; then tighten the matrix assertion (undo the `extended_severities` widening + re-add `why_it_matters` to required body fields). Budget: ≤ 30 lines in `prompts.py`, ≤ 10 lines in `test_education_matrix.py`.
+
+**Surfaced in:** Story 9.5c (2026-04-23) — local full-matrix run produced:
+- Bedrock: `severity=medium/low/high` across all 3 fixture cases (signal #1).
+- OpenAI: cards with empty `why_it_matters` on 5/6 cards across 2 of 3 fixtures (signal #2).
+Run-reports: `backend/tests/agents/providers/runs/education-*.json`.
+
 ---
 
 ## Resolved

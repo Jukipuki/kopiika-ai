@@ -1,0 +1,85 @@
+name: CI Backend Provider Matrix (Cross-Provider)
+
+# Story 9.5c: cross-provider regression matrix.
+# Exercises every LLM-backed agent path (categorization, education,
+# schema_detection) against all three providers (anthropic, openai, bedrock).
+# Manually triggered — no recurring spend without explicit approval.
+# See backend/tests/agents/providers/README.md + Story 9.5c AC #5.
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 5 * * *"  # 05:00 UTC nightly — uncomment to enable
+
+permissions:
+  contents: read
+  id-token: write  # for aws-actions/configure-aws-credentials OIDC
+
+jobs:
+  provider-matrix:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kopiika
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Same DATABASE_URL derivation as ci-backend-eval.yml. schema_detection
+      # imports reach into app.core.database via the settings chain and need a
+      # functional URL even though the matrix tests don't touch tables.
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/kopiika
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AWS_REGION: eu-central-1
+      # If AWS_ROLE_TO_ASSUME isn't configured yet (TD-086), disable the
+      # bedrock param — the tests skip in-place and the matrix still runs
+      # against anthropic+openai. Flip this to "anthropic,openai,bedrock"
+      # once OIDC lands.
+      LLM_PROVIDER_MATRIX_PROVIDERS: "anthropic,openai"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Apply Alembic migrations
+        run: uv run alembic upgrade head
+
+      - name: Configure AWS credentials (Bedrock OIDC)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run provider matrix
+        run: uv run pytest tests/agents/providers/ -v -m provider_matrix -s
+
+      - name: Upload run-reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-matrix-run-reports
+          path: backend/tests/agents/providers/runs/*.json
+          retention-days: 30
+          if-no-files-found: ignore

@@ -32,11 +32,12 @@ dependencies = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not provider_matrix'"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: hits live external services (LLMs, APIs); excluded from default sweep, run with '-m integration'",
     "eval: evaluation harnesses (RAG eval, insight-quality eval); opt-in via '-m eval', combined with integration",
+    "provider_matrix: cross-provider LLM regression matrix (Story 9.5c). Hits real LLM APIs — opt-in via -m provider_matrix.",
 ]
 
 [dependency-groups]

@@ -77,6 +77,21 @@ commentary. Use exactly this schema (replace each placeholder with your score):
 {{"groundedness": <int 0-2>, "relevance": <int 0-2>, "language_correctness": <int 0-2>, "overall": <int 0-4>, "rationale": "<one sentence>"}}"""
 
 
+def detect_script_language(text: str) -> str:
+    """Script-based language sniff: returns `"uk"` if any Cyrillic codepoint is
+    present, else `"en"`.
+
+    Shared by the Story 9.5c cross-provider matrix (`test_education_matrix.py`)
+    to avoid re-implementing the rubric's `language_correctness` semantics in
+    each caller. The judge's own axis is an LLM-as-judge scoring surface, not a
+    cheap boolean — this helper is the cheap pre-check for the matrix; the
+    judge remains authoritative when a semantic-grade score is needed.
+    """
+    # U+0400–U+04FF (Cyrillic) + U+0500–U+052F (Cyrillic Supplement) cover
+    # every script codepoint Ukrainian output would plausibly emit.
+    return "uk" if any("Ѐ" <= ch <= "ԯ" for ch in text) else "en"
+
+
 def _tokens_from_response(response) -> int:
     """Extract total-tokens used from a langchain response, best-effort."""
     usage = getattr(response, "usage_metadata", None) or {}

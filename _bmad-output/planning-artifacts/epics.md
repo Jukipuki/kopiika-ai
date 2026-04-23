@@ -2058,8 +2058,8 @@ Prepare the AI layer for Phase 2 conversational features. Adds AWS Bedrock as a 
 - **9.5b — Add Bedrock Provider Path + Smoke Test**
   Wire `ChatBedrock` into the provider factory. Pin Bedrock model ARNs (haiku/sonnet) in `models.yaml`. Smoke-test against haiku + sonnet in `eu-central-1` (or fallback region per Story 9.4). Choose + document Bedrock-hosted fallback model (gpt-4o-mini is not on Bedrock). Depends on 9.5a, 9.4, 9.7.
 
-- **9.5c — Cross-Provider Regression Suite (Epic 3 + 8 agents × 3 providers)**
-  Build `backend/tests/agents/providers/` matrix runner. Epic 3 (categorization, RAG education) + Epic 8 (pattern, subscription, triage) agents must produce equivalent outputs on Anthropic / OpenAI / Bedrock. CI job exercises all three. Source of truth for provider equivalence. Depends on 9.5b.
+- **9.5c — Cross-Provider Regression Suite (Epic 3 + 11 LLM agents × 3 providers)**
+  Build `backend/tests/agents/providers/` matrix runner. Epic 3 (categorization, RAG education) + Epic 11 (AI-assisted schema detection) agents must produce equivalent outputs on Anthropic / OpenAI / Bedrock. CI job exercises all three. Source of truth for provider equivalence. (Epic 8 agents — pattern, subscription, triage — are pure statistical code with zero LLM calls today; excluded from the matrix until an LLM is wired into one of those paths.) Depends on 9.5b.
 
 - **9.6 — Embedding Migration**
   Migrates production embeddings to `text-embedding-3-large` (3072 dims); trigger source: Story 9.3 decision doc (`docs/decisions/embedding-model-comparison-2026-04.md`, 2026-04). Alembic migration must switch `document_embeddings.embedding` to `halfvec(3072)` + `halfvec_cosine_ops` HNSW — pgvector native `vector` HNSW caps at 2000 dims; see TD-079 for the full task breakdown. Re-seed corpus; rebuild HNSW `(m=16, ef_construction=64)`. Zero-downtime cutover plan. Acceptance gate: re-run Story 9.1 harness and confirm metrics match or beat the Story 9.3 spike baseline (`text-embedding-3-large.json`) within judge-noise.

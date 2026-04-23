@@ -11,3 +11,6 @@ wheels/
 
 # Test databases
 *.db
+
+# Provider-matrix run-reports (Story 9.5c)
+tests/agents/providers/runs/

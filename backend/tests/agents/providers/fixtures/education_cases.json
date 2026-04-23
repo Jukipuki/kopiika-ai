@@ -1,0 +1,71 @@
+[
+  {
+    "name": "uk_general_spending",
+    "locale": "uk",
+    "literacy_level": "beginner",
+    "expected_language": "uk",
+    "severity_in": ["critical", "warning", "info"],
+    "required_fields": ["headline", "severity"],
+    "required_body_any_of": ["why_it_matters", "deep_dive"],
+    "transactions": [
+      {"id": "t1", "date": "2026-03-01", "description": "АТБ-Маркет", "mcc": 5411, "amount": -35000},
+      {"id": "t2", "date": "2026-03-05", "description": "Сільпо", "mcc": 5411, "amount": -42000},
+      {"id": "t3", "date": "2026-03-10", "description": "Нова Пошта", "mcc": 4215, "amount": -8500},
+      {"id": "t4", "date": "2026-03-12", "description": "OLX оплата", "mcc": 5999, "amount": -120000},
+      {"id": "t5", "date": "2026-03-15", "description": "Зарплата Березень 2026", "mcc": null, "amount": 4500000}
+    ],
+    "categorized": [
+      {"transaction_id": "t1", "category": "groceries", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t2", "category": "groceries", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t3", "category": "shopping", "confidence_score": 0.9, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t4", "category": "shopping", "confidence_score": 0.9, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t5", "category": "other", "confidence_score": 0.95, "transaction_kind": "income", "flagged": false, "uncategorized_reason": null}
+    ]
+  },
+  {
+    "name": "en_general_spending",
+    "locale": "en",
+    "literacy_level": "beginner",
+    "expected_language": "en",
+    "severity_in": ["critical", "warning", "info"],
+    "required_fields": ["headline", "severity"],
+    "required_body_any_of": ["why_it_matters", "deep_dive"],
+    "transactions": [
+      {"id": "t1", "date": "2026-03-01", "description": "STARBUCKS", "mcc": 5814, "amount": -750},
+      {"id": "t2", "date": "2026-03-05", "description": "WHOLE FOODS", "mcc": 5411, "amount": -12000},
+      {"id": "t3", "date": "2026-03-10", "description": "UBER", "mcc": 4121, "amount": -2500},
+      {"id": "t4", "date": "2026-03-12", "description": "AMAZON", "mcc": 5942, "amount": -8000},
+      {"id": "t5", "date": "2026-03-15", "description": "PAYROLL MARCH 2026", "mcc": null, "amount": 500000}
+    ],
+    "categorized": [
+      {"transaction_id": "t1", "category": "restaurants", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t2", "category": "groceries", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t3", "category": "transport", "confidence_score": 0.9, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t4", "category": "shopping", "confidence_score": 0.9, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t5", "category": "other", "confidence_score": 0.95, "transaction_kind": "income", "flagged": false, "uncategorized_reason": null}
+    ]
+  },
+  {
+    "name": "uk_mixed_categories",
+    "locale": "uk",
+    "literacy_level": "intermediate",
+    "expected_language": "uk",
+    "severity_in": ["critical", "warning", "info"],
+    "required_fields": ["headline", "severity"],
+    "required_body_any_of": ["why_it_matters", "deep_dive"],
+    "transactions": [
+      {"id": "t1", "date": "2026-03-01", "description": "Netflix", "mcc": 4899, "amount": -30000},
+      {"id": "t2", "date": "2026-03-05", "description": "Spotify", "mcc": 4899, "amount": -15000},
+      {"id": "t3", "date": "2026-03-10", "description": "Укрзалізниця", "mcc": 4111, "amount": -80000},
+      {"id": "t4", "date": "2026-03-12", "description": "Аптека", "mcc": 5912, "amount": -25000},
+      {"id": "t5", "date": "2026-03-15", "description": "Зарплата", "mcc": null, "amount": 6000000}
+    ],
+    "categorized": [
+      {"transaction_id": "t1", "category": "subscriptions", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t2", "category": "subscriptions", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t3", "category": "transport", "confidence_score": 0.9, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t4", "category": "healthcare", "confidence_score": 0.95, "transaction_kind": "spending", "flagged": false, "uncategorized_reason": null},
+      {"transaction_id": "t5", "category": "other", "confidence_score": 0.95, "transaction_kind": "income", "flagged": false, "uncategorized_reason": null}
+    ]
+  }
+]

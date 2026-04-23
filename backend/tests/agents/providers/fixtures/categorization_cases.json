@@ -1,0 +1,47 @@
+[
+  {
+    "id": "gs-001",
+    "description": "Переказ на картку",
+    "amount_kopiykas": -5000000,
+    "mcc": 4829,
+    "expected_category": "transfers",
+    "expected_kind": "transfer",
+    "acceptable_categories": ["transfers"]
+  },
+  {
+    "id": "gs-004",
+    "description": "Deposit top-up",
+    "amount_kopiykas": -19998054,
+    "mcc": 4829,
+    "expected_category": "savings",
+    "expected_kind": "savings",
+    "acceptable_categories": ["savings"]
+  },
+  {
+    "id": "gs-005",
+    "description": "Поповнення депозиту",
+    "amount_kopiykas": -19998054,
+    "mcc": 4829,
+    "expected_category": "savings",
+    "expected_kind": "savings",
+    "acceptable_categories": ["savings"]
+  },
+  {
+    "id": "gs-003",
+    "description": "Top up «На Авто!»",
+    "amount_kopiykas": -33300,
+    "mcc": 4829,
+    "expected_category": "charity",
+    "expected_kind": "spending",
+    "acceptable_categories": ["charity"]
+  },
+  {
+    "id": "gs-008",
+    "description": "Олександр Б.",
+    "amount_kopiykas": -239000,
+    "mcc": 4829,
+    "expected_category": "transfers_p2p",
+    "expected_kind": "spending",
+    "acceptable_categories": ["transfers_p2p", "other"]
+  }
+]
