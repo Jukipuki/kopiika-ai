@@ -184,11 +184,24 @@ development_status:
   epic-9: in-progress
   9-1-rag-evaluation-harness: done
   9-2-baseline-current-embeddings: done
-  9-3-embedding-model-comparison-spike: backlog
-  9-4-agentcore-bedrock-region-availability-spike: backlog
+  9-3-embedding-model-comparison-spike: done
+  9-4-agentcore-bedrock-region-availability-spike: done
   9-5a-llm-py-provider-routing-refactor: backlog
+  # Story 9.4 (2026-04-23): region=eu-central-1, haiku=eu.anthropic.claude-haiku-4-5-20251001-v1:0, sonnet=eu.anthropic.claude-sonnet-4-6; see docs/decisions/agentcore-bedrock-region-availability-2026-04.md
+  # Story 9.5b cross-region path blocked on ADR-0003 (docs/adr/0003-cross-region-inference-data-residency.md) flipping to Accepted
   9-5b-add-bedrock-provider-path: backlog
   9-5c-cross-provider-regression-suite: backlog
+  # Story 9.6 GATED AS "MIGRATE" per Story 9.3 decision doc (2026-04-23,
+  # post-diagnostic revision). Winner: text-embedding-3-large (3072 dims).
+  # Production storage MUST use halfvec(3072) + halfvec_cosine_ops HNSW —
+  # pgvector native vector HNSW caps at 2000 dims (TD-079). Story 9.3
+  # spike verified the halfvec path end-to-end on the sidecar table.
+  # Post-decision diagnostic (separation-ratio + Cohere re-chunk) rejected
+  # the "eval bias" / "chunk size" alternative explanations and confirmed
+  # 3-large's retrieval gain is paraphrase-robustness, not eval artefact.
+  # AC #7b strict reading failed (judge delta inside +0.108 noise floor);
+  # recommendation flipped to MIGRATE on deterministic retrieval evidence.
+  # Source: docs/decisions/embedding-model-comparison-2026-04.md
   9-6-embedding-migration-conditional: backlog
   9-7-bedrock-iam-observability: backlog
   9-8-pipeline-orchestration-evaluation-spike: backlog

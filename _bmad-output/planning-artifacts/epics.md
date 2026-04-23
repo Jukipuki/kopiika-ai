@@ -2061,8 +2061,8 @@ Prepare the AI layer for Phase 2 conversational features. Adds AWS Bedrock as a 
 - **9.5c — Cross-Provider Regression Suite (Epic 3 + 8 agents × 3 providers)**
   Build `backend/tests/agents/providers/` matrix runner. Epic 3 (categorization, RAG education) + Epic 8 (pattern, subscription, triage) agents must produce equivalent outputs on Anthropic / OpenAI / Bedrock. CI job exercises all three. Source of truth for provider equivalence. Depends on 9.5b.
 
-- **9.6 — Embedding Migration (Conditional)**
-  Only runs if Story 9.3 picks a non-current winner. Alembic migration: pgvector column dim change (if needed), re-seed corpus, rebuild HNSW index. Zero-downtime cutover plan. Re-run harness post-migration to confirm metrics match or beat baseline.
+- **9.6 — Embedding Migration**
+  Migrates production embeddings to `text-embedding-3-large` (3072 dims); trigger source: Story 9.3 decision doc (`docs/decisions/embedding-model-comparison-2026-04.md`, 2026-04). Alembic migration must switch `document_embeddings.embedding` to `halfvec(3072)` + `halfvec_cosine_ops` HNSW — pgvector native `vector` HNSW caps at 2000 dims; see TD-079 for the full task breakdown. Re-seed corpus; rebuild HNSW `(m=16, ef_construction=64)`. Zero-downtime cutover plan. Acceptance gate: re-run Story 9.1 harness and confirm metrics match or beat the Story 9.3 spike baseline (`text-embedding-3-large.json`) within judge-noise.
 
 - **9.7 — Bedrock IAM + Observability Plumbing**
   Celery ECS task role: `bedrock:InvokeModel`, `bedrock:ApplyGuardrail`, `bedrock-agentcore:*` (scoped). CloudWatch cost-allocation tags (`feature=chat`, `epic=10`). Terraform + tfsec waivers if needed.

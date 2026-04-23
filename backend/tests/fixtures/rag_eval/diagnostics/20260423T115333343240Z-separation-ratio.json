@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-04-23T11:53:33.343333+00:00",
+  "story": "9.3-diagnostic",
+  "purpose": "Topic-discrimination sanity check — intra/inter topic cosine similarity per language. Independent of eval_set phrasing.",
+  "methodology": "For each candidate, embed every corpus chunk once. Intra-topic = pairs with matching doc_id. Inter-topic = pairs with different doc_id, same language. separation_ratio = intra_mean / inter_mean. Higher = better topic cluster separation.",
+  "candidates": [
+    {
+      "slug": "text-embedding-3-small",
+      "provider": "OpenAI",
+      "model_id": "text-embedding-3-small",
+      "dims": 1536,
+      "chunks": 276,
+      "embed_elapsed_seconds": 6.24,
+      "per_language": {
+        "en": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.6564,
+          "inter_mean_cos": 0.4297,
+          "separation_ratio": 1.5276
+        },
+        "uk": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.5967,
+          "inter_mean_cos": 0.4465,
+          "separation_ratio": 1.3362
+        }
+      },
+      "overall_per_language_pooled": {
+        "intra_pairs": 690,
+        "inter_pairs": 18216,
+        "intra_mean_cos": 0.6265,
+        "inter_mean_cos": 0.4381,
+        "separation_ratio": 1.4301
+      }
+    },
+    {
+      "slug": "text-embedding-3-large",
+      "provider": "OpenAI",
+      "model_id": "text-embedding-3-large",
+      "dims": 3072,
+      "chunks": 276,
+      "embed_elapsed_seconds": 1.67,
+      "per_language": {
+        "en": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.6458,
+          "inter_mean_cos": 0.4232,
+          "separation_ratio": 1.5258
+        },
+        "uk": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.6423,
+          "inter_mean_cos": 0.4689,
+          "separation_ratio": 1.3699
+        }
+      },
+      "overall_per_language_pooled": {
+        "intra_pairs": 690,
+        "inter_pairs": 18216,
+        "intra_mean_cos": 0.644,
+        "inter_mean_cos": 0.4461,
+        "separation_ratio": 1.4439
+      }
+    },
+    {
+      "slug": "titan-text-embeddings-v2",
+      "provider": "Amazon",
+      "model_id": "amazon.titan-embed-text-v2:0",
+      "dims": 1024,
+      "chunks": 276,
+      "embed_elapsed_seconds": 30.31,
+      "per_language": {
+        "en": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.514,
+          "inter_mean_cos": 0.177,
+          "separation_ratio": 2.9045
+        },
+        "uk": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.4597,
+          "inter_mean_cos": 0.2396,
+          "separation_ratio": 1.9184
+        }
+      },
+      "overall_per_language_pooled": {
+        "intra_pairs": 690,
+        "inter_pairs": 18216,
+        "intra_mean_cos": 0.4868,
+        "inter_mean_cos": 0.2083,
+        "separation_ratio": 2.3373
+      }
+    },
+    {
+      "slug": "cohere-embed-multilingual-v3",
+      "provider": "Cohere",
+      "model_id": "cohere.embed-multilingual-v3",
+      "dims": 1024,
+      "chunks": 276,
+      "embed_elapsed_seconds": 2.78,
+      "per_language": {
+        "en": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.6241,
+          "inter_mean_cos": 0.4775,
+          "separation_ratio": 1.3072
+        },
+        "uk": {
+          "intra_pairs": 345,
+          "inter_pairs": 9108,
+          "intra_mean_cos": 0.6645,
+          "inter_mean_cos": 0.5504,
+          "separation_ratio": 1.2072
+        }
+      },
+      "overall_per_language_pooled": {
+        "intra_pairs": 690,
+        "inter_pairs": 18216,
+        "intra_mean_cos": 0.6443,
+        "inter_mean_cos": 0.5139,
+        "separation_ratio": 1.2537
+      }
+    }
+  ]
+}

@@ -1196,6 +1196,40 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
+### TD-079 — pgvector HNSW caps at 2000 dims; production table must switch to `halfvec(3072)` for Story 9.6 [HIGH]
+
+**Where:** [backend/alembic/versions/g3h4i5j6k7l8_create_document_embeddings_table.py](../backend/alembic/versions/g3h4i5j6k7l8_create_document_embeddings_table.py) (production migration pins `vector(1536)`), [backend/app/rag/retriever.py](../backend/app/rag/retriever.py) (casts query embedding to `vector`), [backend/tests/eval/rag/candidates/runner.py::_vector_type_for_dims](../backend/tests/eval/rag/candidates/runner.py) (spike reference implementation of the halfvec path).
+
+**Problem:** pgvector's native `vector` type supports HNSW indexes only up to 2000 dims — a hard upstream cap. Story 9.3 decided to migrate embeddings to OpenAI `text-embedding-3-large` (3072 dims) per `docs/decisions/embedding-model-comparison-2026-04.md`. That migration cannot reuse the production `vector(1536)` + `vector_cosine_ops` HNSW shape; it must use pgvector 0.8.2's `halfvec(3072)` + `halfvec_cosine_ops` instead. The Story 9.3 spike exercised this end-to-end on a sidecar table, so the path is validated.
+
+**Status:** Active requirement for Story 9.6 (embedding migration). Not deferred — blocks Story 9.6 closure. Upgraded from MEDIUM to HIGH when the 9.3 decision was flipped from "stay" to "migrate" on 2026-04-23 post-diagnostic.
+
+**Fix shape (Story 9.6 task breakdown):**
+1. Alembic migration: `ALTER TABLE document_embeddings ALTER COLUMN embedding TYPE halfvec(3072) USING NULL` — old 1536-dim vectors are incompatible with the new dim; truncate + reseed rather than cast. Rebuild HNSW index against `halfvec_cosine_ops` with the same `(m=16, ef_construction=64)` parameters as production.
+2. `backend/app/rag/embeddings.py` — switch `embed_text` / `embed_batch` to OpenAI `text-embedding-3-large`, 3072 dims. Preserve the batch API shape.
+3. `backend/app/rag/retriever.py` — change `CAST(:embedding AS vector)` to `CAST(:embedding AS halfvec)` in both the language-filtered and cross-lingual fallback queries. Preserve `MIN_RESULTS=3` fallback behavior unchanged.
+4. `backend/app/rag/seed.py` — re-run against the truncated table. No code change required beyond whatever `embeddings.py` returns.
+5. Acceptance: re-run Story 9.1 harness (marker-gated `-m eval`) and compare against Story 9.3's committed `backend/tests/fixtures/rag_eval/baselines/text-embedding-3-large.json`. Expectation: retrieval metrics within judge-noise of the spike numbers (p@5 ≈ 0.848, uk p@5 ≈ 0.835, en p@5 ≈ 0.861, mrr ≈ 0.957, both shortlist rows retrieve gold, zero regressions on the 31-row perfect set). The `float32 → float16` quantization implicit in halfvec was verified quality-neutral in the spike.
+6. Post-migration: re-seed in production (one-time batch job); update any monitoring that references the 1536-dim shape.
+
+**Surfaced in:** Story 9.3 (2026-04-23) — 3-large failed initial sidecar-table create with `psycopg2.errors.ProgramLimitExceeded: column cannot have more than 2000 dimensions for hnsw index`, worked around inline via halfvec. Post-decision diagnostic (same day) confirmed 3-large is the retrieval winner, elevating TD-079 to an active Story 9.6 requirement.
+
+---
+
+### TD-080 — RAG harness candidate-answer prompt ignores user-specified length hints [LOW]
+
+**Where:** [backend/tests/eval/rag/judge.py](../backend/tests/eval/rag/judge.py) — `_CANDIDATE_PROMPT_EN` / `_CANDIDATE_PROMPT_UK` hard-code "Answer (2-4 sentences, ...)".
+
+**Problem:** Both Story 9.2 and 9.3 surfaced eval rows (`rag-004` en, `rag-024` uk, several Titan/Cohere rows on 9.3) with **perfect retrieval** but `judge.overall ≤ 2` because the candidate-answer prompt overrides user instructions like *"Define ... in one sentence"* / *"... одним реченням"*. The judge correctly flags the length-violation and scores down a factually-correct answer. This drag is common-mode across all embedders (it cancels out of head-to-head comparisons in Story 9.3) but it suppresses absolute judge scores below their true ceiling and pushes rows into the `worst_10` surface for reasons unrelated to retrieval.
+
+**Why deferred:** Not an embedding problem; no embedder swap could fix it. Intentionally carved out of Story 9.3 scope per its Dev Notes ("Out-of-scope: candidate-answer prompt overrides user-specified length"). A harness-level fix, not a product fix.
+
+**Fix shape:** Tweak `_CANDIDATE_PROMPT_EN/UK` to extract a length hint from the question (regex on `one sentence|одним реченням|two sentences|briefly|коротко|...`), default to the existing `2-4 sentences` when absent. Verify on the 2-3 known-offending rows that judge overall rises without causing regressions elsewhere (run the default harness, compare to Story 9.2 baseline).
+
+**Surfaced in:** Story 9.2 (2026-04-22) — cross-referenced by Story 9.3 (2026-04-23).
+
+---
+
 ### TD-068 — Pre-existing ruff drift on backend main branch [LOW]
 
 **Where:** [backend/](../backend/) — `uv run ruff check .` reports 44 errors on current `main` (HEAD = `1371598`), 36 of them auto-fixable with `--fix`. Representative violation: unused import `app.core.exceptions.RegistrationError`.
@@ -1207,6 +1241,20 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 **Fix shape:** (1) `cd backend && uv run ruff check --fix .` for the 36 auto-fixable ones; (2) hand-resolve the remaining 8; (3) verify `uv run pytest tests/ -q` still green; (4) add `ruff check` as a CI gate so drift does not silently re-accumulate.
 
 **Surfaced in:** Story 9.2 code review (2026-04-22).
+
+---
+
+### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [LOW]
+
+**Where:** Dev workstation `awscli` (Homebrew `aws` 2.x, 2026-04). Story 9.4 had to drop to boto3 (`boto3.client("bedrock-agentcore-control")`) because `aws bedrock-agentcore list-agents --region eu-central-1` returns `Invalid choice` even though the service is fully available in `eu-central-1` and the boto3 SDK (1.42.73) binds it correctly.
+
+**Problem:** Re-runs of the Story 9.4 invoke-test harness by an operator who only has the AWS CLI (no Python env) will hit a false "service not available" signal unless they know to switch to boto3. This matters for the AC #7 re-run cadence ("re-validate before Epic 10 scope-lock if > 30 days have passed") and for any future CI job that tries to probe AgentCore via the CLI.
+
+**Why deferred:** AWS will bind `bedrock-agentcore` in a future `awscli` release; this is a transient gap between SDK and CLI binding velocity. Not a blocker for Story 9.4's outcome or for Story 10.4a (AgentCore SDK usage is unaffected). Shortcut documented in the decision doc's "Re-run instructions" so a future operator can pattern-match.
+
+**Fix shape:** When `aws` CLI adds the binding, update the Step 6 block in `docs/decisions/agentcore-bedrock-region-availability-2026-04.md` from the boto3 one-liner back to `aws bedrock-agentcore list-agents …`. No code change required.
+
+**Surfaced in:** Story 9.4 (2026-04-23) — pointer back to [`docs/decisions/agentcore-bedrock-region-availability-2026-04.md`](decisions/agentcore-bedrock-region-availability-2026-04.md).
 
 ---
 

@@ -32,8 +32,70 @@ than re-running the baseline embedding path themselves.
 
 Current entries:
 
-- `baselines/text-embedding-3-small.json` + `.meta.json` — captured by Story
-  9.2 ([9-2-baseline-current-embeddings.md](../../../../_bmad-output/implementation-artifacts/9-2-baseline-current-embeddings.md)).
+- `baselines/text-embedding-3-small.json` + `.meta.json` — Story 9.2 frozen
+  baseline at `corpus_git_sha=1371598`
+  ([9-2-baseline-current-embeddings.md](../../../../_bmad-output/implementation-artifacts/9-2-baseline-current-embeddings.md)).
+  **Not** modified by Story 9.3 — the 9.3 re-run on a later corpus SHA is a
+  sibling file (next bullet) so the 9.2 contract artifact is preserved.
+- `baselines/text-embedding-3-small.9-3-rerun.json` + `.meta.json` —
+  Story 9.3 sibling re-run of the 3-small control on
+  `corpus_git_sha=46f3307` (same SHA as the other three 9.3 candidates). Used
+  for the AC #7 judge-noise calibration discussion in
+  [docs/decisions/embedding-model-comparison-2026-04.md](../../../../docs/decisions/embedding-model-comparison-2026-04.md).
+  Corpus content between SHAs `1371598` and `46f3307` is unchanged (no files
+  under `backend/data/rag-corpus/` modified between the two commits).
+- `baselines/text-embedding-3-large.json` + `.meta.json` — Story 9.3
+  candidate ([9-3-embedding-model-comparison-spike.md](../../../../_bmad-output/implementation-artifacts/9-3-embedding-model-comparison-spike.md)).
+- `baselines/titan-text-embeddings-v2.json` + `.meta.json` — Story 9.3
+  candidate (Bedrock `eu-central-1`).
+- `baselines/cohere-embed-multilingual-v3.json` + `.meta.json` — Story 9.3
+  candidate (Bedrock `eu-central-1`).
+
+`.meta.json` files carry a `candidate_of` field that distinguishes
+9.2-frozen ("9.2") from 9.3-candidate ("9.3") artifacts. The Story 9.3 meta
+files additionally include `bedrock_region` (Bedrock candidates only),
+`embed_latency_ms_p50` / `_p95`, and per-row evidence under
+`shortlist` + `regression_rows` (see
+[docs/decisions/embedding-model-comparison-2026-04.md](../../../../docs/decisions/embedding-model-comparison-2026-04.md)
+for the decision-rule context).
+
+### Candidate evaluation (Story 9.3)
+
+The Story 9.3 candidate-runner lives under
+[tests/eval/rag/candidates/](../../../tests/eval/rag/candidates/) and creates
+per-candidate **sidecar tables** named `document_embeddings_cand_<slug>` with
+the candidate's native dim (`vector(dims)` for ≤ 2000 dims, `halfvec(dims)`
+for the 3072-dim 3-large case — see TD-079 in `docs/tech-debt.md`). These
+tables are **transient**: created and dropped inside a single spike run, not
+part of the Alembic schema. A crashed run leaves the table present; the
+next invocation's `_ensure_sidecar_table` does `DROP TABLE IF EXISTS` before
+recreating. Set `KEEP_CAND_TABLES=1` in the environment to retain a sidecar
+after a successful run for post-mortem.
+
+Invoke a single candidate via the marker-gated pytest entry:
+
+```bash
+cd backend
+export $(grep -v '^#' .env | xargs) && export AWS_PROFILE=personal AWS_REGION=eu-central-1
+CANDIDATE_SLUG=titan-text-embeddings-v2 \
+  uv run pytest tests/eval/rag/candidates/ -v -s -m eval
+```
+
+Or directly (bypassing pytest's stdout capture for live per-row progress):
+
+```bash
+cd backend
+export $(grep -v '^#' .env | xargs) && export AWS_PROFILE=personal AWS_REGION=eu-central-1
+uv run python -c "
+from tests.eval.rag.candidates.embedders import build_embedder
+from tests.eval.rag.candidates.runner import run_candidate
+emb = build_embedder('titan-text-embeddings-v2', region='eu-central-1')
+run_candidate(emb, bedrock_region='eu-central-1', selection_notes='rerun')
+"
+```
+
+Valid slugs: `text-embedding-3-small`, `text-embedding-3-large`,
+`titan-text-embeddings-v2`, `cohere-embed-multilingual-v3`.
 
 ### Meta schema
 
@@ -80,6 +142,119 @@ the canonical example):
    `elapsed_seconds`, and the run timestamp from the run report verbatim.
 
 4. Commit both files together; never commit a baseline without its meta.
+
+## Evaluation methodology
+
+The harness is two orthogonal evaluations stapled together per question:
+**retrieval quality** (did we fetch the right docs?) and **answer quality**
+(did the LLM produce a faithful, relevant, well-written answer given those
+docs?). They are measured independently so a failure mode is attributable to
+the right layer.
+
+### Per-question execution
+
+For each row in `eval_set.jsonl`, the harness
+([`test_rag_harness.py`](../../../tests/eval/rag/test_rag_harness.py)) does:
+
+1. **Retrieve.** Call the live `retrieve_relevant_docs(query, language, top_k=5)`
+   against the seeded `document_embeddings` table (pgvector, HNSW). The
+   production retriever is exercised unchanged — no mocks.
+
+2. **Compute retrieval metrics** purely from
+   `retrieved_doc_ids ∩ expected_doc_ids`
+   (see [`metrics.py`](../../../tests/eval/rag/metrics.py)):
+   - `precision@k = hits_in_top_k / k` — standard IR convention. Denominator
+     is `k`, not the number of retrieved ids; under-filled retrievals are
+     **not** credited.
+   - `recall@5` — fraction of gold ids that appear in the top-5.
+   - `mrr` — reciprocal rank of the first gold hit (`1/rank`, 0 if missed).
+   - Hit definition is **any-match**: a retrieved chunk counts as a hit if its
+     `doc_id` is in `expected_doc_ids`. Multi-doc gold sets are supported.
+   - Note: the retriever returns *chunks*, each tagged with their parent
+     `doc_id`. Multiple chunks from the same gold file each count as a hit,
+     which is why `precision@k` often reads as either ~1.0 (top-k all came
+     from the gold file) or ~0 (miss) on topic-homogeneous corpora.
+
+3. **Generate a candidate answer**
+   ([`judge.py:build_candidate_answer`](../../../tests/eval/rag/judge.py)).
+   Feed the retrieved chunks + question into a 2-4 sentence prompt through
+   `get_llm_client()` (currently Claude Haiku 4.5). Language-specific prompts
+   (EN/UK) with the instruction: *answer only from the RAG context; if
+   missing, say so*. Mirrors what the production education agent does.
+
+4. **Judge the candidate** with LLM-as-judge
+   ([`judge.py:judge_answer`](../../../tests/eval/rag/judge.py) and
+   `_JUDGE_PROMPT`). Same model, four axes on 0-2 integer scales (plus 0-4
+   `overall`):
+
+   | Axis | Scored against | What it catches |
+   |---|---|---|
+   | `groundedness` | **retrieved context** (what the generator actually saw) | Hallucinations — claims not in the fetched chunks |
+   | `relevance` | **gold reference doc** (canonical answer) | Did it correctly answer per the corpus? |
+   | `language_correctness` | target language | UK→EN/RU slippage, awkward phrasing |
+   | `overall` | holistic | Judge's summary — may differ from axis sum |
+
+   The split between `groundedness` (vs retrieved) and `relevance` (vs gold)
+   is load-bearing: if retrieval misses the gold doc, a candidate that says
+   "I don't know" earns `groundedness=2` and `relevance=0`, correctly
+   attributing the failure to the retriever, not the generator. Judge returns
+   strict JSON; parse errors degrade to a zeroed score with
+   `rationale="parse-error: …"` rather than crashing the run.
+
+### Aggregation
+
+All per-row results are bucketed four ways: `overall`, `per_language` (en vs
+uk, surfaces bilingual regressions), `per_topic` (one row per corpus slug,
+pinpoints topic-specific gaps), `per_question_type` (factual / applied /
+definitional). A `worst_10` list carries the ten lowest-`judge.overall` rows
+with full candidate + retrieved context for triage. Means are unweighted —
+each question counts once.
+
+### What the test asserts (and deliberately doesn't)
+
+This is Story 9.1's key design call: the harness asserts **structural
+validity**, not absolute quality thresholds.
+
+- **Asserted:** every eval question produced a per-question entry; every
+  entry has all 5 retrieval metrics + `judge.overall`; the run report was
+  written to `runs/<ts>.json` with all aggregate keys; and the one threshold
+  that exists — the **error-budget gate** `error_rows / total_rows ≤ 0.2`
+  ([test_rag_harness.py `_MAX_ERROR_FRACTION`](../../../tests/eval/rag/test_rag_harness.py)).
+  A run where most LLM calls failed cannot silently pass.
+- **Not asserted:** no absolute `p@5 > X` or `judge.overall > Y`. Committed
+  baselines (see `baselines/`) are the reference point; Stories 9.3 and 9.6
+  assert **relative** deltas against them, not cherry-picked absolutes.
+
+### Why LLM-as-judge (and the noise trade-off)
+
+Retrieval metrics are deterministic (same corpus → same ranks), but answer
+quality can't be scored by string match — *"30000 UAH × 0.20 = 6000 UAH"* and
+*"save 6k hryvnia from your 30k salary"* are equally correct. LLM-as-judge
+rubric-scores free-form answers at ~cent cost per run.
+
+Judge scores carry ±0.1–0.3 variance on the 0–4 `overall` scale run-to-run.
+The baseline captures **one canonical run** rather than averaging, because
+Story 9.3's candidate-vs-baseline comparison will absorb judge noise via
+relative deltas computed on the same judge — both sides eat the same noise
+floor, so averaging them is overkill for a decision gate. If a dev is
+worried about noise, the recommended path (see
+[Dev Notes → Handling judge noise](../../../../_bmad-output/implementation-artifacts/9-2-baseline-current-embeddings.md))
+is to run the harness 2–3 times and commit the median run — **never commit
+multiple baselines for the same model.**
+
+### Cost and seed dependencies
+
+One run is 46 × 2 LLM calls = 92 invocations (~233k tokens total, ~cents on
+Haiku). Requires:
+
+- Seeded `document_embeddings` (~276 chunks from 46 corpus files, OpenAI
+  `text-embedding-3-small` @ 1536 dims).
+- Live Postgres + pgvector reachable via `backend/.env`.
+- `ANTHROPIC_API_KEY` for candidate + judge; `OPENAI_API_KEY` for the seeder
+  and the Anthropic → OpenAI LLM fallback path.
+
+The harness auto-skips if the DB is unreachable or `document_embeddings` is
+empty, so it behaves safely on a cold checkout.
 
 ## Running the harness
 

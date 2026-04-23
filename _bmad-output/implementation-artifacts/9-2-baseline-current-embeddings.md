@@ -197,7 +197,52 @@ Numbers to 3 decimals for metrics, integers for token counts. Do NOT hand-comput
 
 - `cash-vs-digital-payments` — 1/2 questions (50%) produced `judge.overall ≤ 1`, exceeding the >20% per-topic regression threshold. Story 9.3 candidate models must at least match the non-failing row's score on this topic, and preferably lift the failing row.
 - Ukrainian corpus is materially weaker than English on every retrieval metric (uk `precision@5`=0.635 vs en `precision@5`=0.817; uk `mrr`=0.761 vs en `mrr`=0.917). Story 9.3 should treat the uk/en gap as a first-order evaluation axis, not an averaged-away detail.
-- `savings-strategies` has the lowest per-topic judge score (2.000) despite having no `judge.overall ≤ 1` rows — likely a grounding/relevance issue rather than a retrieval miss. Worth spot-checking the retrieved chunks for this topic when comparing candidate models.
+- `savings-strategies` has the lowest per-topic judge score (2.000). Root cause is **mixed** (see Retrieval-miss shortlist below): one row is a retrieval miss (`rag-027`), the other is perfect retrieval + a generator-prompt violation (`rag-004`). Only the first is in-scope for Story 9.3.
+
+### Retrieval-miss shortlist for Story 9.3
+
+The worst-3 topics by `judge.overall` surface **only two genuine retrieval
+misses** — both UK applied paraphrases where the query vocabulary drowns the
+topic keyword. These are the concrete rows a candidate embedding model in
+Story 9.3 must lift to count as a win:
+
+| Row | Lang / type | Question | Retrieved top-5 | Gold | Judge | Failure mode |
+|---|---|---|---|---|---|---|
+| `rag-041` | uk / applied | *"Я розрахуюся готівкою — чи впливає це на мій бюджет-трекер у додатку?"* | `budgeting-basics`, `spending-patterns`×2, `groceries-food-spending`×2 | `uk/cash-vs-digital-payments` | `overall=1` (g=2, rel=0) | Budget-tracker vocabulary (`бюджет-трекер`, `додатку`) hijacks embedding; lone `готівкою` token insufficient to surface gold. |
+| `rag-027` | uk / applied | *"Я хочу почати відкладати, але кожен місяць гроші закінчуються — з чого почати?"* | `budgeting-basics`×3, `emergency-fund`, `spending-patterns` | `uk/savings-strategies` | `overall=2` (g=2, rel=1) | `гроші закінчуються` ("money runs out") is lexically closer to budgeting/spending-patterns than to savings-strategies. Candidate gave a budgeting-track answer, which is useful-but-wrong — the gold concepts (pay-yourself-first, automation, named goals, separate accounts) were absent from retrieval. |
+
+**Shared structural signature:** both are UK questions of `question_type =
+applied` where the paraphrase drops the literal topic keyword and couches the
+concept inside a denser adjacent-topic vocabulary. This is the specific
+failure shape Story 9.3 is trying to buy improvement on — candidate models
+should be evaluated first on whether they retrieve the gold for these two
+rows, *then* on aggregate deltas. A model that lifts averages but regresses
+on these rows is not a win for the real user query distribution.
+
+**Acceptance bar for a candidate model in 9.3:**
+1. Both `rag-041` and `rag-027` retrieve their gold doc in top-5 (ideally top-3).
+2. No regression on the 31 currently-perfect rows (`p@1 == p@3 == 1.0` → should stay).
+3. UK/EN gap narrows: candidate's uk `p@5` ≥ 0.700 (current 0.635) without dropping en `p@5` below 0.800 (current 0.817).
+
+### Out-of-scope-for-9.3 findings surfaced by the worst-3 scan
+
+Two rows in the worst-3 topics are **generator-prompt issues with perfect
+retrieval**, not embedding-model problems. Recording them here so 9.3 doesn't
+chase them and so a follow-up prompt/TD ticket can pick them up:
+
+| Row | Lang / type | Retrieval | Judge rationale |
+|---|---|---|---|
+| `rag-004` | en / definitional — *"Define pay-yourself-first saving in one sentence."* | **5/5 chunks from `en/savings-strategies`** (perfect) | `overall=2, relevance=1` — *"fails to meet the explicit instruction to define … in ONE sentence by providing three sentences instead."* |
+| `rag-024` | uk / definitional — *"Що таке бюджет — одним реченням?"* | **4/5 chunks from `uk/budgeting-basics`** | `overall=2, relevance=1` — *"violates the explicit instruction to answer in one sentence by providing three sentences instead."* |
+
+Both are the harness's own candidate prompt (`_CANDIDATE_PROMPT_EN/UK` in
+[`backend/tests/eval/rag/judge.py`](../../backend/tests/eval/rag/judge.py)
+hard-codes "2-4 sentences") overriding the user's explicit "one sentence"
+instruction. Candidate answer for definitional/one-sentence questions will
+always be penalized under the current prompt. Recommended follow-up: make
+the candidate-answer prompt respect user-specified length instructions
+(small prompt tweak, not an embedding change). File a TD entry when
+addressing — outside Story 9.2 scope.
 
 ### How to reproduce
 
@@ -257,6 +302,7 @@ claude-opus-4-7[1m] (Claude Opus 4.7, 1M context)
 - 2026-04-22 — Story 9.2 drafted: baseline-capture story for the Story 9.1 RAG harness on current `text-embedding-3-small` embeddings. No code changes; artifact-only deliverable under `backend/tests/fixtures/rag_eval/baselines/`.
 - 2026-04-22 — Baseline captured: run `20260422T162616162751Z.json` promoted to `baselines/text-embedding-3-small.json`; `.meta.json` envelope written; README + `docs/testing.md` cross-refs added. Default sweep 861 passed / 10 deselected (no regression). Version bumped 1.31.0 → 1.32.0 per story completion.
 - 2026-04-22 — Adversarial code review applied: Task 5.2 wording softened to "no NEW violations introduced" and the pre-existing 44-error ruff drift registered as [TD-068](../../docs/tech-debt.md); `total_questions` alias added to `text-embedding-3-small.meta.json` to resolve the run-report ↔ meta-schema naming drift (AC wording uses `total_rows`, report emits `total_questions` — both now present with identical values); `backend/tests/fixtures/rag_eval/README.md` grew a "Meta schema" section enumerating required `.meta.json` fields plus a copy-pasteable capture recipe so Story 9.3 doesn't reinvent it; worst-3 topic list pinned an alphabetical tiebreaker for the 3.000-overall ties.
+- 2026-04-23 — Retrieval-miss shortlist added to "Known weak spots": two UK-applied rows (`rag-041` cash-vs-digital-payments, `rag-027` savings-strategies) identified as the genuine embedding-layer failures for Story 9.3 to target, with concrete acceptance bar (both retrieve gold in top-5; uk `p@5` ≥ 0.700 without regressing en `p@5`). Two additional worst-3 rows (`rag-004`, `rag-024`) re-classified as generator-prompt failures (candidate prompt's "2-4 sentences" overrides user's "one sentence" instruction) — flagged as a separate future TD item, explicitly out-of-scope for 9.3.
 
 ## Code Review
 

@@ -1,0 +1,119 @@
+{
+  "meta": {
+    "story": "9.4",
+    "date_utc": "2026-04-23",
+    "primary_region": "eu-central-1",
+    "aws_account_id": "573562677570",
+    "caller_identity_redacted": {
+      "account": "573562677570",
+      "arn_kind": "iam_user"
+    },
+    "prompt": "ping — reply with the word OK",
+    "timestamp_semantics": "per-invoke timestamps below mark invocation START (send time), not completion; sequential CLI invocations, so Sonnet start can precede Haiku end + 3s margin only if the calls were issued back-to-back without wait",
+    "request_body": {
+      "anthropic_version": "bedrock-2023-05-31",
+      "max_tokens": 16,
+      "messages": [
+        {"role": "user", "content": "ping — reply with the word OK"}
+      ]
+    }
+  },
+
+  "eu_central_1_anthropic_inventory": [
+    {"modelId": "anthropic.claude-sonnet-4-20250514-v1:0", "lifecycle": "LEGACY"},
+    {"modelId": "anthropic.claude-opus-4-7", "lifecycle": "ACTIVE", "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+    {"modelId": "anthropic.claude-haiku-4-5-20251001-v1:0", "lifecycle": "ACTIVE", "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+    {"modelId": "anthropic.claude-sonnet-4-5-20250929-v1:0", "lifecycle": "ACTIVE", "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+    {"modelId": "anthropic.claude-opus-4-5-20251101-v1:0", "lifecycle": "ACTIVE", "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+    {"modelId": "anthropic.claude-opus-4-6-v1", "lifecycle": "ACTIVE", "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+    {"modelId": "anthropic.claude-sonnet-4-6", "lifecycle": "ACTIVE", "inferenceTypesSupported": ["INFERENCE_PROFILE"]},
+    {"modelId": "anthropic.claude-3-haiku-20240307-v1:0", "lifecycle": "LEGACY"},
+    {"modelId": "anthropic.claude-3-7-sonnet-20250219-v1:0", "lifecycle": "LEGACY"}
+  ],
+
+  "eu_central_1_inference_profiles": {
+    "note": "All active Claude models in eu-central-1 are INFERENCE_PROFILE-only (no ON_DEMAND). Both 'eu.*' (routes within EU to eu-north-1) and 'global.*' (routes globally, typically to us-*) profiles exist. 'eu.*' chosen for softer data-residency posture.",
+    "selected": [
+      {
+        "inferenceProfileId": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "inferenceProfileArn": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "routesTo": "arn:aws:bedrock:eu-north-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+        "tier": "haiku-class"
+      },
+      {
+        "inferenceProfileId": "eu.anthropic.claude-sonnet-4-6",
+        "inferenceProfileArn": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6",
+        "routesTo": "arn:aws:bedrock:eu-north-1::foundation-model/anthropic.claude-sonnet-4-6",
+        "tier": "sonnet-class"
+      }
+    ]
+  },
+
+  "haiku_invoke_test": {
+    "modelId": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "invoked_from_region": "eu-central-1",
+    "routes_to_region": "eu-north-1",
+    "timestamp_utc": "2026-04-23T14:16:00Z",
+    "http_status": 200,
+    "latency_ms": 2719,
+    "inference_profile_required": true,
+    "response_body": {
+      "model": "claude-haiku-4-5-20251001",
+      "id": "msg_bdrk_01EbNtMKCk4ggsSysEYAanPs",
+      "type": "message",
+      "role": "assistant",
+      "content": [{"type": "text", "text": "OK"}],
+      "stop_reason": "end_turn",
+      "usage": {"input_tokens": 14, "output_tokens": 4}
+    }
+  },
+
+  "sonnet_invoke_test": {
+    "modelId": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6",
+    "invoked_from_region": "eu-central-1",
+    "routes_to_region": "eu-north-1",
+    "timestamp_utc": "2026-04-23T14:16:03Z",
+    "http_status": 200,
+    "latency_ms": 3002,
+    "inference_profile_required": true,
+    "response_body": {
+      "model": "claude-sonnet-4-6",
+      "id": "msg_bdrk_01MdEk9AtqeKP4Q8CAMj4k8J",
+      "type": "message",
+      "role": "assistant",
+      "content": [{"type": "text", "text": "OK"}],
+      "stop_reason": "end_turn",
+      "usage": {"input_tokens": 14, "output_tokens": 4}
+    }
+  },
+
+  "agentcore_availability": {
+    "cli_probe": {
+      "command": "aws bedrock-agentcore list-agents --region eu-central-1",
+      "result": "CLI binary does not expose bedrock-agentcore subcommand (awscli 2.x in 2026-04). Not a regional-absence signal; boto3 SDK probe below is authoritative per Dev Notes."
+    },
+    "sdk_probe_control_plane": {
+      "service": "bedrock-agentcore-control",
+      "operation": "ListAgentRuntimes",
+      "region": "eu-central-1",
+      "endpoint": "https://bedrock-agentcore-control.eu-central-1.amazonaws.com",
+      "http_status": 200,
+      "body": {"agentRuntimes": []}
+    },
+    "sdk_probe_control_plane_secondary": {
+      "service": "bedrock-agentcore-control",
+      "operation": "ListMemories",
+      "region": "eu-central-1",
+      "http_status": 200,
+      "body": {"memories": []}
+    },
+    "sdk_probe_data_plane_endpoint": {
+      "service": "bedrock-agentcore",
+      "region": "eu-central-1",
+      "endpoint": "https://bedrock-agentcore.eu-central-1.amazonaws.com",
+      "note": "Endpoint resolved; data-plane ops require an agent-runtime and are out of scope for this availability probe."
+    },
+    "sdk_versions": {"boto3": "1.42.73", "botocore": "1.42.73"},
+    "verdict": "AgentCore available in eu-central-1 — no allowlist required, control-plane APIs return 200."
+  }
+}

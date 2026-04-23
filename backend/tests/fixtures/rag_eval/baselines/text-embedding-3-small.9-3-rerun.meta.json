@@ -1,0 +1,65 @@
+{
+  "embedding_model": "text-embedding-3-small",
+  "embedding_dims": 1536,
+  "embedding_provider": "OpenAI",
+  "candidate_of": "9.3",
+  "candidate_slug": "text-embedding-3-small.9-3-rerun",
+  "llm_candidate_provider": "Anthropic",
+  "llm_candidate_model": "claude-haiku-4-5-20251001",
+  "llm_judge_provider": "Anthropic",
+  "llm_judge_model": "claude-haiku-4-5-20251001",
+  "llm_fallback_provider": "OpenAI",
+  "llm_fallback_model": "gpt-4o-mini",
+  "corpus_git_sha": "46f3307e7d57c8c947786016843c9794c2e6f4e4",
+  "corpus_file_count_en": 23,
+  "corpus_file_count_uk": 23,
+  "document_embeddings_row_count": 276,
+  "seed_elapsed_seconds": 18.73524270800408,
+  "embed_calls": 92,
+  "embed_input_tokens": 77782,
+  "embed_input_tokens_approximated": false,
+  "embed_latency_ms_p50": 126,
+  "embed_latency_ms_p95": 512,
+  "harness_version": "1.32.0",
+  "run_timestamp_utc": "2026-04-23T10:18:08.564338+00:00",
+  "total_rows": 46,
+  "total_questions": 46,
+  "error_rows": 0,
+  "total_tokens_used": 232837,
+  "elapsed_seconds": 206.6319855000038,
+  "run_report_filename": "20260423T101808561989Z_cand_text-embedding-3-small.json",
+  "baseline_story": "9.3",
+  "captured_by": "Story 9.3 — Embedding Model Comparison Spike",
+  "selection_notes": "Story 9.3 sibling re-run of the 3-small control on corpus SHA 46f3307 (vs the Story 9.2 frozen artifact at SHA 1371598). Sibling file — the 9.2 baseline (text-embedding-3-small.{json,meta.json}) is preserved verbatim; this file exists because judge stochasticity moved mean judge overall by +0.108 between the two runs, which is load-bearing for the 9.3 AC #7 calibration discussion. See docs/decisions/embedding-model-comparison-2026-04.md (Judge-noise caveat) and Story 9.3 Code Review L H2.",
+  "shortlist": {
+    "rag-041": {
+      "gold_in_top5": false,
+      "gold_rank": null,
+      "retrieved_top5": [
+        "uk/budgeting-basics",
+        "uk/spending-patterns",
+        "uk/spending-patterns",
+        "uk/groceries-food-spending",
+        "uk/groceries-food-spending"
+      ],
+      "expected_doc_ids": [
+        "uk/cash-vs-digital-payments"
+      ]
+    },
+    "rag-027": {
+      "gold_in_top5": false,
+      "gold_rank": null,
+      "retrieved_top5": [
+        "uk/budgeting-basics",
+        "uk/budgeting-basics",
+        "uk/emergency-fund",
+        "uk/budgeting-basics",
+        "uk/spending-patterns"
+      ],
+      "expected_doc_ids": [
+        "uk/savings-strategies"
+      ]
+    }
+  },
+  "regression_rows": []
+}

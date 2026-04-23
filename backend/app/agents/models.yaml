@@ -1,0 +1,16 @@
+# Bedrock model IDs pinned by Story 9.4 on 2026-04-23 against region eu-central-1.
+# Do not edit without re-running the 9.4 invoke-tests harness
+# (see docs/decisions/agentcore-bedrock-region-availability-2026-04.md).
+#
+# Schema: logical role -> provider-qualified model ID (AC #4).
+# Values are prefixed with the provider scheme (`bedrock:<arn-or-id>`, `anthropic:<id>`,
+# `openai:<id>`); Story 9.5a's loader splits on the first `:` to route to the right client.
+# This story pins the Bedrock entries only; Story 9.5b may add `anthropic:`/`openai:`
+# alternatives per role as fallbacks.
+#
+# Cross-region inference note: both Bedrock ARNs below are eu-central-1 inference profiles
+# that physically route to eu-north-1. Story 9.5b's cross-region path is blocked on ADR-0003
+# (docs/adr/0003-cross-region-inference-data-residency.md) flipping from Proposed to Accepted.
+agent_default: "bedrock:arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+agent_cheap:   "bedrock:arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+chat_default:  "bedrock:arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6"
