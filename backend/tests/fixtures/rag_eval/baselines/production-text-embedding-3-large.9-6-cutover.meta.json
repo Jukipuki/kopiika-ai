@@ -1,0 +1,59 @@
+{
+  "embedding_model": "text-embedding-3-large",
+  "embedding_dims": 3072,
+  "embedding_provider": "OpenAI",
+  "candidate_of": "9.6",
+  "candidate_slug": "production-text-embedding-3-large",
+  "llm_candidate_provider": "Anthropic",
+  "llm_candidate_model": "claude-haiku-4-5-20251001",
+  "llm_judge_provider": "Anthropic",
+  "llm_judge_model": "claude-haiku-4-5-20251001",
+  "llm_fallback_provider": "OpenAI",
+  "llm_fallback_model": "gpt-4o-mini",
+  "corpus_git_sha": "cccdeff874b32e59cb0983dffe0c341fa6ea72ea",
+  "corpus_file_count_en": 23,
+  "corpus_file_count_uk": 23,
+  "document_embeddings_row_count": 276,
+  "harness_version": "1.32.0",
+  "run_timestamp_utc": "2026-04-23T16:12:41.670473+00:00",
+  "total_rows": 46,
+  "total_questions": 46,
+  "error_rows": 0,
+  "total_tokens_used": 229305,
+  "elapsed_seconds": 203.4496824999951,
+  "run_report_filename": "20260423T161241671347Z.json",
+  "baseline_story": "9.6",
+  "captured_by": "Story 9.6 — Embedding Migration (production cutover to halfvec(3072))",
+  "selection_notes": "Story 9.6 cutover run against the production document_embeddings table after Alembic revision e0f04e4194bc migrated it from vector(1536) to halfvec(3072) + halfvec_cosine_ops HNSW. Seed re-run via `python -m app.rag.seed` populated 46 files / 276 chunks via OpenAI text-embedding-3-large. Gate per AC #2 passed: deterministic retrieval metrics match the Story 9.3 spike (mean p@5 0.848, uk 0.835, en 0.861, mean mrr 0.957), shortlist rows hit target ranks (rag-041 @1, rag-027 @2), zero regressions on the 30-row previously-perfect intersection of 9.2 baseline × 9.3 3-large spike, judge overall 3.848 within informational [3.70, 3.85] band.",
+  "shortlist": {
+    "rag-041": {
+      "gold_in_top5": true,
+      "gold_rank": 1,
+      "retrieved_top5": [
+        "uk/cash-vs-digital-payments",
+        "uk/budgeting-basics",
+        "uk/cash-vs-digital-payments",
+        "uk/cash-vs-digital-payments",
+        "uk/cash-vs-digital-payments"
+      ],
+      "expected_doc_ids": [
+        "uk/cash-vs-digital-payments"
+      ]
+    },
+    "rag-027": {
+      "gold_in_top5": true,
+      "gold_rank": 2,
+      "retrieved_top5": [
+        "uk/emergency-fund",
+        "uk/savings-strategies",
+        "uk/financial-goals",
+        "uk/savings-strategies",
+        "uk/savings-strategies"
+      ],
+      "expected_doc_ids": [
+        "uk/savings-strategies"
+      ]
+    }
+  },
+  "regression_rows": []
+}

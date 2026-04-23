@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -21,5 +21,5 @@ class DocumentEmbedding(SQLModel, table=True):
     language: str = Field(index=True)  # "en" or "uk"
     chunk_type: str  # e.g. "overview", "key_concepts"
     content: str
-    embedding: list[float] = Field(sa_column=Column(Vector(1536)))
+    embedding: list[float] = Field(sa_column=Column(HALFVEC(3072)))
     created_at: datetime = Field(default_factory=_utcnow)

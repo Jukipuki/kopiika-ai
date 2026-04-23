@@ -5,6 +5,17 @@ Usage:
     python -m app.rag.seed
 
 Idempotent: uses INSERT ... ON CONFLICT DO UPDATE (upsert by doc_id + chunk_type).
+
+Story 9.6 cutover note:
+    After the Alembic revision `e0f04e4194bc_migrate_document_embeddings_to_halfvec_.py`
+    migrates the `document_embeddings` table from `vector(1536)` to `halfvec(3072)`
+    (TD-079 resolution), this script must be re-run to repopulate the table using
+    OpenAI `text-embedding-3-large`. The canonical cutover is: (1) `alembic upgrade
+    head`, (2) `python -m app.rag.seed`, (3) `pytest tests/eval/rag/ -v -m eval`,
+    (4) promote the resulting run-report to
+    `tests/fixtures/rag_eval/baselines/production-text-embedding-3-large.9-6-cutover.json`.
+    Re-running seed is safe (upsert via `ON CONFLICT DO UPDATE`), so a partial
+    failure can be recovered by simply executing the command again.
 """
 
 import logging
@@ -96,7 +107,7 @@ def seed() -> None:
                                 (id, doc_id, language, chunk_type, content, embedding, created_at)
                             VALUES
                                 (:id, :doc_id, :language, :chunk_type, :content,
-                                 '{embedding_literal}'::vector, NOW())
+                                 '{embedding_literal}'::halfvec, NOW())
                             ON CONFLICT (doc_id, chunk_type) DO UPDATE SET
                                 content = EXCLUDED.content,
                                 embedding = EXCLUDED.embedding,

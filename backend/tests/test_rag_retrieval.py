@@ -1,8 +1,20 @@
 """Tests for RAG retriever (Story 3.3)."""
 
+import inspect
 from unittest.mock import MagicMock, patch
 
+from app.rag import retriever as retriever_module
 from app.rag.retriever import retrieve_relevant_docs
+
+
+def test_retriever_sql_casts_to_halfvec():
+    """Story 9.6 invariant: retriever SQL must cast query embedding as halfvec,
+    matching the document_embeddings.embedding column type. A regression to
+    `AS vector` would be accepted by pgvector via implicit coercion on read but
+    would silently diverge from the schema the Story 9.3 spike validated."""
+    source = inspect.getsource(retriever_module)
+    assert "CAST(:embedding AS halfvec)" in source
+    assert "CAST(:embedding AS vector)" not in source
 
 
 def _make_row(doc_id, language, chunk_type, content, similarity):
@@ -20,7 +32,7 @@ def _make_row(doc_id, language, chunk_type, content, similarity):
 @patch("app.rag.retriever.get_sync_session")
 def test_retrieve_relevant_docs_basic(mock_session_ctx, mock_embed):
     """Basic retrieval returns language-matched results."""
-    mock_embed.return_value = [0.1] * 1536
+    mock_embed.return_value = [0.1] * 3072
 
     rows = [
         _make_row("uk/budgeting-basics", "uk", "overview", "Бюджет...", 0.92),
@@ -46,7 +58,7 @@ def test_retrieve_relevant_docs_basic(mock_session_ctx, mock_embed):
 @patch("app.rag.retriever.get_sync_session")
 def test_retrieve_relevant_docs_language_filter(mock_session_ctx, mock_embed):
     """Retriever filters by language parameter."""
-    mock_embed.return_value = [0.1] * 1536
+    mock_embed.return_value = [0.1] * 3072
 
     rows = [
         _make_row("en/budgeting-basics", "en", "overview", "Budget...", 0.90),
@@ -69,7 +81,7 @@ def test_retrieve_relevant_docs_language_filter(mock_session_ctx, mock_embed):
 @patch("app.rag.retriever.get_sync_session")
 def test_retrieve_relevant_docs_cross_lingual_fallback(mock_session_ctx, mock_embed):
     """When fewer than MIN_RESULTS in target language, cross-lingual results are added."""
-    mock_embed.return_value = [0.1] * 1536
+    mock_embed.return_value = [0.1] * 3072
 
     # Only 2 results in target language (below MIN_RESULTS=3)
     language_rows = [
@@ -97,7 +109,7 @@ def test_retrieve_relevant_docs_cross_lingual_fallback(mock_session_ctx, mock_em
 @patch("app.rag.retriever.get_sync_session")
 def test_retrieve_relevant_docs_empty_results(mock_session_ctx, mock_embed):
     """When no results found, returns empty list (after cross-lingual attempt)."""
-    mock_embed.return_value = [0.1] * 1536
+    mock_embed.return_value = [0.1] * 3072
 
     mock_session = MagicMock()
     mock_session.execute.return_value.fetchall.side_effect = [[], []]

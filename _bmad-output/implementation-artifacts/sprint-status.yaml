@@ -204,7 +204,7 @@ development_status:
   # AC #7b strict reading failed (judge delta inside +0.108 noise floor);
   # recommendation flipped to MIGRATE on deterministic retrieval evidence.
   # Source: docs/decisions/embedding-model-comparison-2026-04.md
-  9-6-embedding-migration-conditional: backlog
+  9-6-embedding-migration-conditional: done
   9-7-bedrock-iam-observability: backlog
   9-8-pipeline-orchestration-evaluation-spike: backlog
   epic-9-retrospective: optional

@@ -1202,7 +1202,7 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 **Problem:** pgvector's native `vector` type supports HNSW indexes only up to 2000 dims — a hard upstream cap. Story 9.3 decided to migrate embeddings to OpenAI `text-embedding-3-large` (3072 dims) per `docs/decisions/embedding-model-comparison-2026-04.md`. That migration cannot reuse the production `vector(1536)` + `vector_cosine_ops` HNSW shape; it must use pgvector 0.8.2's `halfvec(3072)` + `halfvec_cosine_ops` instead. The Story 9.3 spike exercised this end-to-end on a sidecar table, so the path is validated.
 
-**Status:** Active requirement for Story 9.6 (embedding migration). Not deferred — blocks Story 9.6 closure. Upgraded from MEDIUM to HIGH when the 9.3 decision was flipped from "stay" to "migrate" on 2026-04-23 post-diagnostic.
+**Status:** Resolved (Story 9.6, 2026-04-23). Production migrated to `halfvec(3072)` + `halfvec_cosine_ops` HNSW via Alembic revision `e0f04e4194bc_migrate_document_embeddings_to_halfvec_.py`. Post-migration harness re-run baseline committed at `backend/tests/fixtures/rag_eval/baselines/production-text-embedding-3-large.9-6-cutover.json` — all AC #2 deterministic-retrieval gates hit exactly the Story 9.3 spike numbers (mean p@5 0.848, uk 0.835, en 0.861, mean mrr 0.957), shortlist rows rag-041 @1 / rag-027 @2, zero regressions on previously-perfect set, judge overall 3.848 within informational [3.70, 3.85] band.
 
 **Fix shape (Story 9.6 task breakdown):**
 1. Alembic migration: `ALTER TABLE document_embeddings ALTER COLUMN embedding TYPE halfvec(3072) USING NULL` — old 1536-dim vectors are incompatible with the new dim; truncate + reseed rather than cast. Rebuild HNSW index against `halfvec_cosine_ops` with the same `(m=16, ef_construction=64)` parameters as production.
@@ -1361,6 +1361,34 @@ Both stem from the same root cause: the education prompt doesn't enforce its own
 - Bedrock: `severity=medium/low/high` across all 3 fixture cases (signal #1).
 - OpenAI: cards with empty `why_it_matters` on 5/6 cards across 2 of 3 fixtures (signal #2).
 Run-reports: `backend/tests/agents/providers/runs/education-*.json`.
+
+---
+
+### TD-089 — No CI test for Alembic migration round-trip on `document_embeddings` [MEDIUM]
+
+**Where:** [backend/alembic/versions/e0f04e4194bc_migrate_document_embeddings_to_halfvec_.py](../backend/alembic/versions/e0f04e4194bc_migrate_document_embeddings_to_halfvec_.py)
+
+**Problem:** The Story 9.6 migration is data-destructive (TRUNCATE + re-seed) and has a non-trivial `downgrade()` that also truncates. Both paths were verified only by manual `uv run alembic upgrade/downgrade` during Task 2.4. There is no CI test that exercises the round-trip against a real Postgres (with pgvector), so a future sibling migration that breaks the chain, a pgvector bump that breaks `halfvec_cosine_ops`, or a silent regression in `upgrade()` would only surface at deploy time.
+
+**Why deferred:** Requires a Postgres-with-pgvector CI fixture (pytest-postgresql + a pgvector-enabled image, or Testcontainers). That fixture does not exist in this repo today and setting it up is out of scope for a single-story migration review.
+
+**Fix shape:** Add an integration test (marker `@pytest.mark.integration` or `-m alembic`) that (a) spins up a pgvector-enabled Postgres, (b) runs `alembic upgrade head`, (c) introspects `document_embeddings.embedding` column type and the HNSW index `opclass`, (d) runs `alembic downgrade -1`, (e) re-introspects for `vector(1536)` + `vector_cosine_ops`, (f) re-upgrades. Same shape can cover future migrations too.
+
+**Surfaced in:** Story 9.6 code review (2026-04-23)
+
+---
+
+### TD-090 — `seed.py` uses f-string SQL interpolation for embedding literal [LOW]
+
+**Where:** [backend/app/rag/seed.py:103-115](../backend/app/rag/seed.py#L103-L115)
+
+**Problem:** The INSERT statement interpolates `embedding_literal` into the SQL text via f-string rather than binding it as a parameter. The values come from OpenAI's embeddings API (trusted floats), so practical exploit risk is zero, but it is inconsistent with [backend/app/rag/retriever.py:33](../backend/app/rag/retriever.py#L33) which correctly uses `CAST(:embedding AS halfvec)` with parameterization. A reviewer looking at seed.py in isolation would (correctly) flag it as a lint-worthy SQL pattern.
+
+**Why deferred:** Pre-existing code (not introduced by 9.6); the Story 9.6 review edited the cast type but did not refactor the parameterization shape. Fix is orthogonal to the migration and belongs in a RAG seed cleanup pass.
+
+**Fix shape:** Replace `'{embedding_literal}'::halfvec` with `CAST(:embedding AS halfvec)` and add `"embedding": embedding_literal` to the bind-params dict at [seed.py:116-122](../backend/app/rag/seed.py#L116-L122).
+
+**Surfaced in:** Story 9.6 code review (2026-04-23)
 
 ---
 

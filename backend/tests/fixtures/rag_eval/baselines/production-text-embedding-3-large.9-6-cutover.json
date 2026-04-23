@@ -1,0 +1,2287 @@
+{
+  "timestamp": "2026-04-23T16:12:41.670473+00:00",
+  "story": "9.1",
+  "top_k": 5,
+  "elapsed_seconds": 203.4496824999951,
+  "total_tokens_used": 229305,
+  "total_questions": 46,
+  "error_rows": 0,
+  "overall": {
+    "count": 46,
+    "retrieval": {
+      "precision_at_1": 0.9130434782608695,
+      "precision_at_3": 0.8913043478260869,
+      "precision_at_5": 0.8478260869565217,
+      "recall_at_5": 1.0,
+      "mrr": 0.9565217391304348
+    },
+    "judge": {
+      "groundedness": 1.9565217391304348,
+      "relevance": 1.9565217391304348,
+      "language_correctness": 2.0,
+      "overall": 3.847826086956522
+    }
+  },
+  "per_language": {
+    "en": {
+      "count": 23,
+      "retrieval": {
+        "precision_at_1": 0.9565217391304348,
+        "precision_at_3": 0.9130434782608695,
+        "precision_at_5": 0.8608695652173913,
+        "recall_at_5": 1.0,
+        "mrr": 0.9782608695652174
+      },
+      "judge": {
+        "groundedness": 1.9565217391304348,
+        "relevance": 1.9130434782608696,
+        "language_correctness": 2.0,
+        "overall": 3.782608695652174
+      }
+    },
+    "uk": {
+      "count": 23,
+      "retrieval": {
+        "precision_at_1": 0.8695652173913043,
+        "precision_at_3": 0.8695652173913043,
+        "precision_at_5": 0.8347826086956521,
+        "recall_at_5": 1.0,
+        "mrr": 0.9347826086956522
+      },
+      "judge": {
+        "groundedness": 1.9565217391304348,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 3.9130434782608696
+      }
+    }
+  },
+  "per_topic": {
+    "50-30-20-rule": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "budgeting-basics": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.5,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 1.5,
+        "relevance": 1.5,
+        "language_correctness": 2.0,
+        "overall": 2.5
+      }
+    },
+    "cash-vs-digital-payments": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "debt-management": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "emergency-fund": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "entertainment-spending": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 0.5,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.5,
+        "recall_at_5": 1.0,
+        "mrr": 0.75
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "financial-goals": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "financial-literacy-levels": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "groceries-food-spending": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "healthcare-spending": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "hryvnia-basics": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "interest-and-credit": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 1.5,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 3.0
+      }
+    },
+    "investment-basics": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "monobank-ecosystem": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "savings-strategies": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 0.5,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 0.75
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "shopping-habits": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 1.5,
+        "language_correctness": 2.0,
+        "overall": 3.0
+      }
+    },
+    "spending-categories": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 0.5,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 0.75
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "spending-patterns": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "subscription-tracking": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "transport-spending": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 0.5,
+        "precision_at_3": 0.8333333333333333,
+        "precision_at_5": 0.7,
+        "recall_at_5": 1.0,
+        "mrr": 0.75
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "ukrainian-tax-basics": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "understanding-inflation": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.9,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    },
+    "utilities-bills": {
+      "count": 2,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    }
+  },
+  "per_question_type": {
+    "applied": {
+      "count": 16,
+      "retrieval": {
+        "precision_at_1": 0.8125,
+        "precision_at_3": 0.8125,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 0.90625
+      },
+      "judge": {
+        "groundedness": 1.875,
+        "relevance": 1.9375,
+        "language_correctness": 2.0,
+        "overall": 3.6875
+      }
+    },
+    "definitional": {
+      "count": 12,
+      "retrieval": {
+        "precision_at_1": 0.9166666666666666,
+        "precision_at_3": 0.8611111111111112,
+        "precision_at_5": 0.8166666666666668,
+        "recall_at_5": 1.0,
+        "mrr": 0.9583333333333334
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 1.9166666666666667,
+        "language_correctness": 2.0,
+        "overall": 3.8333333333333335
+      }
+    },
+    "factual": {
+      "count": 18,
+      "retrieval": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.9814814814814815,
+        "precision_at_5": 0.911111111111111,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "judge": {
+        "groundedness": 2.0,
+        "relevance": 2.0,
+        "language_correctness": 2.0,
+        "overall": 4.0
+      }
+    }
+  },
+  "worst_10": [
+    {
+      "id": "rag-001",
+      "language": "en",
+      "topic": "budgeting-basics",
+      "question": "If my income is 30000 UAH and I want to start a budget, what three categories should I track first?",
+      "expected_doc_ids": [
+        "en/budgeting-basics"
+      ],
+      "retrieved_doc_ids": [
+        "en/budgeting-basics",
+        "en/50-30-20-rule",
+        "en/groceries-food-spending",
+        "en/50-30-20-rule",
+        "en/spending-patterns"
+      ],
+      "candidate_answer": "Based on the RAG Context, the three categories you should track first are:\n\n1. **Needs** (targeting ~50% or ₴15,000) — focus on rent, utilities, groceries, and transport, as these are your essential fixed expenses.\n2. **Food spending** — this is typically 20-30% of your budget and offers significant optimization potential through daily decisions like cooking versus ordering delivery.\n3. **Wants** (targeting ~30% or ₴9,000) — this includes entertainment, subscriptions, and miscellaneous spending, which serves as your flexible buffer when unexpected expenses arise.\n\nStarting with these three categories will give you a clear picture of where your money goes and where you have the most control to adjust your spending.",
+      "judge": {
+        "groundedness": 1,
+        "relevance": 1,
+        "language_correctness": 2,
+        "overall": 1,
+        "rationale": "The answer partially aligns with retrieved context by invoking the 50-30-20 framework and mentioning food spending, but misrepresents the gold reference's core advice (which emphasizes income→fixed/variable categorization and tracking actual spending) and presents 'food spending' as a separate top-level category rather than a subset of needs, creating a non-standard three-category structure unsupp"
+      }
+    },
+    {
+      "id": "rag-014",
+      "language": "en",
+      "topic": "shopping-habits",
+      "question": "Define impulse spending in one sentence.",
+      "expected_doc_ids": [
+        "en/shopping-habits"
+      ],
+      "retrieved_doc_ids": [
+        "en/shopping-habits",
+        "en/shopping-habits",
+        "en/spending-patterns",
+        "en/shopping-habits",
+        "en/shopping-habits"
+      ],
+      "candidate_answer": "Impulse buying is purchasing something unplanned, often triggered by emotions, sales promotions, or convenience. Studies suggest that 40-80% of purchases involve some impulse component. This type of spending is driven by momentary desire rather than genuine need, and can be reduced through techniques like the 24-hour rule or maintaining a wishlist.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 1,
+        "language_correctness": 2,
+        "overall": 2,
+        "rationale": "The answer is fully grounded in the retrieved context and uses natural English, but it violates the explicit instruction to define impulse spending in one sentence by providing multiple sentences with additional context and statistics."
+      }
+    },
+    {
+      "id": "rag-039",
+      "language": "uk",
+      "topic": "interest-and-credit",
+      "question": "Кредит 50000 грн під 30% річних на рік — скільки приблизно я переплачу?",
+      "expected_doc_ids": [
+        "uk/interest-and-credit"
+      ],
+      "retrieved_doc_ids": [
+        "uk/interest-and-credit",
+        "uk/interest-and-credit",
+        "uk/debt-management",
+        "uk/interest-and-credit",
+        "uk/interest-and-credit"
+      ],
+      "candidate_answer": "На жаль, наведений контекст не містить конкретного прикладу розрахунку для простого кредиту під 30% річних. Проте на основі ключових концепцій можу пояснити: при простих відсотках ви переплатите приблизно **₴15 000** (30% від ₴50 000). Якщо використовуються складні відсотки з частішою капіталізацією, переплата буде дещо вищою. Рекомендую уточнити у кредитора, які саме відсотки застосовуються (прості чи складні) та як часто вони капіталізуються.",
+      "judge": {
+        "groundedness": 1,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 2,
+        "rationale": "Answer correctly addresses the question with accurate simple-interest calculation (₴15,000) and mentions compound interest complexity, but the retrieved context contains no direct examples or formulas for simple loan calculations, only credit card and deposit scenarios, making claims only partially supported by the provided material."
+      }
+    },
+    {
+      "id": "rag-002",
+      "language": "en",
+      "topic": "emergency-fund",
+      "question": "How many months of expenses should a typical emergency fund cover?",
+      "expected_doc_ids": [
+        "en/emergency-fund"
+      ],
+      "retrieved_doc_ids": [
+        "en/emergency-fund",
+        "en/emergency-fund",
+        "en/emergency-fund",
+        "en/emergency-fund",
+        "en/emergency-fund"
+      ],
+      "candidate_answer": "According to financial educators, a typical emergency fund should cover **3-6 months of essential living expenses**. However, even a smaller buffer of one month's expenses provides meaningful protection against common financial shocks. Some approaches suggest starting with a smaller milestone (such as ₴10,000-₴15,000) to build momentum before reaching the full 3-6 month target, since even a partial fund prevents smaller emergencies from becoming debt events.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately addresses the question with all claims fully supported by the retrieved context, natural English phrasing, and complete alignment with the gold reference."
+      }
+    },
+    {
+      "id": "rag-003",
+      "language": "en",
+      "topic": "debt-management",
+      "question": "I have three credit-card debts at different rates — which one should I pay off first?",
+      "expected_doc_ids": [
+        "en/debt-management"
+      ],
+      "retrieved_doc_ids": [
+        "en/debt-management",
+        "en/debt-management",
+        "en/debt-management",
+        "en/debt-management",
+        "en/debt-management"
+      ],
+      "candidate_answer": "According to the context, you have two main strategies to choose from:\n\n**Avalanche method (mathematically optimal):** Pay off the credit card with the highest interest rate first while making minimum payments on the others. This saves the most money on interest over time, since high-interest debt generates the most costly charges each month.\n\n**Snowball method (psychologically motivating):** Pay off the smallest balance first for a quick win, then roll that payment into the next debt. This builds momentum and motivation, even though it may cost slightly more in total interest.\n\nBoth approaches are significantly better than simply paying minimums across all three cards. The best choice depends on whether you're motivated by mathematical efficiency or by the psychological boost of early wins.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly addresses the question with both the avalanche and snowball methods, all claims are fully supported by the retrieved context, and the explanation is clear, natural, and matches the gold reference content."
+      }
+    },
+    {
+      "id": "rag-004",
+      "language": "en",
+      "topic": "savings-strategies",
+      "question": "Define pay-yourself-first saving in one sentence.",
+      "expected_doc_ids": [
+        "en/savings-strategies"
+      ],
+      "retrieved_doc_ids": [
+        "en/savings-strategies",
+        "en/savings-strategies",
+        "en/savings-strategies",
+        "en/savings-strategies",
+        "en/savings-strategies"
+      ],
+      "candidate_answer": "**Pay-yourself-first** is the practice of transferring a set amount to savings immediately when you receive income, before spending on anything else. This strategy removes the temptation to spend the money by making it unavailable for daily expenses, ensuring that saving happens automatically rather than relying on willpower at the end of the month.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate provides a clear, well-supported one-sentence definition (plus explanatory context) that directly matches the retrieved context and gold reference, with natural English phrasing."
+      }
+    },
+    {
+      "id": "rag-005",
+      "language": "en",
+      "topic": "subscription-tracking",
+      "question": "I haven't used a streaming service in 2 months but it still bills me — what should I do?",
+      "expected_doc_ids": [
+        "en/subscription-tracking"
+      ],
+      "retrieved_doc_ids": [
+        "en/subscription-tracking",
+        "en/subscription-tracking",
+        "en/subscription-tracking",
+        "en/subscription-tracking",
+        "en/subscription-tracking"
+      ],
+      "candidate_answer": "Based on the guidance provided, you should cancel this streaming service. The context recommends asking yourself: \"Did I use this in the last 30 days?\" — and since you haven't used it in 2 months, the answer is clearly no. The good news is that services can typically be reactivated later if needed, so canceling is rarely permanent. By canceling now, you'll stop paying for zero benefit and reclaim that monthly charge for your budget.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly relevant to the gold reference, uses natural English, and provides clear, actionable advice supported by the material."
+      }
+    },
+    {
+      "id": "rag-006",
+      "language": "en",
+      "topic": "spending-categories",
+      "question": "What is the difference between fixed and variable spending categories?",
+      "expected_doc_ids": [
+        "en/spending-categories"
+      ],
+      "retrieved_doc_ids": [
+        "en/spending-categories",
+        "en/spending-categories",
+        "en/spending-categories",
+        "en/groceries-food-spending",
+        "en/shopping-habits"
+      ],
+      "candidate_answer": "Fixed spending categories consist of expenses that rarely change, such as rent and insurance. In contrast, variable spending categories fluctuate regularly, such as dining out and shopping, and offer the most opportunity for adjustment. Understanding this distinction is important because variable categories are where you have the most control to reduce spending if needed, while fixed categories typically remain constant month to month.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately explains the difference between fixed and variable spending categories using examples and control principles, all of which are fully supported by the retrieved context and align perfectly with the gold reference."
+      }
+    },
+    {
+      "id": "rag-007",
+      "language": "en",
+      "topic": "investment-basics",
+      "question": "What does diversification mean in investing?",
+      "expected_doc_ids": [
+        "en/investment-basics"
+      ],
+      "retrieved_doc_ids": [
+        "en/investment-basics",
+        "en/investment-basics",
+        "en/investment-basics",
+        "en/investment-basics",
+        "en/investment-basics"
+      ],
+      "candidate_answer": "According to the RAG Context, diversification means spreading your money across different types of investments to reduce the impact of any single investment performing poorly. The concept is captured by the phrase \"do not put all your eggs in one basket.\" By diversifying, you protect yourself from significant losses if one particular asset or investment type underperforms.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly and accurately defines diversification using language and concepts entirely supported by the retrieved context, with natural phrasing and perfect alignment to the gold reference."
+      }
+    },
+    {
+      "id": "rag-008",
+      "language": "en",
+      "topic": "50-30-20-rule",
+      "question": "Define the 50/30/20 rule.",
+      "expected_doc_ids": [
+        "en/50-30-20-rule"
+      ],
+      "retrieved_doc_ids": [
+        "en/50-30-20-rule",
+        "en/50-30-20-rule",
+        "en/50-30-20-rule",
+        "en/50-30-20-rule",
+        "en/50-30-20-rule"
+      ],
+      "candidate_answer": "The 50/30/20 rule is a simple budgeting framework that divides your after-tax income into three categories: 50% for needs (essential expenses like rent and utilities), 30% for wants (non-essential spending like entertainment and dining out), and 20% for savings and debt repayment. Popularized by U.S. Senator Elizabeth Warren, it provides a straightforward starting point for budgeting without requiring detailed tracking of dozens of expense categories. The exact percentages can be adjusted to fit individual circumstances—for example, someone in an expensive city might allocate 60% to needs instead of 50%.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer accurately defines the 50/30/20 rule with all major claims directly supported by the retrieved context, matches the gold reference content, and uses clear, natural English."
+      }
+    }
+  ],
+  "per_question": [
+    {
+      "id": "rag-001",
+      "language": "en",
+      "topic": "budgeting-basics",
+      "question_type": "applied",
+      "question": "If my income is 30000 UAH and I want to start a budget, what three categories should I track first?",
+      "expected_doc_ids": [
+        "en/budgeting-basics"
+      ],
+      "retrieved_doc_ids": [
+        "en/budgeting-basics",
+        "en/50-30-20-rule",
+        "en/groceries-food-spending",
+        "en/50-30-20-rule",
+        "en/spending-patterns"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.3333333333333333,
+        "precision_at_5": 0.2,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Based on the RAG Context, the three categories you should track first are:\n\n1. **Needs** (targeting ~50% or ₴15,000) — focus on rent, utilities, groceries, and transport, as these are your essential fixed expenses.\n2. **Food spending** — this is typically 20-30% of your budget and offers significant optimization potential through daily decisions like cooking versus ordering delivery.\n3. **Wants** (targeting ~30% or ₴9,000) — this includes entertainment, subscriptions, and miscellaneous spending, which serves as your flexible buffer when unexpected expenses arise.\n\nStarting with these three categories will give you a clear picture of where your money goes and where you have the most control to adjust your spending.",
+      "judge": {
+        "groundedness": 1,
+        "relevance": 1,
+        "language_correctness": 2,
+        "overall": 1,
+        "rationale": "The answer partially aligns with retrieved context by invoking the 50-30-20 framework and mentioning food spending, but misrepresents the gold reference's core advice (which emphasizes income→fixed/variable categorization and tracking actual spending) and presents 'food spending' as a separate top-level category rather than a subset of needs, creating a non-standard three-category structure unsupp"
+      },
+      "candidate_tokens": 1603,
+      "judge_tokens": 3040
+    },
+    {
+      "id": "rag-002",
+      "language": "en",
+      "topic": "emergency-fund",
+      "question_type": "factual",
+      "question": "How many months of expenses should a typical emergency fund cover?",
+      "expected_doc_ids": [
+        "en/emergency-fund"
+      ],
+      "retrieved_doc_ids": [
+        "en/emergency-fund",
+        "en/emergency-fund",
+        "en/emergency-fund",
+        "en/emergency-fund",
+        "en/emergency-fund"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "According to financial educators, a typical emergency fund should cover **3-6 months of essential living expenses**. However, even a smaller buffer of one month's expenses provides meaningful protection against common financial shocks. Some approaches suggest starting with a smaller milestone (such as ₴10,000-₴15,000) to build momentum before reaching the full 3-6 month target, since even a partial fund prevents smaller emergencies from becoming debt events.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately addresses the question with all claims fully supported by the retrieved context, natural English phrasing, and complete alignment with the gold reference."
+      },
+      "candidate_tokens": 1243,
+      "judge_tokens": 2687
+    },
+    {
+      "id": "rag-003",
+      "language": "en",
+      "topic": "debt-management",
+      "question_type": "applied",
+      "question": "I have three credit-card debts at different rates — which one should I pay off first?",
+      "expected_doc_ids": [
+        "en/debt-management"
+      ],
+      "retrieved_doc_ids": [
+        "en/debt-management",
+        "en/debt-management",
+        "en/debt-management",
+        "en/debt-management",
+        "en/debt-management"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "According to the context, you have two main strategies to choose from:\n\n**Avalanche method (mathematically optimal):** Pay off the credit card with the highest interest rate first while making minimum payments on the others. This saves the most money on interest over time, since high-interest debt generates the most costly charges each month.\n\n**Snowball method (psychologically motivating):** Pay off the smallest balance first for a quick win, then roll that payment into the next debt. This builds momentum and motivation, even though it may cost slightly more in total interest.\n\nBoth approaches are significantly better than simply paying minimums across all three cards. The best choice depends on whether you're motivated by mathematical efficiency or by the psychological boost of early wins.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly addresses the question with both the avalanche and snowball methods, all claims are fully supported by the retrieved context, and the explanation is clear, natural, and matches the gold reference content."
+      },
+      "candidate_tokens": 1343,
+      "judge_tokens": 2783
+    },
+    {
+      "id": "rag-004",
+      "language": "en",
+      "topic": "savings-strategies",
+      "question_type": "definitional",
+      "question": "Define pay-yourself-first saving in one sentence.",
+      "expected_doc_ids": [
+        "en/savings-strategies"
+      ],
+      "retrieved_doc_ids": [
+        "en/savings-strategies",
+        "en/savings-strategies",
+        "en/savings-strategies",
+        "en/savings-strategies",
+        "en/savings-strategies"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "**Pay-yourself-first** is the practice of transferring a set amount to savings immediately when you receive income, before spending on anything else. This strategy removes the temptation to spend the money by making it unavailable for daily expenses, ensuring that saving happens automatically rather than relying on willpower at the end of the month.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate provides a clear, well-supported one-sentence definition (plus explanatory context) that directly matches the retrieved context and gold reference, with natural English phrasing."
+      },
+      "candidate_tokens": 1275,
+      "judge_tokens": 2738
+    },
+    {
+      "id": "rag-005",
+      "language": "en",
+      "topic": "subscription-tracking",
+      "question_type": "applied",
+      "question": "I haven't used a streaming service in 2 months but it still bills me — what should I do?",
+      "expected_doc_ids": [
+        "en/subscription-tracking"
+      ],
+      "retrieved_doc_ids": [
+        "en/subscription-tracking",
+        "en/subscription-tracking",
+        "en/subscription-tracking",
+        "en/subscription-tracking",
+        "en/subscription-tracking"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Based on the guidance provided, you should cancel this streaming service. The context recommends asking yourself: \"Did I use this in the last 30 days?\" — and since you haven't used it in 2 months, the answer is clearly no. The good news is that services can typically be reactivated later if needed, so canceling is rarely permanent. By canceling now, you'll stop paying for zero benefit and reclaim that monthly charge for your budget.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly relevant to the gold reference, uses natural English, and provides clear, actionable advice supported by the material."
+      },
+      "candidate_tokens": 1236,
+      "judge_tokens": 2617
+    },
+    {
+      "id": "rag-006",
+      "language": "en",
+      "topic": "spending-categories",
+      "question_type": "factual",
+      "question": "What is the difference between fixed and variable spending categories?",
+      "expected_doc_ids": [
+        "en/spending-categories"
+      ],
+      "retrieved_doc_ids": [
+        "en/spending-categories",
+        "en/spending-categories",
+        "en/spending-categories",
+        "en/groceries-food-spending",
+        "en/shopping-habits"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Fixed spending categories consist of expenses that rarely change, such as rent and insurance. In contrast, variable spending categories fluctuate regularly, such as dining out and shopping, and offer the most opportunity for adjustment. Understanding this distinction is important because variable categories are where you have the most control to reduce spending if needed, while fixed categories typically remain constant month to month.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately explains the difference between fixed and variable spending categories using examples and control principles, all of which are fully supported by the retrieved context and align perfectly with the gold reference."
+      },
+      "candidate_tokens": 717,
+      "judge_tokens": 2080
+    },
+    {
+      "id": "rag-007",
+      "language": "en",
+      "topic": "investment-basics",
+      "question_type": "factual",
+      "question": "What does diversification mean in investing?",
+      "expected_doc_ids": [
+        "en/investment-basics"
+      ],
+      "retrieved_doc_ids": [
+        "en/investment-basics",
+        "en/investment-basics",
+        "en/investment-basics",
+        "en/investment-basics",
+        "en/investment-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "According to the RAG Context, diversification means spreading your money across different types of investments to reduce the impact of any single investment performing poorly. The concept is captured by the phrase \"do not put all your eggs in one basket.\" By diversifying, you protect yourself from significant losses if one particular asset or investment type underperforms.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly and accurately defines diversification using language and concepts entirely supported by the retrieved context, with natural phrasing and perfect alignment to the gold reference."
+      },
+      "candidate_tokens": 1151,
+      "judge_tokens": 2529
+    },
+    {
+      "id": "rag-008",
+      "language": "en",
+      "topic": "50-30-20-rule",
+      "question_type": "definitional",
+      "question": "Define the 50/30/20 rule.",
+      "expected_doc_ids": [
+        "en/50-30-20-rule"
+      ],
+      "retrieved_doc_ids": [
+        "en/50-30-20-rule",
+        "en/50-30-20-rule",
+        "en/50-30-20-rule",
+        "en/50-30-20-rule",
+        "en/50-30-20-rule"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "The 50/30/20 rule is a simple budgeting framework that divides your after-tax income into three categories: 50% for needs (essential expenses like rent and utilities), 30% for wants (non-essential spending like entertainment and dining out), and 20% for savings and debt repayment. Popularized by U.S. Senator Elizabeth Warren, it provides a straightforward starting point for budgeting without requiring detailed tracking of dozens of expense categories. The exact percentages can be adjusted to fit individual circumstances—for example, someone in an expensive city might allocate 60% to needs instead of 50%.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer accurately defines the 50/30/20 rule with all major claims directly supported by the retrieved context, matches the gold reference content, and uses clear, natural English."
+      },
+      "candidate_tokens": 1152,
+      "judge_tokens": 2676
+    },
+    {
+      "id": "rag-009",
+      "language": "en",
+      "topic": "groceries-food-spending",
+      "question_type": "applied",
+      "question": "If groceries are 40% of my monthly spending, is that high — and what can I do about it?",
+      "expected_doc_ids": [
+        "en/groceries-food-spending"
+      ],
+      "retrieved_doc_ids": [
+        "en/groceries-food-spending",
+        "en/groceries-food-spending",
+        "en/groceries-food-spending",
+        "en/groceries-food-spending",
+        "en/groceries-food-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Yes, 40% is notably high. According to the context, food typically accounts for 20-30% of a household's monthly budget, so you're spending significantly above the typical range. To reduce this, the context recommends: tracking groceries separately from dining out to identify your largest costs, trying meal planning for one week to reduce impulse purchases and food waste, comparing prices between local markets and supermarkets (which often show 20-40% savings on produce), and cooking larger portions to use leftovers for next-day meals—cited as the single biggest food spending reducer.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly addresses the question with accurate benchmarks and actionable advice, and is naturally articulate in English."
+      },
+      "candidate_tokens": 1004,
+      "judge_tokens": 2343
+    },
+    {
+      "id": "rag-010",
+      "language": "en",
+      "topic": "transport-spending",
+      "question_type": "factual",
+      "question": "What transport costs should I include when tracking my monthly spending?",
+      "expected_doc_ids": [
+        "en/transport-spending"
+      ],
+      "retrieved_doc_ids": [
+        "en/transport-spending",
+        "en/transport-spending",
+        "en/transport-spending",
+        "en/transport-spending",
+        "en/transport-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "When tracking your monthly transport spending, you should include **all costs associated with your chosen transport method**, not just the most visible ones. For car owners, this means fuel, insurance, parking, maintenance, and vehicle depreciation — which together often total ₴8,000-₴12,000/month, roughly double what people spend on fuel alone. For public transit users, track your monthly pass cost (typically ₴2,000-₴2,500 in Ukrainian cities). If you use ride-sharing services like Bolt or Uber, track each trip separately and calculate the monthly total, as the per-trip cost of ₴100-₴200 can add up to ₴1,000-₴3,000 monthly without you realizing it.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly addresses the question with all claims supported by the retrieved context, covers the three main transport categories (car, public transit, ride-sharing) with accurate cost ranges, and is clearly written in natural English."
+      },
+      "candidate_tokens": 1116,
+      "judge_tokens": 2578
+    },
+    {
+      "id": "rag-011",
+      "language": "en",
+      "topic": "utilities-bills",
+      "question_type": "applied",
+      "question": "My winter utility bill doubled compared to summer — should I be worried?",
+      "expected_doc_ids": [
+        "en/utilities-bills"
+      ],
+      "retrieved_doc_ids": [
+        "en/utilities-bills",
+        "en/utilities-bills",
+        "en/utilities-bills",
+        "en/utilities-bills",
+        "en/utilities-bills"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "No, this is not unusual — in fact, it's a normal seasonal pattern in Ukraine. According to the practical examples provided, winter utility bills can be significantly higher due to heating costs; a 2-room Kyiv apartment's winter bill (₴4,600) was more than 3 times its summer bill (₴1,500). The key is to plan ahead by tracking your utility costs over a full year to understand your exact seasonal pattern, then consider averaging your annual costs into equal monthly budgets so you build a buffer during cheaper summer months to cover winter peaks without straining your finances.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in retrieved context, directly addresses the user's concern with concrete examples and actionable budgeting strategies, and is expressed in clear, natural English."
+      },
+      "candidate_tokens": 1291,
+      "judge_tokens": 2710
+    },
+    {
+      "id": "rag-012",
+      "language": "en",
+      "topic": "healthcare-spending",
+      "question_type": "factual",
+      "question": "What kinds of healthcare costs are typical to budget for month to month?",
+      "expected_doc_ids": [
+        "en/healthcare-spending"
+      ],
+      "retrieved_doc_ids": [
+        "en/healthcare-spending",
+        "en/healthcare-spending",
+        "en/healthcare-spending",
+        "en/healthcare-spending",
+        "en/healthcare-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Based on the RAG Context, typical month-to-month healthcare costs to budget for include **regular medications** (which can average ₴800/month), **recurring doctor visits and checkups**, and **routine dental care**. The context also recommends budgeting for **preventive appointments** like annual checkups and dental cleanings. Additionally, it's wise to allocate a monthly portion toward **unexpected medical visits** — for example, budgeting ₴1,600/month can cover predictable costs (medications and routine care) while building a buffer for the 2-3 unplanned visits that typically occur annually.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately addresses the question by identifying typical month-to-month healthcare costs (medications, doctor visits, dental care, preventive appointments, and unexpected medical visits) with specific figures all supported by the retrieved context."
+      },
+      "candidate_tokens": 1351,
+      "judge_tokens": 2831
+    },
+    {
+      "id": "rag-013",
+      "language": "en",
+      "topic": "entertainment-spending",
+      "question_type": "definitional",
+      "question": "Define discretionary spending in one sentence.",
+      "expected_doc_ids": [
+        "en/entertainment-spending"
+      ],
+      "retrieved_doc_ids": [
+        "en/spending-categories",
+        "en/entertainment-spending",
+        "en/spending-patterns",
+        "en/budgeting-basics",
+        "en/healthcare-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 0.0,
+        "precision_at_3": 0.3333333333333333,
+        "precision_at_5": 0.2,
+        "recall_at_5": 1.0,
+        "mrr": 0.5
+      },
+      "candidate_answer": "Based on the RAG Context provided, discretionary spending is spending on things you choose to purchase rather than things you need to survive. In the context of entertainment specifically, discretionary spending refers to optional purchases that you have flexibility in controlling and adjusting within your budget.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly answers the question with a one-sentence definition of discretionary spending that matches the gold reference, and uses clear, natural English."
+      },
+      "candidate_tokens": 415,
+      "judge_tokens": 1810
+    },
+    {
+      "id": "rag-014",
+      "language": "en",
+      "topic": "shopping-habits",
+      "question_type": "definitional",
+      "question": "Define impulse spending in one sentence.",
+      "expected_doc_ids": [
+        "en/shopping-habits"
+      ],
+      "retrieved_doc_ids": [
+        "en/shopping-habits",
+        "en/shopping-habits",
+        "en/spending-patterns",
+        "en/shopping-habits",
+        "en/shopping-habits"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Impulse buying is purchasing something unplanned, often triggered by emotions, sales promotions, or convenience. Studies suggest that 40-80% of purchases involve some impulse component. This type of spending is driven by momentary desire rather than genuine need, and can be reduced through techniques like the 24-hour rule or maintaining a wishlist.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 1,
+        "language_correctness": 2,
+        "overall": 2,
+        "rationale": "The answer is fully grounded in the retrieved context and uses natural English, but it violates the explicit instruction to define impulse spending in one sentence by providing multiple sentences with additional context and statistics."
+      },
+      "candidate_tokens": 1030,
+      "judge_tokens": 2462
+    },
+    {
+      "id": "rag-015",
+      "language": "en",
+      "topic": "understanding-inflation",
+      "question_type": "factual",
+      "question": "What does inflation do to the value of cash savings over time?",
+      "expected_doc_ids": [
+        "en/understanding-inflation"
+      ],
+      "retrieved_doc_ids": [
+        "en/understanding-inflation",
+        "en/understanding-inflation",
+        "en/understanding-inflation",
+        "en/understanding-inflation",
+        "en/hryvnia-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Inflation reduces the purchasing power of cash savings over time. Money sitting in a jar at home or in a zero-interest account loses meaningful purchasing power every year as prices rise. Even if you earn interest on savings, if that interest rate is lower than the inflation rate, your savings lose real value — for example, earning 10% interest while inflation runs at 12% results in a net loss of 2% in purchasing power. This is why understanding inflation is critical: it shows why savings need to earn returns that at least match or exceed inflation to preserve their real value.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly addresses the gold reference question with accurate examples and explanations, and uses natural, clear English throughout."
+      },
+      "candidate_tokens": 1117,
+      "judge_tokens": 2563
+    },
+    {
+      "id": "rag-016",
+      "language": "en",
+      "topic": "interest-and-credit",
+      "question_type": "definitional",
+      "question": "Define compound interest in one sentence.",
+      "expected_doc_ids": [
+        "en/interest-and-credit"
+      ],
+      "retrieved_doc_ids": [
+        "en/interest-and-credit",
+        "en/interest-and-credit",
+        "en/interest-and-credit",
+        "en/interest-and-credit",
+        "en/interest-and-credit"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Compound interest is interest calculated on the original amount plus accumulated interest, rather than only on the original amount.\n\nThis means that over time, interest earns interest on itself, causing both debt and savings to grow faster than with simple interest alone.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer provides a precise, well-supported definition of compound interest that directly matches the gold reference and retrieved context, with natural phrasing and an accurate second sentence explaining practical implications."
+      },
+      "candidate_tokens": 947,
+      "judge_tokens": 2314
+    },
+    {
+      "id": "rag-017",
+      "language": "en",
+      "topic": "financial-goals",
+      "question_type": "applied",
+      "question": "I want to save 100000 UAH for a car in 18 months — how do I set this as a goal?",
+      "expected_doc_ids": [
+        "en/financial-goals"
+      ],
+      "retrieved_doc_ids": [
+        "en/financial-goals",
+        "en/emergency-fund",
+        "en/financial-goals",
+        "en/financial-goals",
+        "en/savings-strategies"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "To set this as a SMART goal, write it down with all the details: \"I will save ₴100,000 for a car by [specific month in 18 months] by setting aside ₴5,556/month from my salary.\" Break the large goal into monthly milestones — ₴5,556 per month is your clear, manageable step to track each month. Set up an automatic transfer on payday to a separate savings account (many Ukrainian banks offer savings pots) so the money is removed from daily spending temptation. Finally, track your progress monthly using a spreadsheet or your banking app's savings feature to see the balance grow and stay motivated toward your car purchase.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly applies SMART goal framework and actionable savings strategies from the retrieved context to the user's specific 100,000 UAH car-savings question, with clear monthly milestones, automation advice, and tracking recommendations that align perfectly with gold reference content."
+      },
+      "candidate_tokens": 1644,
+      "judge_tokens": 3025
+    },
+    {
+      "id": "rag-018",
+      "language": "en",
+      "topic": "cash-vs-digital-payments",
+      "question_type": "factual",
+      "question": "What are the main tradeoffs between paying with cash and paying with a card?",
+      "expected_doc_ids": [
+        "en/cash-vs-digital-payments"
+      ],
+      "retrieved_doc_ids": [
+        "en/cash-vs-digital-payments",
+        "en/cash-vs-digital-payments",
+        "en/cash-vs-digital-payments",
+        "en/cash-vs-digital-payments",
+        "en/cash-vs-digital-payments"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "The main tradeoffs between cash and cards are:\n\n**Cash** creates a stronger \"pain of paying\" — handing over physical bills feels more tangible, which encourages more mindful spending and naturally limits overspending when you withdraw a fixed amount. However, cash transactions are invisible to apps unless manually logged, making it harder to track and analyze your spending patterns.\n\n**Cards** offer automatic transaction records and easy categorization through banking apps, giving you powerful spending insights. However, digital payments reduce the friction of spending, making it psychologically easier to spend more, and rewards programs can sometimes encourage unnecessary purchases.\n\nA hybrid approach — using cards for fixed expenses (with automatic tracking) and cash for discretionary spending (with natural limits) — combines the strengths of both methods.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly addresses the question with all claims firmly supported by retrieved context, matches the gold reference comprehensively, and is written in clear, natural English."
+      },
+      "candidate_tokens": 1192,
+      "judge_tokens": 2495
+    },
+    {
+      "id": "rag-019",
+      "language": "en",
+      "topic": "spending-patterns",
+      "question_type": "applied",
+      "question": "My spending spikes every Friday — what does that usually signal?",
+      "expected_doc_ids": [
+        "en/spending-patterns"
+      ],
+      "retrieved_doc_ids": [
+        "en/spending-patterns",
+        "en/spending-patterns",
+        "en/spending-patterns",
+        "en/spending-patterns",
+        "en/spending-patterns"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Based on the context provided, Friday spending spikes typically signal a **weekly pattern** rather than a specific trigger. Many people spend more on weekends (dining, entertainment, shopping) and less on weekdays — Friday is often the beginning of this weekend spending surge. Recognizing this weekly rhythm helps with budgeting, as you can anticipate higher weekend expenses and plan accordingly. If you want to manage this pattern, you could try redirecting some of those weekend purchases to weekdays or setting a specific entertainment budget for the Friday-Sunday period.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context on weekly spending patterns, directly addresses the gold reference's explanation of weekend spending spikes as a normal pattern, and is clearly articulated with practical budgeting advice."
+      },
+      "candidate_tokens": 1252,
+      "judge_tokens": 2698
+    },
+    {
+      "id": "rag-020",
+      "language": "en",
+      "topic": "financial-literacy-levels",
+      "question_type": "definitional",
+      "question": "Define financial literacy in one sentence.",
+      "expected_doc_ids": [
+        "en/financial-literacy-levels"
+      ],
+      "retrieved_doc_ids": [
+        "en/financial-literacy-levels",
+        "en/financial-literacy-levels",
+        "en/financial-literacy-levels",
+        "en/financial-literacy-levels",
+        "en/financial-goals"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "According to the RAG Context, financial literacy is the ability to understand and effectively use financial skills — budgeting, saving, borrowing, and investing. It is not about memorizing formulas or jargon, but rather developing the practical judgment to make informed decisions with your own money. Financial literacy is a skill that improves with practice and exposure, and exists on a spectrum from beginner to advanced.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer accurately condenses the definition of financial literacy into a comprehensive sentence fully supported by the retrieved context, matching the gold reference exactly in substance and tone."
+      },
+      "candidate_tokens": 929,
+      "judge_tokens": 2364
+    },
+    {
+      "id": "rag-021",
+      "language": "en",
+      "topic": "hryvnia-basics",
+      "question_type": "factual",
+      "question": "What is the smallest denomination of the Ukrainian hryvnia?",
+      "expected_doc_ids": [
+        "en/hryvnia-basics"
+      ],
+      "retrieved_doc_ids": [
+        "en/hryvnia-basics",
+        "en/hryvnia-basics",
+        "en/hryvnia-basics",
+        "en/hryvnia-basics",
+        "en/hryvnia-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "According to the context provided, the smallest denomination of the Ukrainian hryvnia is the **kopiyка** (kopiyка), with 1 hryvnia equal to 100 kopiykas. However, the context notes that kopiykas are rarely used in everyday transactions due to inflation, though they do appear in banking operations and currency conversions.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer correctly identifies kopiykas as the smallest denomination, directly supported by the retrieved context stating '1 hryvnia = 100 kopiykas,' and accurately reflects the context's note that kopiykas are rarely used in everyday transactions but appear in banking operations and currency conversions."
+      },
+      "candidate_tokens": 1296,
+      "judge_tokens": 2861
+    },
+    {
+      "id": "rag-022",
+      "language": "en",
+      "topic": "ukrainian-tax-basics",
+      "question_type": "factual",
+      "question": "What is the standard personal income tax rate for salaried employees in Ukraine?",
+      "expected_doc_ids": [
+        "en/ukrainian-tax-basics"
+      ],
+      "retrieved_doc_ids": [
+        "en/ukrainian-tax-basics",
+        "en/ukrainian-tax-basics",
+        "en/ukrainian-tax-basics",
+        "en/ukrainian-tax-basics",
+        "en/ukrainian-tax-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "The standard personal income tax rate (PDFO) for salaried employees in Ukraine is **18%**. This is the main income tax withheld automatically by employers from employee wages. However, employees also face an additional 5% military levy (as of 2025-2026), bringing the combined withholding rate to 23% of gross salary.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately states the 18% PDFO rate for salaried employees and correctly adds the 5% military levy context, with all claims fully supported by the retrieved context and gold reference."
+      },
+      "candidate_tokens": 1311,
+      "judge_tokens": 2840
+    },
+    {
+      "id": "rag-023",
+      "language": "en",
+      "topic": "monobank-ecosystem",
+      "question_type": "factual",
+      "question": "What kinds of accounts can Monobank users hold inside the app?",
+      "expected_doc_ids": [
+        "en/monobank-ecosystem"
+      ],
+      "retrieved_doc_ids": [
+        "en/monobank-ecosystem",
+        "en/monobank-ecosystem",
+        "en/monobank-ecosystem",
+        "en/monobank-ecosystem",
+        "en/savings-strategies"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "According to the RAG Context, Monobank allows users to hold multiple accounts in different currencies, including UAH (Ukrainian Hryvnia), USD (US Dollar), and EUR (Euro). These accounts can be used to separate funds by purpose — such as daily spending, rent payments, or savings in foreign currency. This multi-currency account feature means users can manage money across different currencies without needing separate banking relationships.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately describes Monobank's multi-currency account feature (UAH, USD, EUR) and use cases (daily spending, rent, savings) with every claim supported by the retrieved context and gold reference."
+      },
+      "candidate_tokens": 1328,
+      "judge_tokens": 2865
+    },
+    {
+      "id": "rag-024",
+      "language": "uk",
+      "topic": "budgeting-basics",
+      "question_type": "definitional",
+      "question": "Що таке бюджет — одним реченням?",
+      "expected_doc_ids": [
+        "uk/budgeting-basics"
+      ],
+      "retrieved_doc_ids": [
+        "uk/budgeting-basics",
+        "uk/budgeting-basics",
+        "uk/budgeting-basics",
+        "uk/utilities-bills",
+        "uk/budgeting-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Бюджет — це план того, як ви витрачаєте та заощаджуєте гроші щомісяця. Він допомагає записати свій дохід, перелічити витрати та переконатися, що цифри сходяться, щоб бачити, куди йдуть ваші кошти та приймати усвідомлені рішення. Бюджетування — це не обмеження, а спосіб дати кожній гривні своє призначення.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate provides a concise, accurate definition of budget drawn entirely from the retrieved context, with natural Ukrainian phrasing that directly answers the one-sentence question."
+      },
+      "candidate_tokens": 1633,
+      "judge_tokens": 3748
+    },
+    {
+      "id": "rag-025",
+      "language": "uk",
+      "topic": "emergency-fund",
+      "question_type": "applied",
+      "question": "Я відкладаю 5000 грн на місяць. Скільки часу знадобиться, щоб зібрати резервний фонд на 3 місяці витрат, якщо мої витрати 20000 грн на місяць?",
+      "expected_doc_ids": [
+        "uk/emergency-fund"
+      ],
+      "retrieved_doc_ids": [
+        "uk/emergency-fund",
+        "uk/emergency-fund",
+        "uk/emergency-fund",
+        "uk/emergency-fund",
+        "uk/savings-strategies"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "За вашими даними цільова сума резервного фонду становить ₴60 000 (3 місяці × ₴20 000). При щомісячному відкладанні ₴5 000 вам знадобиться **12 місяців**, щоб зібрати цю суму. Це хороший темп — регулярність накопичення важливіша за розмір, тому ваш підхід цілком розумний. Можете також розглянути проміжну ціль у ₴15 000–₴30 000, щоб почути себе захищеніше на початковому етапі, а потім продовжити накопичення до повної суми.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer correctly calculates the target emergency fund (₴60,000), accurately determines the 12-month timeline (₴60,000 ÷ ₴5,000), and all claims are directly supported by the retrieved context, which endorses both the 3-month target and the intermediate milestone strategy; the response is in natural, correct Ukrainian and fully addresses the user's calculation question."
+      },
+      "candidate_tokens": 2769,
+      "judge_tokens": 5065
+    },
+    {
+      "id": "rag-026",
+      "language": "uk",
+      "topic": "debt-management",
+      "question_type": "factual",
+      "question": "Які стратегії погашення боргу існують?",
+      "expected_doc_ids": [
+        "uk/debt-management"
+      ],
+      "retrieved_doc_ids": [
+        "uk/debt-management",
+        "uk/debt-management",
+        "uk/debt-management",
+        "uk/debt-management",
+        "uk/savings-strategies"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Згідно з наведеною інформацією, існують дві основні стратегії погашення боргу:\n\n1. **Метод лавини** — спочатку погашається борг з найвищою відсотковою ставкою, а на решту платяться мінімуми. Це математично найефективніший спосіб, який дозволяє максимально заощадити на відсотках.\n\n2. **Метод сніжного кома** — спочатку закривається найменший борг, а потім платіж, що йшов на нього, «перекочується» на наступний борг. Цей метод створює психологічну мотивацію через швидкі перемоги, навіть якщо він коштує трохи більше на відсотках.\n\nВибір стратегії залежить від ваших переваг: якщо вам важлива математична ефективність, обирайте лавину; якщо ж вам потрібна мотивація та відчуття прогресу, сніжний ком буде кращим варіантом.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately presents both debt repayment strategies (avalanche and snowball methods) with correct explanations fully supported by the retrieved context, uses natural Ukrainian, and comprehensively addresses the question."
+      },
+      "candidate_tokens": 1772,
+      "judge_tokens": 3779
+    },
+    {
+      "id": "rag-027",
+      "language": "uk",
+      "topic": "savings-strategies",
+      "question_type": "applied",
+      "question": "Я хочу почати відкладати, але кожен місяць гроші закінчуються — з чого почати?",
+      "expected_doc_ids": [
+        "uk/savings-strategies"
+      ],
+      "retrieved_doc_ids": [
+        "uk/emergency-fund",
+        "uk/savings-strategies",
+        "uk/financial-goals",
+        "uk/savings-strategies",
+        "uk/savings-strategies"
+      ],
+      "metrics": {
+        "precision_at_1": 0.0,
+        "precision_at_3": 0.3333333333333333,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 0.5
+      },
+      "candidate_answer": "Почніть з малої суми — навіть ₴1 000–₴2 000 на місяць, адже регулярність важливіша за розмір. Перейдіть на **автоматичні перекази** у день зарплати: це знімає спокусу витратити гроші, оскільки заощадження відбуватиметься ще до того, як ви побачите ці кошти в доступі. Якщо гроші закінчуються саме наприкінці місяця — це сигнал потрібно скласти реалістичний бюджет основних видатків, щоб виділити місце для заощаджень. Навіть крок у ₴1 000 щомісяця дасть ₴12 000 за рік, а звичка сама по собі — найціннішої багатство.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "Answer directly addresses the question with concrete, actionable advice (small sums, automation, budgeting) that is fully supported by retrieved context and aligns perfectly with gold reference on savings strategies."
+      },
+      "candidate_tokens": 2797,
+      "judge_tokens": 5062
+    },
+    {
+      "id": "rag-028",
+      "language": "uk",
+      "topic": "subscription-tracking",
+      "question_type": "factual",
+      "question": "Чому підписки легко стають прихованими витратами?",
+      "expected_doc_ids": [
+        "uk/subscription-tracking"
+      ],
+      "retrieved_doc_ids": [
+        "uk/subscription-tracking",
+        "uk/subscription-tracking",
+        "uk/subscription-tracking",
+        "uk/subscription-tracking",
+        "uk/subscription-tracking"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Підписки легко стають прихованими витратами через кілька причин. По-перше, кожен окремий платіж невеликий і автоматичний, тому накопичуються непомітно, поки загальна щомісячна сума не стає значною статтею бюджету. По-друге, їх автоматичний характер означає, що списання продовжуються нескінченно, незалежно від того, чи користуєтесь ви сервісом, — часто люди забувають про безкоштовні тріали, що переходять у платні плани, або про річні поновлення. Крім того, дослідження показують, що більшість людей недооцінюють свої витрати на підписки на 30-50%, а типова людина може мати 5-12 активних підписок на загальну суму ₴2 000–₴4 000 на місяць.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly and comprehensively addresses why subscriptions become hidden expenses, with every claim fully supported by the retrieved context, natural Ukrainian phrasing, and complete alignment with the gold reference material."
+      },
+      "candidate_tokens": 2354,
+      "judge_tokens": 4588
+    },
+    {
+      "id": "rag-029",
+      "language": "uk",
+      "topic": "spending-categories",
+      "question_type": "applied",
+      "question": "Як мені розподілити витрати на категорії, якщо я вперше веду бюджет?",
+      "expected_doc_ids": [
+        "uk/spending-categories"
+      ],
+      "retrieved_doc_ids": [
+        "uk/utilities-bills",
+        "uk/spending-categories",
+        "uk/spending-categories",
+        "uk/budgeting-basics",
+        "uk/spending-categories"
+      ],
+      "metrics": {
+        "precision_at_1": 0.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 0.5
+      },
+      "candidate_answer": "Категорії витрат — це мітки для ваших транзакцій, такі як продукти, транспорт, розваги, комунальні платежі тощо. Почніть із основних категорій (оренда, комунальні, продукти, транспорт, розваги) та записуйте всі свої видатки протягом місяця, присвоюючи їм категорії. Багато банківських додатків, як Monobank, роблять це автоматично. Коли ви побачите, куди йдуть ваші гроші, зможете вирішити, чи відповідає розподіл вашим пріоритетам, і встановити реалістичний бюджет на наступні місяці.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "Answer is fully supported by retrieved context, directly addresses the question with practical guidance aligned to gold reference, and uses natural Ukrainian throughout."
+      },
+      "candidate_tokens": 1346,
+      "judge_tokens": 3547
+    },
+    {
+      "id": "rag-030",
+      "language": "uk",
+      "topic": "investment-basics",
+      "question_type": "definitional",
+      "question": "Що таке диверсифікація — одним реченням?",
+      "expected_doc_ids": [
+        "uk/investment-basics"
+      ],
+      "retrieved_doc_ids": [
+        "uk/investment-basics",
+        "uk/investment-basics",
+        "uk/hryvnia-basics",
+        "uk/understanding-inflation",
+        "uk/investment-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Диверсифікація — це розподіл ваших грошей між різними типами інвестицій для зменшення впливу поганих результатів будь-якого одного з них. Це принцип «не кладіть усі яйця в один кошик», який допомагає захистити ваш портфель від значних втрат.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "Candidate answer directly matches the retrieved context definition of диверсифікація and correctly answers the question in natural, fluent Ukrainian."
+      },
+      "candidate_tokens": 1722,
+      "judge_tokens": 3834
+    },
+    {
+      "id": "rag-031",
+      "language": "uk",
+      "topic": "50-30-20-rule",
+      "question_type": "applied",
+      "question": "Якщо моя зарплата 40000 грн, скільки за правилом 50/30/20 я маю відкладати?",
+      "expected_doc_ids": [
+        "uk/50-30-20-rule"
+      ],
+      "retrieved_doc_ids": [
+        "uk/50-30-20-rule",
+        "uk/50-30-20-rule",
+        "uk/50-30-20-rule",
+        "uk/50-30-20-rule",
+        "uk/50-30-20-rule"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "За правилом 50/30/20 від чистого доходу ₴40 000/місяць ви маєте відкладати **20% = ₴8 000 на заощадження та погашення боргів**.\n\nЦя сума призначена для накопичення подушки безпеки, додаткових платежів по кредитах понад мінімум, пенсійних заощаджень або інвестицій. Однак пам'ятайте, що це орієнтирне значення — якщо ваші обов'язкові витрати займають більше 50%, ви можете адаптувати відсотки під свою ситуацію.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately applies the 50/30/20 rule to the given salary, calculates 20% correctly (₴8,000), explains the purpose of savings clearly, and adds appropriate flexibility guidance—all fully supported by and aligned with the retrieved context and gold reference."
+      },
+      "candidate_tokens": 1721,
+      "judge_tokens": 3861
+    },
+    {
+      "id": "rag-032",
+      "language": "uk",
+      "topic": "groceries-food-spending",
+      "question_type": "factual",
+      "question": "Скільки у середньому українці витрачають на продукти харчування?",
+      "expected_doc_ids": [
+        "uk/groceries-food-spending"
+      ],
+      "retrieved_doc_ids": [
+        "uk/groceries-food-spending",
+        "uk/groceries-food-spending",
+        "uk/groceries-food-spending",
+        "uk/groceries-food-spending",
+        "uk/groceries-food-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "За даними, наведеними в контексті, у типовому українському домогосподарстві витрати на їжу можуть становити від **₴4 000 до ₴10 000 на місяць** залежно від розміру родини, міста та кулінарних звичок. Загалом їжа зазвичай є однією з найбільших категорій витрат після житла, складаючи близько **20-30% місячного бюджету домогосподарства**. Ці витрати включають не лише продукти зі супермаркетів та ринків, а й обіди в кафе, доставку їжі та перекуски.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly addresses the question with accurate figures and percentages, and is written in natural, correct Ukrainian."
+      },
+      "candidate_tokens": 2039,
+      "judge_tokens": 4087
+    },
+    {
+      "id": "rag-033",
+      "language": "uk",
+      "topic": "transport-spending",
+      "question_type": "applied",
+      "question": "Я витрачаю 20% доходу на таксі — як це скоротити?",
+      "expected_doc_ids": [
+        "uk/transport-spending"
+      ],
+      "retrieved_doc_ids": [
+        "uk/50-30-20-rule",
+        "uk/transport-spending",
+        "uk/transport-spending",
+        "uk/50-30-20-rule",
+        "uk/50-30-20-rule"
+      ],
+      "metrics": {
+        "precision_at_1": 0.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.4,
+        "recall_at_5": 1.0,
+        "mrr": 0.5
+      },
+      "candidate_answer": "За RAG-контекстом, витрати на таксі часто недооцінюються — окремі поїздки здаються дешевими, але 10-15 поїздок на місяць складають ₴1 000-₴3 000. Рекомендую спробувати **змішану стратегію**: громадський транспорт для щоденних поїздок (за ₴2 000-₴2 500/місяць) та таксі лише для критичних випадків (пізні повернення, негода). Це часто дає найкращий баланс вартості та зручності, вивільнювши значну частину коштів на потреби чи заощадження.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly draws from and accurately reflects the retrieved context (transport spending overview and actionable takeaways), addresses the question with concrete Ukrainian-specific advice, and uses natural, correct Ukrainian phrasing throughout."
+      },
+      "candidate_tokens": 2704,
+      "judge_tokens": 4826
+    },
+    {
+      "id": "rag-034",
+      "language": "uk",
+      "topic": "utilities-bills",
+      "question_type": "factual",
+      "question": "Які комунальні послуги зазвичай входять у місячні рахунки українського домогосподарства?",
+      "expected_doc_ids": [
+        "uk/utilities-bills"
+      ],
+      "retrieved_doc_ids": [
+        "uk/utilities-bills",
+        "uk/utilities-bills",
+        "uk/utilities-bills",
+        "uk/utilities-bills",
+        "uk/utilities-bills"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Згідно з наведеною інформацією, комунальні платежі в Україні охоплюють електроенергію, газ, воду, опалення, інтернет та вивіз сміття. Ці послуги становлять значну частину витрат на житло, особливо у холодні місяці, коли включається централізоване опалення. Для типової київської квартири місячні комунальні витрати становлять ₴1 500-₴2 000 влітку та ₴4 000-₴5 000 і більше взимку.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately lists all utility services from the retrieved context with precise financial examples, maintains natural Ukrainian language, and fully addresses the question about typical household utility bills in Ukraine."
+      },
+      "candidate_tokens": 2075,
+      "judge_tokens": 4179
+    },
+    {
+      "id": "rag-035",
+      "language": "uk",
+      "topic": "healthcare-spending",
+      "question_type": "definitional",
+      "question": "Що таке медичні витрати домогосподарства — одним реченням?",
+      "expected_doc_ids": [
+        "uk/healthcare-spending"
+      ],
+      "retrieved_doc_ids": [
+        "uk/healthcare-spending",
+        "uk/healthcare-spending",
+        "uk/healthcare-spending",
+        "uk/healthcare-spending",
+        "uk/healthcare-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Медичні витрати домогосподарства — це грошові видатки на візити до лікарів, ліки, стоматологію, офтальмологію та медичне страхування. У контексті українських реалій вони включають як державне покриття через програму медичних гарантій, так і власні витрати на приватні клініки та спеціалістів. Ці витрати частково передбачувані (щорічні огляди, щомісячні ліки) та частково непередбачені (травми, раптові хвороби), тому їх потрібно планувати в домашньому бюджеті.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly and comprehensively defines household medical expenses in one sentence as requested, with all claims fully supported by the retrieved context and perfectly aligned with the gold reference, using natural and correct Ukrainian language."
+      },
+      "candidate_tokens": 2087,
+      "judge_tokens": 4206
+    },
+    {
+      "id": "rag-036",
+      "language": "uk",
+      "topic": "entertainment-spending",
+      "question_type": "factual",
+      "question": "Які приклади розваг зазвичай потрапляють у категорію витрат на розваги?",
+      "expected_doc_ids": [
+        "uk/entertainment-spending"
+      ],
+      "retrieved_doc_ids": [
+        "uk/entertainment-spending",
+        "uk/entertainment-spending",
+        "uk/entertainment-spending",
+        "uk/spending-categories",
+        "uk/entertainment-spending"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "За наведеним контекстом, витрати на розваги охоплюють: кіно, концерти, кафе та ресторани, хобі, ігри, спортивні заходи та зустрічі з друзями. Крім того, до цієї категорії належать стрімінгові сервіси та підписки. У типовому українському міському бюджеті такі витрати можуть становити ₴2 000–₴5 000 на місяць залежно від доходу та стилю життя.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "Відповідь повністю грунтується на наданому контексті, прямо і правильно відповідає на питання про приклади витрат на розваги, написана природною українською мовою."
+      },
+      "candidate_tokens": 1643,
+      "judge_tokens": 3709
+    },
+    {
+      "id": "rag-037",
+      "language": "uk",
+      "topic": "shopping-habits",
+      "question_type": "applied",
+      "question": "Я часто купую непотрібні речі під час розпродажів — що з цим робити?",
+      "expected_doc_ids": [
+        "uk/shopping-habits"
+      ],
+      "retrieved_doc_ids": [
+        "uk/shopping-habits",
+        "uk/shopping-habits",
+        "uk/shopping-habits",
+        "uk/shopping-habits",
+        "uk/shopping-habits"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Перед покупкою на розпродажі запитайте себе: «Чи купив би я це за цю ціну, якби знижка не була вказана?» Якщо відповідь — ні, то акція не заощаджує вам гроші, а переконує витратити гроші, яких інакше б не витратили. Крім того, додавайте речі до вішлісту замість імпульсивної покупки — через 2-4 тижні ви побачите, які бажання були справжніми, а які були миттєвими під впливом маркетингових тактик (терміновості, страху втрати). Також відпишіться від рекламних розсилок і промо-сповіщень магазинів — зменшення пропозицій прямо зменшує кількість покупельських спокус, які потрібно щодня відхиляти.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly addresses the gold reference question about impulsive buying during sales, uses natural Ukrainian, and provides three actionable strategies (the discount question test, wishlist method, and unsubscribing from marketing) that comprehensively cover the core recommendations."
+      },
+      "candidate_tokens": 2136,
+      "judge_tokens": 4237
+    },
+    {
+      "id": "rag-038",
+      "language": "uk",
+      "topic": "understanding-inflation",
+      "question_type": "definitional",
+      "question": "Що таке інфляція — одним реченням?",
+      "expected_doc_ids": [
+        "uk/understanding-inflation"
+      ],
+      "retrieved_doc_ids": [
+        "uk/understanding-inflation",
+        "uk/understanding-inflation",
+        "uk/understanding-inflation",
+        "uk/understanding-inflation",
+        "uk/understanding-inflation"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Інфляція — це загальне зростання цін з часом, яке зменшує купівельну спроможність грошей. Це означає, що кожна гривня з часом купує менше товарів і послуг, ніж раніше. Для України це особливо важливо, оскільки навіть у стабільні періоди інфляція зазвичай становить 5-12% річних.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate answer directly and accurately defines inflation in Ukrainian using claims fully supported by the retrieved context, with natural language and correct grammar."
+      },
+      "candidate_tokens": 2121,
+      "judge_tokens": 4345
+    },
+    {
+      "id": "rag-039",
+      "language": "uk",
+      "topic": "interest-and-credit",
+      "question_type": "applied",
+      "question": "Кредит 50000 грн під 30% річних на рік — скільки приблизно я переплачу?",
+      "expected_doc_ids": [
+        "uk/interest-and-credit"
+      ],
+      "retrieved_doc_ids": [
+        "uk/interest-and-credit",
+        "uk/interest-and-credit",
+        "uk/debt-management",
+        "uk/interest-and-credit",
+        "uk/interest-and-credit"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "На жаль, наведений контекст не містить конкретного прикладу розрахунку для простого кредиту під 30% річних. Проте на основі ключових концепцій можу пояснити: при простих відсотках ви переплатите приблизно **₴15 000** (30% від ₴50 000). Якщо використовуються складні відсотки з частішою капіталізацією, переплата буде дещо вищою. Рекомендую уточнити у кредитора, які саме відсотки застосовуються (прості чи складні) та як часто вони капіталізуються.",
+      "judge": {
+        "groundedness": 1,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 2,
+        "rationale": "Answer correctly addresses the question with accurate simple-interest calculation (₴15,000) and mentions compound interest complexity, but the retrieved context contains no direct examples or formulas for simple loan calculations, only credit card and deposit scenarios, making claims only partially supported by the provided material."
+      },
+      "candidate_tokens": 2044,
+      "judge_tokens": 4135
+    },
+    {
+      "id": "rag-040",
+      "language": "uk",
+      "topic": "financial-goals",
+      "question_type": "definitional",
+      "question": "Що таке фінансова ціль за методом SMART — одним реченням?",
+      "expected_doc_ids": [
+        "uk/financial-goals"
+      ],
+      "retrieved_doc_ids": [
+        "uk/financial-goals",
+        "uk/financial-goals",
+        "uk/financial-goals",
+        "uk/financial-goals",
+        "uk/financial-goals"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Фінансова ціль за методом SMART — це конкретна, вимірна, досяжна, релевантна та обмежена у часі мета для ваших грошей, наприклад «заощадити ₴60 000 на подушку безпеки до грудня 2026». На відміну від розмитих намірів типу «заощаджувати більше», SMART-ціль точно каже скільки, до коли і як, що робить її відстежуваною та дієвою. Сам факт запису такої цілі значно підвищує шанси на досягнення.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly defines SMART financial goals with all five criteria supported by retrieved context, provides a concrete example matching the reference, and explains the distinction from vague intentions—all in natural, grammatically correct Ukrainian, fully addressing the one-sentence request."
+      },
+      "candidate_tokens": 2062,
+      "judge_tokens": 4182
+    },
+    {
+      "id": "rag-041",
+      "language": "uk",
+      "topic": "cash-vs-digital-payments",
+      "question_type": "applied",
+      "question": "Я розрахуюся готівкою — чи впливає це на мій бюджет-трекер у додатку?",
+      "expected_doc_ids": [
+        "uk/cash-vs-digital-payments"
+      ],
+      "retrieved_doc_ids": [
+        "uk/cash-vs-digital-payments",
+        "uk/budgeting-basics",
+        "uk/cash-vs-digital-payments",
+        "uk/cash-vs-digital-payments",
+        "uk/cash-vs-digital-payments"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.8,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Так, готівкові транзакції не реєструються автоматично у банківських додатках. За RAG-контекстом, готівкові операції є «невидимими для додатків, якщо не введені вручну». Щоб готівкові витрати з'явилися у вашому бюджет-трекері, вам потрібно самостійно їх записати. Це означає, що якщо ви не занотуєте витрати, вони не будуть враховані в аналітиці додатка.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context (correctly citing that cash transactions are invisible to apps without manual entry), directly and correctly addresses the gold reference question, uses natural Ukrainian, and provides accurate practical guidance on cash tracking."
+      },
+      "candidate_tokens": 2076,
+      "judge_tokens": 4199
+    },
+    {
+      "id": "rag-042",
+      "language": "uk",
+      "topic": "spending-patterns",
+      "question_type": "factual",
+      "question": "Що таке циклічні витрати?",
+      "expected_doc_ids": [
+        "uk/spending-patterns"
+      ],
+      "retrieved_doc_ids": [
+        "uk/spending-patterns",
+        "uk/spending-categories",
+        "uk/spending-patterns",
+        "uk/spending-patterns",
+        "uk/spending-categories"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "На основі наведеного контексту термін \"циклічні витрати\" не визначено напряму. Однак контекст описує **закономірності витрат** — повторювані тенденції, такі як тижневі ритми (більше витрат на вихідних), місячні цикли (сплеск після зарплати) та сезонні зміни (опалення взимку, подарунки в грудні). Ці передбачувані коливання витрат протягом часу можна розглядати як прояв циклічності фінансової поведінки.\n\nДля детальнішої відповіді на питання про циклічні витрати потрібна додаткова інформація.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The candidate correctly identifies that the retrieved context does not define 'циклічні витрати' directly but accurately synthesizes the concept from 'закономірності витрат' (spending patterns), which is the appropriate equivalent term in the provided material, and honestly acknowledges the limitation while providing a well-grounded explanation supported entirely by the retrieved context."
+      },
+      "candidate_tokens": 1597,
+      "judge_tokens": 3858
+    },
+    {
+      "id": "rag-043",
+      "language": "uk",
+      "topic": "financial-literacy-levels",
+      "question_type": "factual",
+      "question": "Які рівні фінансової грамотності існують?",
+      "expected_doc_ids": [
+        "uk/financial-literacy-levels"
+      ],
+      "retrieved_doc_ids": [
+        "uk/financial-literacy-levels",
+        "uk/financial-literacy-levels",
+        "uk/financial-literacy-levels",
+        "uk/financial-literacy-levels",
+        "uk/financial-literacy-levels"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "# Рівні фінансової грамотності\n\nЗгідно наведеного контексту, існує **три основні рівні фінансової грамотності**:\n\n1. **Початковий рівень** — розуміння різниці між доходами та витратами, відстеження витрат, знання відмінностей між дебетовою та кредитною карткою, вміння скласти базовий бюджет.\n\n2. **Середній рівень** — управління кількома фінансовими цілями, розуміння відсоткових ставок, використання бюджетних правил (50/30/20), утримання фінансової подушки та початкове розуміння інвестицій (ОВДП, депозити).\n\n3. **Просунутий рівень** — оптимізація інвестиційного портфеля, розуміння податкових наслідків (ПДФО, ЄСВ, ФОП), планування довгострокової фінансової незалежності та розуміння макроекономічних факторів.\n\nКрім того, контекст виділяє **фінансову впевненість** як важливий аспект — відчуття контролю над власними фінансами, яке зростає з грамотністю.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly and comprehensively addresses the question in proper Ukrainian, and matches the gold reference material perfectly."
+      },
+      "candidate_tokens": 2520,
+      "judge_tokens": 4910
+    },
+    {
+      "id": "rag-044",
+      "language": "uk",
+      "topic": "hryvnia-basics",
+      "question_type": "definitional",
+      "question": "Що таке копійка — одним реченням?",
+      "expected_doc_ids": [
+        "uk/hryvnia-basics"
+      ],
+      "retrieved_doc_ids": [
+        "uk/hryvnia-basics",
+        "uk/hryvnia-basics",
+        "uk/understanding-inflation",
+        "uk/hryvnia-basics",
+        "uk/shopping-habits"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 0.6666666666666666,
+        "precision_at_5": 0.6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Копійка — це грошова одиниця, 1/100 частина гривні (1 гривня = 100 копійок). У повсякденних розрахунках копійки майже не використовуються через інфляцію, але вони фігурують у банківських операціях та при конвертації валют.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer directly and accurately defines kopiyка as 1/100 of a hryvnia with all claims fully supported by retrieved context, uses natural Ukrainian, and precisely answers the one-sentence requirement from the gold reference."
+      },
+      "candidate_tokens": 1093,
+      "judge_tokens": 3309
+    },
+    {
+      "id": "rag-045",
+      "language": "uk",
+      "topic": "ukrainian-tax-basics",
+      "question_type": "applied",
+      "question": "Я ФОП на 3 групі єдиного податку — які податки я сплачую з обороту?",
+      "expected_doc_ids": [
+        "uk/ukrainian-tax-basics"
+      ],
+      "retrieved_doc_ids": [
+        "uk/ukrainian-tax-basics",
+        "uk/ukrainian-tax-basics",
+        "uk/ukrainian-tax-basics",
+        "uk/ukrainian-tax-basics",
+        "uk/ukrainian-tax-basics"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "Як ФОП на 3-й групі, ви сплачуєте **єдиний податок 5% від доходу** або **3% з ПДВ** (залежно від обраної схеми). Додатково ви сплачуєте **ЄСВ (єдиний соціальний внесок)** у розмірі мінімальної суми, яка становить приблизно ₴1 760/місяць. Разом ці збори становлять основне податкове навантаження для 3-ї групи ФОП.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "Answer directly matches retrieved context and gold reference, correctly identifying the 5% or 3% tax options for FOP group 3 plus minimum ЄСВ, with natural Ukrainian phrasing."
+      },
+      "candidate_tokens": 2127,
+      "judge_tokens": 4290
+    },
+    {
+      "id": "rag-046",
+      "language": "uk",
+      "topic": "monobank-ecosystem",
+      "question_type": "factual",
+      "question": "Що таке банка в Monobank?",
+      "expected_doc_ids": [
+        "uk/monobank-ecosystem"
+      ],
+      "retrieved_doc_ids": [
+        "uk/monobank-ecosystem",
+        "uk/monobank-ecosystem",
+        "uk/monobank-ecosystem",
+        "uk/monobank-ecosystem",
+        "uk/monobank-ecosystem"
+      ],
+      "metrics": {
+        "precision_at_1": 1.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "candidate_answer": "**Банка (Jar)** в Monobank — це цифровий «банк» для заощаджень з назвою та конкретною фінансовою ціллю. Ви можете створити окремі Банки для подушки безпеки, відпустки, покупки техніки та інших цілей. Гроші в Банках відокремлені від основного балансу, що зменшує спокусу витратити їх, а також дозволяє відстежувати прогрес досягнення кожної цілі через прогрес-бар.",
+      "judge": {
+        "groundedness": 2,
+        "relevance": 2,
+        "language_correctness": 2,
+        "overall": 4,
+        "rationale": "The answer is fully grounded in the retrieved context, directly answers the question about Банки (Jars) in Monobank, matches the gold reference content precisely, and uses natural Ukrainian language."
+      },
+      "candidate_tokens": 1893,
+      "judge_tokens": 4166
+    }
+  ]
+}
