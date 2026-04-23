@@ -1323,6 +1323,10 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 **Surfaced in:** Story 9.5c (2026-04-23). Story 9.7 (`Bedrock IAM + Observability Plumbing`) may absorb this if scope aligns.
 
+**Update (Story 9.7, 2026-04-23):** Terraform role provisioned — `aws_iam_role.github_bedrock_ci` at [`infra/terraform/modules/ecs/github-oidc.tf`](../infra/terraform/modules/ecs/github-oidc.tf), gated by `var.github_bedrock_ci_enabled` (prod tfvars sets it true). Trust policy accepts both `ref:refs/heads/main` and `pull_request` subject claims. Permissions scoped to `bedrock:InvokeModel` on `eu-central-1:*:inference-profile/eu.*` + `eu-north-1::foundation-model/anthropic.*` + `eu-north-1::foundation-model/amazon.nova-*` (tighter than fix-shape's `eu.*` suggestion). ARN exposed via `terraform output github_bedrock_ci_role_arn` after apply.
+
+**Status: Pending manual follow-up — close-out BLOCKED on a state-separation issue.** A naïve `terraform apply -var-file=environments/prod/terraform.tfvars` against the current dev-authoritative S3 state would destroy-and-replace the prod Cognito user pool and S3 uploads bucket (10 `-/+` entries driven by `kopiika-dev-*` → `kopiika-prod-*` name changes — torches user accounts and uploaded statements). Follow the **surgical `-target` apply sequence** documented in Story 9.7's Completion Notes (Code Review section, 2026-04-23) — it skips the destructive cascades and touches only 9.7-introduced resources. After the targeted apply lands: (3) paste ARN into repo secret `AWS_ROLE_TO_ASSUME`; (4) flip `LLM_PROVIDER_MATRIX_PROVIDERS` to `"anthropic,openai,bedrock"` (or delete the key); (5) trigger the workflow manually; (6) confirm green Bedrock column, then flip TD-086 to Resolved; (7) promote the state-separation blocker to its own HIGH TD.
+
 ---
 
 ### TD-087 — Cross-provider equivalence is schema+label only; no semantic parity signal [LOW]
@@ -1389,6 +1393,33 @@ Run-reports: `backend/tests/agents/providers/runs/education-*.json`.
 **Fix shape:** Replace `'{embedding_literal}'::halfvec` with `CAST(:embedding AS halfvec)` and add `"embedding": embedding_literal` to the bind-params dict at [seed.py:116-122](../backend/app/rag/seed.py#L116-L122).
 
 **Surfaced in:** Story 9.6 code review (2026-04-23)
+
+---
+
+### TD-091 — Terraform state backend is dev-authoritative; un-targeted prod apply destroys Cognito + S3 uploads [HIGH]
+
+**Where:** [infra/terraform/backend.tf](../infra/terraform/backend.tf), S3 state bucket `kopiika-terraform-state` (single key shared across envs), all resources whose identifiers derive from `${local.name_prefix}` or `${var.project_name}-${var.environment}-…`.
+
+**Problem:** The S3 Terraform state currently holds dev-shaped resource addresses (`kopiika-dev-user-pool`, `kopiika-uploads-dev`, `kopiika-dev-cluster`, …). Running `terraform plan -var-file=environments/prod/terraform.tfvars` against that state produces 10 `-/+ destroy and then create replacement` entries on immutable-name resources:
+
+- **Cognito cascade (3):** `aws_cognito_user_pool.main` forced to replace on `name`; `aws_cognito_user_pool_client.backend` + `.frontend` cascade via `user_pool_id` → **every registered user wiped**.
+- **S3 uploads cascade (7):** `aws_s3_bucket.uploads` forced to replace on `bucket`; six sibling configs (cors, lifecycle, policy, public_access_block, encryption, versioning) cascade → **every uploaded statement wiped**.
+
+An un-targeted `terraform apply -var-file=environments/prod/terraform.tfvars` against this state is a data-loss event. Discovered during Story 9.7 plan verification (2026-04-23).
+
+**Why deferred:** Pre-existing state-backend topology issue; unrelated to Story 9.7's IAM/observability scope. 9.7 close-out uses a surgical `-target` apply sequence (Completion Notes in [9-7-bedrock-iam-observability.md](../_bmad-output/implementation-artifacts/9-7-bedrock-iam-observability.md)) to avoid triggering the cascade. The root-cause fix belongs in an infra-hygiene story, not a provider-readiness story.
+
+**Fix shape:** Choose one, in rough order of preference:
+
+1. **Separate state keys per env.** Edit [infra/terraform/backend.tf](../infra/terraform/backend.tf) to use `key = "env/${var.environment}/terraform.tfstate"` (or similar per-env path). Bootstrap a fresh prod state by `terraform init -reconfigure` against the new key, then `terraform import` the existing prod Cognito pool + S3 bucket + every other long-lived resource into the new state.
+2. **Workspace-aware backend.** `terraform workspace new prod` with a backend that interpolates `${terraform.workspace}` into the state key. Same import work.
+3. **Import-in-place.** Keep the single state file but `terraform import` the prod resources so the state matches prod tfvars. Easiest mechanically but leaves dev and prod sharing a state file — blast-radius remains.
+
+Before applying any of the above, snapshot the current state file (`aws s3 cp s3://kopiika-terraform-state/<current-key> ./state-backup-$(date +%Y%m%d).tfstate`). Verify the chosen path with a dry `plan` showing **zero** destroy/replace entries before running any apply.
+
+**Blocking:** Story 9.7 close-out (surgical `-target` apply works around it, but a full un-targeted apply against prod is unsafe until this lands). Likely also blocks any future story that touches Cognito or S3 config — those stories will hit the same cascade.
+
+**Surfaced in:** Story 9.7 code review (2026-04-23)
 
 ---
 

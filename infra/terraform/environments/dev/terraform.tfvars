@@ -3,8 +3,8 @@ aws_region         = "eu-central-1"
 availability_zones = ["eu-central-1a", "eu-central-1b"]
 
 # RDS - minimal for dev (free-tier eligible)
-rds_instance_class      = "db.t4g.micro"
-rds_allocated_storage   = 20
+rds_instance_class          = "db.t4g.micro"
+rds_allocated_storage       = 20
 rds_backup_retention_period = 30
 
 # ElastiCache - minimal single-node

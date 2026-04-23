@@ -78,6 +78,42 @@ resource "aws_iam_role_policy" "ecs_task_secrets" {
   policy = data.aws_iam_policy_document.ecs_secrets_read.json
 }
 
+# Story 9.7 — Bedrock invoke + Guardrail for the Celery task role.
+# Principal is aws_iam_role.ecs_task (NOT ecs_execution) — boto3 inside the
+# container sees only the task role via the ECS credentials endpoint. The
+# `count` guard keeps dev/staging (which leave bedrock_invocation_arns empty)
+# from attaching an empty policy.
+data "aws_iam_policy_document" "ecs_task_bedrock" {
+  count = length(var.bedrock_invocation_arns) > 0 ? 1 : 0
+
+  statement {
+    sid    = "BedrockInvokeModel"
+    effect = "Allow"
+    actions = [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+    ]
+    # Must include BOTH the eu-central-1 inference profiles AND the eu-north-1
+    # foundation-model ARNs the profiles physically route to — cross-region
+    # inference requires both per the Story 9.4 decision doc.
+    resources = var.bedrock_invocation_arns
+  }
+
+  statement {
+    sid       = "BedrockApplyGuardrail"
+    effect    = "Allow"
+    actions   = ["bedrock:ApplyGuardrail"]
+    resources = [var.bedrock_guardrail_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_bedrock_invoke" {
+  count  = length(var.bedrock_invocation_arns) > 0 ? 1 : 0
+  name   = "bedrock-invoke"
+  role   = aws_iam_role.ecs_task.id
+  policy = data.aws_iam_policy_document.ecs_task_bedrock[0].json
+}
+
 # Task Definition
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${local.name_prefix}-worker"
@@ -106,6 +142,13 @@ resource "aws_ecs_task_definition" "worker" {
         {
           name  = "AWS_SECRETS_PREFIX"
           value = "${var.project_name}/${var.environment}"
+        },
+        # Story 9.7 — explicit region for boto3's bedrock-runtime client.
+        # ECS task-metadata region works today but is ambiguous when code calls
+        # boto3.client("bedrock-runtime") with no region_name kwarg.
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
         },
       ]
 
@@ -197,6 +240,13 @@ resource "aws_ecs_task_definition" "beat" {
         {
           name  = "AWS_SECRETS_PREFIX"
           value = "${var.project_name}/${var.environment}"
+        },
+        # Story 9.7 — explicit region for boto3's bedrock-runtime client.
+        # ECS task-metadata region works today but is ambiguous when code calls
+        # boto3.client("bedrock-runtime") with no region_name kwarg.
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
         },
       ]
 

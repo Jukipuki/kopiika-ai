@@ -1,6 +1,6 @@
 locals {
-  name_prefix    = "${var.project_name}-${var.environment}"
-  has_sender     = var.sender_email != ""
+  name_prefix = "${var.project_name}-${var.environment}"
+  has_sender  = var.sender_email != ""
 }
 
 # Verify sender email identity

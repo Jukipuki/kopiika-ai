@@ -39,6 +39,50 @@ resource "aws_iam_role_policy" "apprunner_secrets" {
   policy = data.aws_iam_policy_document.apprunner_secrets_read.json
 }
 
+# Story 9.7 — AgentCore invoke for the App Runner instance role.
+#
+# Architecture.md says "FastAPI ECS task role" at line 1628 — but FastAPI runs
+# on App Runner today, so the grant attaches to the App Runner instance role
+# (apprunner_instance), not an ECS role. If a future migration moves FastAPI to
+# ECS, the grant moves with it.
+#
+# 3-action minimum per architecture.md:1630; epics.md's broader `*` is compressed
+# shorthand. Story 10.4a adds a fourth action (e.g. PutMemory) via a minor edit
+# to this same statement if/when needed.
+#
+# No bedrock:InvokeModel on this role — chat uses AgentCore's server-side
+# invocation, batch uses bedrock:InvokeModel from the Celery role.
+# Gated on a concrete (non-wildcard) runtime ARN so dev/staging — which carry
+# the wildcard default from variables.tf — don't ship a live agentcore invoke
+# grant. Once Story 10.4a sets a concrete ARN in per-env tfvars, the policy
+# attaches automatically. Symmetrical with the ECS bedrock_invoke policy's
+# "empty list = skip" pattern at modules/ecs/main.tf.
+locals {
+  agentcore_policy_enabled = can(regex(":runtime/[A-Za-z0-9_-]+$", var.agentcore_runtime_arn))
+}
+
+data "aws_iam_policy_document" "apprunner_agentcore" {
+  count = local.agentcore_policy_enabled ? 1 : 0
+
+  statement {
+    sid    = "BedrockAgentCoreInvoke"
+    effect = "Allow"
+    actions = [
+      "bedrock-agentcore:InvokeAgentRuntime",
+      "bedrock-agentcore:GetSession",
+      "bedrock-agentcore:DeleteSession",
+    ]
+    resources = [var.agentcore_runtime_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "apprunner_agentcore" {
+  count  = local.agentcore_policy_enabled ? 1 : 0
+  name   = "agentcore-invoke"
+  role   = aws_iam_role.apprunner_instance.id
+  policy = data.aws_iam_policy_document.apprunner_agentcore[0].json
+}
+
 # ECR access role for App Runner
 data "aws_iam_policy_document" "apprunner_ecr_assume" {
   statement {

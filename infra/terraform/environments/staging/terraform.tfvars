@@ -3,8 +3,8 @@ aws_region         = "eu-central-1"
 availability_zones = ["eu-central-1a", "eu-central-1b"]
 
 # RDS
-rds_instance_class      = "db.t4g.small"
-rds_allocated_storage   = 50
+rds_instance_class          = "db.t4g.small"
+rds_allocated_storage       = 50
 rds_backup_retention_period = 30
 
 # ElastiCache

@@ -205,7 +205,7 @@ development_status:
   # recommendation flipped to MIGRATE on deterministic retrieval evidence.
   # Source: docs/decisions/embedding-model-comparison-2026-04.md
   9-6-embedding-migration-conditional: done
-  9-7-bedrock-iam-observability: backlog
+  9-7-bedrock-iam-observability: done
   9-8-pipeline-orchestration-evaluation-spike: backlog
   epic-9-retrospective: optional
 

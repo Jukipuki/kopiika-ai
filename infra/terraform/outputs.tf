@@ -44,3 +44,8 @@ output "ecs_cluster_name" {
   description = "ECS cluster name"
   value       = module.ecs.cluster_name
 }
+
+output "github_bedrock_ci_role_arn" {
+  description = "ARN of the GitHub OIDC Bedrock CI role (Story 9.7 / TD-086). Paste into repo secret AWS_ROLE_TO_ASSUME to unblock the cross-provider matrix Bedrock column."
+  value       = module.ecs.github_bedrock_ci_role_arn
+}

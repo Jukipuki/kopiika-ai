@@ -137,6 +137,31 @@ variable "ses_sender_email" {
   default     = ""
 }
 
+# Bedrock IAM plumbing (Story 9.7)
+variable "bedrock_invocation_arns" {
+  description = "Flat list of Bedrock inference-profile + foundation-model ARNs the Celery task role may InvokeModel against. Must include both eu-central-1 inference profiles AND their eu-north-1 foundation-model backing ARNs per Story 9.4 decision doc."
+  type        = list(string)
+  default     = []
+}
+
+variable "bedrock_guardrail_arn" {
+  description = "ARN for the Bedrock Guardrail resource (Story 10.2). Wildcard default until 10.2 provisions a concrete Guardrail."
+  type        = string
+  default     = "arn:aws:bedrock:eu-central-1:*:guardrail/*"
+}
+
+variable "agentcore_runtime_arn" {
+  description = "ARN for the Bedrock AgentCore runtime (Story 10.4a). Wildcard default until 10.4a provisions a concrete runtime."
+  type        = string
+  default     = "arn:aws:bedrock-agentcore:eu-central-1:*:runtime/*"
+}
+
+variable "github_bedrock_ci_enabled" {
+  description = "Whether to provision the GitHub OIDC Bedrock CI role (TD-086). Prod: true; dev/staging: false."
+  type        = bool
+  default     = false
+}
+
 # Observability (Story 11.9)
 variable "enable_observability_alarms" {
   description = "Create CloudWatch alarms for categorization/parser signals. Defaults to false (set true in prod/staging tfvars)."
