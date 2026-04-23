@@ -1282,25 +1282,33 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 **Fix shape:** Extend the `models.yaml` schema with an optional `fallback:` sibling on each role: `agent_default: { anthropic: …, openai: …, bedrock: …, fallback: openai }`. Update `get_fallback_llm_client()` to resolve the fallback provider from the role entry, defaulting to the opposite-of-primary rule if absent.
 
+**Update (Story 9.5b, 2026-04-23):** Second hardcoded fallback-topology rule added via `_fallback_role_for(primary)` helper in `llm.py` — it maps `bedrock → agent_fallback` while anthropic/openai stay at `agent_default`. Unifying both rules (`_FALLBACK_MAP` provider + `_FALLBACK_ROLE_MAP` role) into a single `models.yaml`-level expression (e.g. `roles.<role>.fallback: { provider: …, role: … }`) remains deferred. Pointer: [`_bmad-output/implementation-artifacts/9-5b-add-bedrock-provider-path.md`](../_bmad-output/implementation-artifacts/9-5b-add-bedrock-provider-path.md).
+
 **Surfaced in:** Story 9.5a (2026-04-23) — pointer back to [`_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md`](../_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md).
 
 ---
 
-### TD-084 — `chat_default.bedrock` ARN in `models.yaml` is missing the `-v*:0` version suffix [LOW]
+### TD-085 — `agent_fallback.bedrock` chosen as Nova Micro is a best-guess tier [LOW]
 
-**Where:** [`backend/app/agents/models.yaml:26`](../backend/app/agents/models.yaml#L26).
+**Where:** [`backend/app/agents/models.yaml`](../backend/app/agents/models.yaml) `agent_fallback.bedrock`.
 
-**Problem:** The `chat_default.bedrock` value is `arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6` — no trailing `-v1:0` (or equivalent) version suffix, unlike the Haiku ARNs on `agent_default.bedrock` / `agent_cheap.bedrock` which end in `-v1:0`. The value was carried forward verbatim from Story 9.4's pins (Sonnet 4-6 was flagged unavailable in eu-central-1 during that spike). Story 9.5a never exercises it because the Bedrock branch raises `NotImplementedError`, so the malformed ARN is unobserved until 9.5b wires `ChatBedrock`.
+**Problem:** Story 9.5b chose Amazon Nova Micro (`eu.amazon.nova-micro-v1:0`) as the `agent_fallback.bedrock` model based on (a) EU inference-profile availability, (b) lowest cost tier, (c) cross-family diversification from Haiku 4.5 primary. This choice has not yet been exercised under a real circuit-breaker trip in any environment — Nova Micro's smaller context window or different prompt-following behaviour may produce truncated/low-quality outputs for Epic 3/8 categorization-style prompts. If it under-performs, the fallback ARN needs revision; if Haiku 4.5 never trips in practice, the choice is moot.
 
-**Why deferred:** 9.5a's scope forbids touching Bedrock IDs — that's Story 9.5b's territory once the inference profile actually exists in region.
+**Why deferred:** Choice is informed (smoke-tested 2026-04-23, returned `OK` to the canonical ping prompt) but not validated against real workload prompts. Validating would require either (1) a pre-prod chaos test that forces the circuit breaker open, or (2) shipping bedrock as primary and observing real fallback invocations — both out of 9.5b's scope.
 
-**Fix shape:** In Story 9.5b (or sooner if Sonnet becomes available in eu-central-1), re-run the Story 9.4 invoke-test harness against `claude-sonnet-4-6` to discover the correct inference-profile ARN suffix, then update the `chat_default.bedrock` entry. Until then, keep the placeholder but document in the YAML comment that it is known-invalid.
+**Fix shape:** On the first real pre-prod bedrock-primary circuit-breaker trip, inspect the Nova Micro fallback's outputs against the same prompt shape the primary was invoked with. If outputs are truncated / degraded, switch `agent_fallback.bedrock` to `eu.anthropic.claude-haiku-3-5-20241022-v1:0` (same Anthropic family, one tier down from Haiku 4.5) and note the re-choice in a new decision doc.
 
-**Surfaced in:** Story 9.5a (2026-04-23) code review — pointer back to [`_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md`](../_bmad-output/implementation-artifacts/9-5a-llm-py-provider-routing-refactor.md).
+**Surfaced in:** Story 9.5b (2026-04-23) — pointer back to [`_bmad-output/implementation-artifacts/9-5b-add-bedrock-provider-path.md`](../_bmad-output/implementation-artifacts/9-5b-add-bedrock-provider-path.md) + [`docs/decisions/bedrock-provider-smoke-2026-04.md`](./decisions/bedrock-provider-smoke-2026-04.md).
 
 ---
 
 ## Resolved
+
+### TD-084 — `chat_default.bedrock` ARN missing `-v*:0` suffix [RESOLVED 2026-04-23 — not-a-bug]
+
+**Resolved by:** Story 9.5b smoke test (2026-04-23). `aws bedrock-runtime invoke-model --model-id arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6` (bare ARN, no `-v*:0` suffix) returned HTTP 200 with the expected response — Bedrock's inference-profile invocation endpoint accepts both the versionless and versioned ARN forms. No change required to `models.yaml`.
+
+**Evidence:** [`docs/decisions/bedrock-provider-smoke-2026-04/smoke-tests.json`](./decisions/bedrock-provider-smoke-2026-04/smoke-tests.json) — `sonnet_invoke_test` entry.
 
 ### TD-042 — Epic 11 categorization gate cleared with margin [RESOLVED 2026-04-21]
 

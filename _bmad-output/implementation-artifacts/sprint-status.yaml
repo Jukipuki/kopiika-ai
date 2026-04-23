@@ -190,7 +190,8 @@ development_status:
   # Story 9.4 (2026-04-23): region=eu-central-1, haiku=eu.anthropic.claude-haiku-4-5-20251001-v1:0, sonnet=eu.anthropic.claude-sonnet-4-6; see docs/decisions/agentcore-bedrock-region-availability-2026-04.md
   # Story 9.5a factory ready; 9.5b adds the bedrock: branch in llm.py
   # Story 9.5b cross-region path blocked on ADR-0003 (docs/adr/0003-cross-region-inference-data-residency.md) flipping to Accepted
-  9-5b-add-bedrock-provider-path: backlog
+  9-5b-add-bedrock-provider-path: done
+  # Story 9.5b: Bedrock path wired; 9.5c can now loop LLM_PROVIDER ∈ {anthropic,openai,bedrock}.
   9-5c-cross-provider-regression-suite: backlog
   # Story 9.6 GATED AS "MIGRATE" per Story 9.3 decision doc (2026-04-23,
   # post-diagnostic revision). Winner: text-embedding-3-large (3072 dims).

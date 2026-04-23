@@ -1,0 +1,46 @@
+{
+  "haiku_invoke_test": {
+    "modelId": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-central-1",
+    "http_status": 200,
+    "latency_ms": 4829,
+    "timestamp": "2026-04-23T14:23:46.970949+00:00",
+    "prompt": "ping — reply with the word OK",
+    "response_text_first_80_chars": "OK",
+    "meta": {
+      "timestamp_semantics": "invocation_start",
+      "body_envelope": "anthropic.messages-v1 (bedrock-2023-05-31)",
+      "usage": {"input_tokens": 14, "output_tokens": 4}
+    }
+  },
+  "sonnet_invoke_test": {
+    "modelId": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6",
+    "region": "eu-central-1",
+    "http_status": 200,
+    "latency_ms": 3139,
+    "timestamp": "2026-04-23T14:23:58.839420+00:00",
+    "prompt": "ping — reply with the word OK",
+    "response_text_first_80_chars": "OK",
+    "meta": {
+      "timestamp_semantics": "invocation_start",
+      "body_envelope": "anthropic.messages-v1 (bedrock-2023-05-31)",
+      "arn_format_note": "bare ARN without -v*:0 suffix accepted by Bedrock inference-profile invocation — resolves TD-084 as not-a-bug",
+      "usage": {"input_tokens": 14, "output_tokens": 4}
+    }
+  },
+  "fallback_invoke_test": {
+    "modelId": "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.amazon.nova-micro-v1:0",
+    "region": "eu-central-1",
+    "http_status": 200,
+    "latency_ms": 1849,
+    "timestamp": "2026-04-23T14:24:18.924404+00:00",
+    "prompt": "ping — reply with the word OK",
+    "response_text_first_80_chars": "OK",
+    "meta": {
+      "timestamp_semantics": "invocation_start",
+      "body_envelope": "bedrock.converse (unified messages/inferenceConfig)",
+      "server_latency_ms": 285,
+      "usage": {"input_tokens": 7, "output_tokens": 2, "total_tokens": 9}
+    }
+  }
+}

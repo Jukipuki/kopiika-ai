@@ -24,3 +24,12 @@ chat_default:
   anthropic: "claude-sonnet-4-6"
   openai:    "gpt-4o"
   bedrock:   "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6"
+# agent_fallback: consulted by get_fallback_llm_client() when LLM_PROVIDER=bedrock.
+# Must be a different Bedrock model than agent_default.bedrock to avoid same-ARN round-trips.
+# anthropic/openai sub-keys mirror agent_default — those primary paths never consult this role
+# (the opposite-of-primary rule still resolves agent_default for them). Bedrock model chosen
+# via Story 9.5b smoke test (2026-04-23): Nova Micro, EU-scoped inference profile.
+agent_fallback:
+  anthropic: "claude-haiku-4-5-20251001"
+  openai:    "gpt-4o-mini"
+  bedrock:   "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.amazon.nova-micro-v1:0"
