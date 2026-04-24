@@ -145,7 +145,7 @@ variable "bedrock_invocation_arns" {
 }
 
 variable "agentcore_runtime_arn" {
-  description = "ARN for the Bedrock AgentCore runtime (Story 10.4a). Wildcard default until 10.4a provisions a concrete runtime."
+  description = "ARN for the Bedrock AgentCore runtime. Wildcard default is a Phase A placeholder (Story 10.4a ships direct-Bedrock chat per ADR-0004). Phase B story 10.4a-runtime provisions a concrete runtime + flips this to its ARN."
   type        = string
   default     = "arn:aws:bedrock-agentcore:eu-central-1:*:runtime/*"
 }

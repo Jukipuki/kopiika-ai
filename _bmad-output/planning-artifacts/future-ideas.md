@@ -143,6 +143,34 @@ Items below were mentioned inline in a single story, YAML comment, or review not
 **Statement files AI processing**
 - **Context** Indirect injection in statement files. Valid?
 
+### 4.7 Chat capabilities (post-Epic 10)
+
+**Chart generation in chat — three-option ladder**
+- **Source:** 2026-04-24 conversation with Architect agent, during the Story 10.4a Phase A re-spec (see [ADR-0004](../../docs/adr/0004-chat-runtime-phasing.md)).
+- **Context:** A natural chat feature for a personal-finance assistant is "show me my eating-out spend over the last 6 months as a chart" — i.e. Claude composes a query against the user's transactions and returns a chart. Three implementation options, ordered by effort + risk:
+  1. **Vega-Lite / chart-spec tool (recommended first cut).** Declare a `render_chart(spec, title, explanation)` tool in Story 10.4c (or a 10.12 follow-up); Claude composes Vega-Lite JSON; the frontend renders with react-vega. Data comes from a separate scoped SQL tool (`query_user_transactions`). Zero server execution. Covers ~90% of finance chart needs (bar/line/area/scatter/pie/heatmap/stacked/small-multiples/rolling averages). Works on Phase A and Phase B identically. Small effort — one frontend lib + two tool definitions.
+  2. **Anthropic hosted `code_execution` tool.** First-party Claude Python sandbox (returns stdout + images). Not available on Bedrock Converse at 2026-04 — prod-runtime blocker. Only a local-dev / `LLM_PROVIDER=anthropic` fallback path today. Re-evaluate when Bedrock ships parity.
+  3. **Self-hosted code interpreter.** We run a Python sandbox ourselves; Claude emits code against a prepared pandas DataFrame of the user's transactions. Expressive ("correlate weekend vs. weekday eating-out spend and show regression residuals") but non-trivial infrastructure: the blast radius is set by the host (App Runner / container / Lambda), not by the user count, so a sandbox escape reaches the DB + Secrets Manager either way. Needs: outbound network deny, read-only FS + tmpfs, CPU/memory/wall-clock caps, no IAM credentials on the code path, output-size caps. Best implemented as a tool **inside the AgentCore Runtime container** (Phase B-native) — the container gives the isolation boundary for free, turning this from "build a sandbox" into "add a tool to an already-isolated container."
+- **Sequencing recommendation:** Ship Option 1 when Story 10.4c lands (or in a 10.12 follow-up). Watch how users actually phrase chart requests for 30+ real prompts. Only after Phase B ships (AgentCore Runtime container — see TD-094) should we re-evaluate Option 3; the infrastructure cost drops by an order of magnitude at that point. Option 2 is a "check back when Bedrock catches up" item, not a planned path.
+- **Trigger to revisit:** After Option 1 ships and Epic 10 enters steady-state usage; OR when Bedrock Converse adds first-party code-execution parity with Anthropic's direct API; OR when Phase B (AgentCore Runtime) ships.
+
+**Chat-driven category corrections (propose-only writes)**
+- **Source:** 2026-04-24 conversation with Architect agent, Epic 10 scope review. Related: architecture.md §Chat Agent Component "read-only allowlist" posture; threat-model row "Tool abuse (write, admin, network, filesystem)".
+- **Context:** Flagged-for-review transactions are the highest-intent correction surface in the product — the user is already in fix-it mode. Letting them correct conversationally ("change the coffee one to food, and the three grocery runs to groceries") is materially better than clicking each Teaching Feed card. But moving chat out of the read-only boundary looks scary until you notice the write can be staged.
+- **Architecture — propose-only, not write:** Chat gets one new tool in the 10.4c manifest:
+  - `propose_category_change(transaction_id, new_category, reason)` — **backend implementation does not touch the DB.** Returns a structured proposal payload.
+  - Frontend renders an inline confirm card: "Recategorize X from A → B? [Confirm] [Cancel]".
+  - User's `[Confirm]` click triggers the actual mutation via the **existing** categorization-correction endpoint (same one Teaching Feed cards use — reuses its authorization, validation, audit trail). Chat introduces zero new DB write paths.
+  - Result: prompt-injection worst case is a spurious proposal card the user declines, not a state change. Cross-user mutation is blocked by the existing endpoint's per-row authorization. Audit trail gains `chat_session_id` + `chat_turn_id` columns for traceability.
+- **Three-tier scope expansion (each its own decision):**
+  1. **Tier 1 (recommended first slice):** propose-only, scoped to transactions in `flagged_for_review` status, `category` field only, closed category enum. Narrowest possible surface.
+  2. **Tier 2:** propose-only on **any** transaction's category. Broader but same mechanism. Requires re-reviewing the injection corpus against a larger blast surface.
+  3. **Tier 3:** structural edits — splits, merges, deletes, bulk operations. Each is a separate decision with its own safety review. Not implied by tiers 1–2.
+- **Safety harness additions (Story 10.8b-level):** indirect injection in transaction descriptions attempting to fabricate proposals for non-flagged transactions; assert backend filter rejects. Injection attempting to propose category values outside the enum; assert validation rejects. Injection attempting to cite another user's transaction_id; assert per-row authorization rejects.
+- **Architecture doc update when implemented:** §Chat Agent Component "read-only allowlist" becomes "read-only + propose-only (user-confirmed writes)" with pointer to the implementing story. Not an ADR-level decision — the propose-only pattern is mechanically small.
+- **Sequencing recommendation:** Ship as a post-Epic-10 follow-up story (provisionally 10.13 — "Chat-driven category corrections for flagged-for-review transactions"). Wait until 10.4c's tool manifest is stable and 10.8b's red-team corpus has an established baseline, so the new tool lands with existing guardrails rather than co-developing them. Phase A / Phase B split is irrelevant — this is tool-manifest + UI work, identical on both runtimes.
+- **Trigger to revisit:** After Epic 10 ships read-only chat AND 30 days of prod usage shows genuine pull for conversational corrections (thumbs-down patterns on flagged-review card UI, explicit user requests). Skip if read-only chat proves sufficient.
+
 ---
 
 ## Not tracked here

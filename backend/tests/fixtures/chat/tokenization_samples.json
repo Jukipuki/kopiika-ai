@@ -1,0 +1,15 @@
+{
+  "_comment": "Samples for memory_bounds.estimate_tokens tests (Story 10.4a AC #8/#13). cl100k_tokens captured via tiktoken.get_encoding('cl100k_base').encode(text) on 2026-04-24. Ukrainian entries demonstrate the documented 15-20% over-count vs real Anthropic tokenization — safe direction for a bound. Anthropic-tokenized counts are NOT captured here (would require live API access); tests assert the over-count direction, not exact Anthropic parity.",
+  "samples": [
+    {"name": "en_short", "text": "Hello, how much did I spend on groceries last month?", "cl100k_tokens": 12},
+    {"name": "en_long", "text": "Looking at my November transactions, I notice a recurring payment of 299 UAH to Netflix. Should I reconsider my subscriptions?", "cl100k_tokens": 25},
+    {"name": "ua_short", "text": "Скільки я витратив на продукти минулого місяця?", "cl100k_tokens": 24},
+    {"name": "ua_long", "text": "Дивлячись на свої транзакції за листопад, я помічаю повторюваний платіж у 299 грн на Netflix. Чи варто переглянути підписки?", "cl100k_tokens": 68},
+    {"name": "mixed", "text": "My balance: 15000 грн. Last transaction: Coffee Shop — 120 UAH.", "cl100k_tokens": 21},
+    {"name": "numbers", "text": "1234 5678 9012 3456 — 299.99 UAH — 2026-04-15", "cl100k_tokens": 26},
+    {"name": "empty", "text": "", "cl100k_tokens": 0},
+    {"name": "one_char", "text": "a", "cl100k_tokens": 1},
+    {"name": "ua_with_apostrophe", "text": "П'ятниця: кава — 85 грн, обід — 250 грн.", "cl100k_tokens": 27},
+    {"name": "en_with_code", "text": "Run: SELECT * FROM transactions WHERE amount > 1000;", "cl100k_tokens": 13}
+  ]
+}

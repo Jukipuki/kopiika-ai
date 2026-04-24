@@ -1,8 +1,15 @@
-"""Cascade behavior tests for chat_sessions / chat_messages (Story 10.1b AC #7)."""
+"""Cascade behavior tests for chat_sessions / chat_messages (Story 10.1b AC #7).
+
+Extended by Story 10.4a AC #11: revoke_chat_consent now calls the chat
+session terminator before the DB cascade. Three additional tests verify
+(a) the terminator is called once per revoke, (b) revocation still commits
+when the terminator raises, and (c) zero-sessions revokes still invoke the
+terminator once (idempotency lives in the handler, not in consent_service).
+"""
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -332,3 +339,122 @@ async def test_regrant_after_revoke_allows_new_session(fk_engine):
         revokes = [r for r in rows if r.revoked_at is not None]
         assert len(grants) == 2
         assert len(revokes) == 1
+
+
+# ==================== Story 10.4a AC #11: chat session terminator hook ====================
+#
+# revoke_chat_consent calls the chat session terminator before the DB cascade.
+# The call is fail-open: termination errors are logged but must not propagate,
+# because consent revocation is legally required to succeed. The terminator is
+# always invoked — idempotency lives in the handler, not in consent_service.
+
+
+@pytest.mark.asyncio
+async def test_revoke_calls_terminator_once_before_cascade(fk_engine):
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as session:
+        await session.exec(text("PRAGMA foreign_keys = ON"))
+        user = await _make_user(session)
+        await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        _, _ = await _seed_session_with_messages(session, user.id)
+
+        mock_terminator = AsyncMock(return_value=None)
+        with patch(
+            "app.agents.chat.session_handler.terminate_all_user_sessions_fail_open",
+            new=mock_terminator,
+        ):
+            await consent_service.revoke_chat_consent(
+                session=session, user=user, locale="en", ip=None, user_agent=None
+            )
+
+        assert mock_terminator.await_count == 1
+        # Called with (session, user) — not kwargs; match the import signature.
+        args, _kwargs = mock_terminator.call_args
+        assert args[1].id == user.id
+
+        # DB cascade still fired — sessions gone.
+        remaining = list((await session.exec(
+            select(ChatSession).where(ChatSession.user_id == user.id)
+        )).all())
+        assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_revoke_commits_when_terminator_raises(fk_engine):
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as session:
+        await session.exec(text("PRAGMA foreign_keys = ON"))
+        user = await _make_user(session)
+        await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        _, _ = await _seed_session_with_messages(session, user.id)
+
+        from app.agents.chat.chat_backend import ChatSessionTerminationFailed
+
+        mock_terminator = AsyncMock(side_effect=ChatSessionTerminationFailed("boom"))
+        with patch(
+            "app.agents.chat.session_handler.terminate_all_user_sessions_fail_open",
+            new=mock_terminator,
+        ):
+            # Does NOT raise — fail-open is the contract.
+            await consent_service.revoke_chat_consent(
+                session=session, user=user, locale="en", ip=None, user_agent=None
+            )
+
+        # Revocation row landed despite the terminator error.
+        revokes = list((await session.exec(
+            select(UserConsent)
+            .where(UserConsent.user_id == user.id)
+            .where(UserConsent.consent_type == CONSENT_TYPE_CHAT_PROCESSING)
+            .where(UserConsent.revoked_at.is_not(None))  # type: ignore[union-attr]
+        )).all())
+        assert len(revokes) == 1
+        # DB cascade still fired.
+        remaining = list((await session.exec(
+            select(ChatSession).where(ChatSession.user_id == user.id)
+        )).all())
+        assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_revoke_zero_sessions_still_invokes_terminator(fk_engine):
+    """The handler's ``terminate_all_user_sessions`` is the one that no-ops
+    on zero sessions. consent_service does NOT branch — it always calls the
+    terminator, so Phase-B-ready behavior is exercised uniformly.
+    """
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as session:
+        await session.exec(text("PRAGMA foreign_keys = ON"))
+        user = await _make_user(session)
+        await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        # No chat_sessions seeded.
+
+        mock_terminator = AsyncMock(return_value=None)
+        with patch(
+            "app.agents.chat.session_handler.terminate_all_user_sessions_fail_open",
+            new=mock_terminator,
+        ):
+            await consent_service.revoke_chat_consent(
+                session=session, user=user, locale="en", ip=None, user_agent=None
+            )
+        assert mock_terminator.await_count == 1

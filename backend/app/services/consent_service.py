@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,6 +19,14 @@ from app.core.consent import (
 )
 from app.models.consent import UserConsent
 from app.models.user import User
+
+_logger = logging.getLogger(__name__)
+
+
+def _hash_user_id(user_id: uuid.UUID) -> str:
+    # 64-bit blake2b prefix — matches session_handler._hash_user_id so
+    # chat.* log events join across modules. Per Story 10.4a AC #12.
+    return hashlib.blake2b(user_id.bytes, digest_size=8).hexdigest()
 
 
 def _utcnow_naive() -> datetime:
@@ -116,12 +127,33 @@ async def revoke_chat_consent(
     # ``chat_messages.session_id`` removes their messages atomically. Per the
     # Consent Drift Policy, revoke succeeds iff cascade succeeds.
     #
-    # TODO(10.4a): call AgentCore session terminator here before DB cascade so
-    # in-flight streams cancel cleanly. No in-memory session to terminate yet
-    # (10.4a has not shipped), so the DB cascade alone is sufficient today.
-    # Import locally to avoid any future circular-import risk if
-    # chat_session_service grows a consent read.
+    # Story 10.4a: terminate backend chat sessions *before* the DB cascade so
+    # in-flight streams cancel cleanly (Phase A per ADR-0004 — no remote
+    # state, so the terminator is a no-op iteration; Phase B will call
+    # bedrock-agentcore:DeleteSession per session). Fail-open: termination
+    # errors are logged but do NOT block revocation — consent revocation is
+    # legally required to succeed, and an orphan backend session becomes a
+    # paper tiger once its chat_sessions row is gone. Do NOT "fix" this into
+    # a fail-closed that propagates the exception.
+    #
+    # Local imports mirror the 10.1b hand-off pattern (avoids circular risk
+    # if chat_session_service ever grows a consent read).
+    from app.agents.chat.session_handler import (
+        terminate_all_user_sessions_fail_open,
+    )
     from app.models.chat_session import ChatSession
+
+    try:
+        await terminate_all_user_sessions_fail_open(session, user)
+    except Exception as exc:  # noqa: BLE001 — fail-open is load-bearing
+        _logger.error(
+            "chat.session.termination_failed",
+            extra={
+                "user_id_hash": _hash_user_id(user.id),
+                "error_class": type(exc).__name__,
+                "error_message": str(exc)[:200],
+            },
+        )
 
     await session.exec(
         sa_delete(ChatSession).where(ChatSession.user_id == user.id)

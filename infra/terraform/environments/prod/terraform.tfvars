@@ -52,8 +52,9 @@ bedrock_invocation_arns = [
 # Story 10.2 Guardrail is now module-owned (module.bedrock_guardrail). ARN
 # flows to module.ecs at plan time; no tfvars override needed.
 
-# Story 10.4a AgentCore runtime not yet provisioned; wildcard default carried
-# from variables.tf. Flip to concrete ARN when 10.4a lands.
+# Chat runtime phasing (ADR-0004). Story 10.4a ships Phase A — direct Bedrock
+# via llm.py, no AgentCore runtime. Phase B (story 10.4a-runtime) provisions
+# the runtime module and flips this to the concrete ARN.
 # agentcore_runtime_arn = "arn:aws:bedrock-agentcore:eu-central-1:573562677570:runtime/<id>"
 
 # TD-086 — enable the GitHub OIDC Bedrock CI role only in prod.

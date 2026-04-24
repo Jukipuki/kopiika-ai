@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     # Local-dev-only Fernet key (urlsafe-b64, 32 bytes). NEVER set in staging/prod.
     LOCAL_IBAN_FERNET_KEY: Optional[str] = None
 
+    # Chat runtime phasing — ADR-0004. "direct" = Phase A (bedrock-runtime
+    # InvokeModel via llm.py). "agentcore" = Phase B (AgentCore container).
+    CHAT_RUNTIME: Literal["direct", "agentcore"] = "direct"
+    # Populated in Phase B; None in Phase A and in dev/staging.
+    AGENTCORE_RUNTIME_ARN: Optional[str] = None
+    # Bedrock Guardrail (Story 10.2). Attached to chat invocations by Story 10.5.
+    BEDROCK_GUARDRAIL_ARN: Optional[str] = None
+    # Memory bounds — architecture.md L1719: 20 turns or 8k tokens, whichever first.
+    CHAT_SESSION_MAX_TURNS: int = 20
+    CHAT_SESSION_MAX_TOKENS: int = 8000
+    # Summarization keeps this many recent turns verbatim; older ones collapse
+    # to a single role='system' summary message. Not env-overridable by design.
+    CHAT_SUMMARIZATION_KEEP_RECENT_TURNS: int = 6
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property

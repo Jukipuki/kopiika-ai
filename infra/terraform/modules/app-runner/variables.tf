@@ -48,10 +48,12 @@ variable "secrets_arns" {
 }
 
 # Story 9.7 — AgentCore invoke scope for the App Runner instance role.
-# Wildcard default until Story 10.4a provisions a concrete AgentCore runtime;
-# per-env tfvars narrow it to the concrete ARN at 10.4a time.
+# Wildcard default is a Phase A placeholder (Story 10.4a ships direct-Bedrock
+# chat per ADR-0004 — no AgentCore Runtime yet). Phase B story 10.4a-runtime
+# provisions the runtime + swaps this to a concrete ARN; until then the
+# agentcore_policy_enabled regex gate in main.tf skips the live invoke grant.
 variable "agentcore_runtime_arn" {
-  description = "ARN for the Bedrock AgentCore runtime (Story 10.4a). Wildcard default until 10.4a provisions a concrete runtime."
+  description = "ARN for the Bedrock AgentCore runtime. Wildcard default is a Phase A placeholder (Story 10.4a ships direct-Bedrock chat per ADR-0004). Phase B story 10.4a-runtime swaps this to a concrete ARN."
   type        = string
   default     = "arn:aws:bedrock-agentcore:eu-central-1:*:runtime/*"
 }

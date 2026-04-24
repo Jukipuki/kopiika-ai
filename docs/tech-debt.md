@@ -1244,20 +1244,6 @@ AC #6 and AC #7 therefore do not hold against a real upload. The Story-11.10 E2E
 
 ---
 
-### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [LOW]
-
-**Where:** Dev workstation `awscli` (Homebrew `aws` 2.x, 2026-04). Story 9.4 had to drop to boto3 (`boto3.client("bedrock-agentcore-control")`) because `aws bedrock-agentcore list-agents --region eu-central-1` returns `Invalid choice` even though the service is fully available in `eu-central-1` and the boto3 SDK (1.42.73) binds it correctly.
-
-**Problem:** Re-runs of the Story 9.4 invoke-test harness by an operator who only has the AWS CLI (no Python env) will hit a false "service not available" signal unless they know to switch to boto3. This matters for the AC #7 re-run cadence ("re-validate before Epic 10 scope-lock if > 30 days have passed") and for any future CI job that tries to probe AgentCore via the CLI.
-
-**Why deferred:** AWS will bind `bedrock-agentcore` in a future `awscli` release; this is a transient gap between SDK and CLI binding velocity. Not a blocker for Story 9.4's outcome or for Story 10.4a (AgentCore SDK usage is unaffected). Shortcut documented in the decision doc's "Re-run instructions" so a future operator can pattern-match.
-
-**Fix shape:** When `aws` CLI adds the binding, update the Step 6 block in `docs/decisions/agentcore-bedrock-region-availability-2026-04.md` from the boto3 one-liner back to `aws bedrock-agentcore list-agents …`. No code change required.
-
-**Surfaced in:** Story 9.4 (2026-04-23) — pointer back to [`docs/decisions/agentcore-bedrock-region-availability-2026-04.md`](decisions/agentcore-bedrock-region-availability-2026-04.md).
-
----
-
 ### TD-082 — `models.yaml` roles beyond `agent_default` are data-only until Epic 10 [LOW]
 
 **Where:** [`backend/app/agents/models.yaml`](../backend/app/agents/models.yaml), [`backend/app/agents/llm.py`](../backend/app/agents/llm.py).
@@ -1423,17 +1409,9 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
-### TD-092 — AgentCore session terminator pre-cascade hook not yet wired [MEDIUM]
+### TD-092 — AgentCore session terminator pre-cascade hook not yet wired [RESOLVED 2026-04-24 — Story 10.4a]
 
-**Where:** [backend/app/services/consent_service.py](../backend/app/services/consent_service.py) — the `TODO(10.4a)` marker inside `revoke_chat_consent` immediately before `await session.exec(sa_delete(ChatSession)...)`.
-
-**Problem:** The Consent Drift Policy requires that on `chat_processing` revocation the runtime "terminates active sessions, cancels in-flight streaming turns" **before** DB rows disappear. Story 10.1b ships the DB cascade (sessions + messages are deleted atomically with the revoke INSERT), but there is no AgentCore runtime yet, so no in-memory session termination happens. Today that is a no-op because 10.4a has not shipped and no sessions can be live; once 10.4a lands, a revoke during an in-flight stream will tear rows out from under the running turn.
-
-**Why deferred:** 10.4a owns the AgentCore session handler, including the terminator. Wiring a no-op hook in 10.1b would be premature — the handler's shape is defined in 10.4a's architecture.
-
-**Fix shape:** When Story 10.4a ships, replace the `TODO(10.4a)` line in `revoke_chat_consent` with a call to the AgentCore session terminator (e.g., `await agentcore_sessions.terminate_for_user(user.id)`) before the `sa_delete(ChatSession)` cascade. Add a unit test that asserts the terminator is called in the revoke path. Owner: Epic 10 / Story 10.4a.
-
-**Surfaced in:** Story 10.1b implementation (2026-04-24)
+**Resolved by:** Story 10.4a. The `TODO(10.4a)` marker in `revoke_chat_consent` is replaced with a call to `terminate_all_user_sessions_fail_open(session, user)` before the `sa_delete(ChatSession)` cascade. Phase A (per ADR-0004) has no remote session state, so the call is a no-op iteration today; the same call site becomes live on Phase B (Story 10.4a-runtime) without a consent_service edit. Fail-open semantics: termination errors are logged but do not block revocation. Coverage: three new tests in `backend/tests/test_chat_schema_cascade.py` assert (a) the terminator is invoked once per revoke, (b) revocation commits when the terminator raises, (c) zero-session revokes still invoke the terminator once.
 
 ---
 
@@ -1451,7 +1429,61 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-094 — Chat runtime Phase B: migrate from direct Bedrock to AgentCore Runtime [MEDIUM]
+
+**Where:** [backend/app/agents/chat/](../backend/app/agents/chat/) (handler currently backed by `DirectBedrockBackend`), future `backend/agentcore_container/` package, future `infra/terraform/modules/agentcore-runtime/`, FastAPI App Runner IAM (swap `bedrock:InvokeModel` for `bedrock-agentcore:InvokeAgentRuntime` on the chat path).
+
+**Problem:** Story 10.4a ships chat behind the `ChatSessionHandler` 4-method API with a Phase A backend that calls `bedrock-runtime:InvokeModel` directly (ADR-0004). The architectural target is AgentCore Runtime, a container fabric hosting the agent loop. Phase A is explicit scaffolding — intended to be swapped — but entrenchment risk is real: every story the team ships against the direct-invoke backend is a story not pushing Phase B forward.
+
+**Why deferred:** Phase B is a legitimate story-sized scope (container package + Dockerfile + ECR + build-and-push CI + container IAM + Terraform module + App Runner IAM swap + dual-backend safety-harness validation). Bundling it into 10.4a would delay Epic 10 materially. ADR-0004 phases the work explicitly.
+
+**Trigger to start Phase B:** all of —
+
+1. Story 10.5 (SSE streaming) shipped and stable in prod, AND
+2. Story 10.9 (chat observability) has 30 days of prod metrics, AND
+3. One of: (a) `feature=chat` cost anomaly detection flags sustained overrun, OR (b) a second chat-agent surface is introduced that would share AgentCore infrastructure, OR (c) AWS provider ships a native `aws_bedrockagentcore_runtime` resource (lowers the Terraform half of the scope to minutes).
+
+**Fix shape:** New story `10.4a-runtime`. Add `AgentCoreBackend` alongside `DirectBedrockBackend`, flip `settings.CHAT_RUNTIME="agentcore"` in prod, validate against both Story 10.4c's tool-manifest tests and Story 10.8b's safety-harness corpus in dual-backend mode, decommission the App Runner's `bedrock:InvokeModel` chat grant.
+
+**Surfaced in:** ADR-0004 (2026-04-24) — [docs/adr/0004-chat-runtime-phasing.md](adr/0004-chat-runtime-phasing.md).
+
+---
+
+### TD-095 — Audit chat summarization-failure rate in prod [LOW]
+
+**Where:** [backend/app/agents/chat/session_handler.py](../backend/app/agents/chat/session_handler.py) — `_summarize_and_rebuild_context` fallback-drop path; Story 10.9's `chat.summarization.failed` structured log / metric.
+
+**Problem:** Story 10.4a AC #9 defines a fail-open behavior for chat-memory summarization: when the Haiku summarizer errors, the handler **drops** the oldest `(turns - max_turns + keep_recent)` turns and emits `chat.summarization.failed` at ERROR with a correlation id. This is deliberate — blocking a chat turn because summarization failed is worse UX than proceeding with truncated context. It is also the direct opposite of architecture.md §Memory & Session Bounds' "not dropped silently" contract; the log is the alibi. If summarization-failure rate in prod is non-trivial, the fail-open may need to flip to fail-closed (block the turn, return `CHAT_REFUSED`) — but that decision requires real traffic data.
+
+**Why deferred:** Phase A fail-open is the safer default while chat is new and summarization is unproven. Making the choice before data exists would be speculation.
+
+**Trigger:** Story 10.9's `chat.summarization.failed` metric exceeds 1% of summarization triggers in any 7-day window after the first 30 days of prod chat traffic. Ops sees this via the observability dashboard that 10.9 lands.
+
+**Fix shape:** Add a small decision memo (`docs/decisions/chat-summarization-failure-posture-YYYY-MM.md`) with the observed rate, the user-impact analysis of fallback-drop (do truncated-context replies measurably degrade on Story 10.8b's safety harness?), and either (a) keep fail-open with the rationale, or (b) flip to fail-closed and add `CHAT_REFUSED` envelope wiring in `session_handler.py`'s `_summarize_and_rebuild_context` error branch.
+
+**Surfaced in:** Story 10.4a (2026-04-24).
+
+---
+
+### TD-096 — `test_invoke_no_tools_payload_shape` does not actually verify the no-tools contract [LOW]
+
+**Where:** [backend/tests/agents/chat/test_chat_backend_direct.py:135-158](../backend/tests/agents/chat/test_chat_backend_direct.py#L135-L158).
+
+**Problem:** The test asserts the kwargs passed to `ChatBedrockConverse.ainvoke` do not contain `"tools"` or `"toolConfig"`. But langchain-aws binds tools at client construction / `bind_tools()` time, not at `ainvoke` time — `ainvoke` never receives a `tools` kwarg under any configuration. The test therefore passes regardless of whether tools are bound on the underlying client, so Story 10.4a AC #10's "no tools in Phase A" claim is not actually exercised by the suite.
+
+**Why deferred:** Story 10.4c introduces the real tool manifest and will need proper tool-configuration assertions anyway; patching this in 10.4a would duplicate that work against a shape 10.4c is going to restructure.
+
+**Fix shape:** In 10.4c, assert the backend's underlying client exposes `tools == []` (or absent) at bind time — e.g. introspect the `_get_client_for("bedrock", role="chat_default")` result for any tool-binding side effect, or verify `ChatBedrockConverse.bind_tools` is never invoked in the Phase A code path.
+
+**Surfaced in:** Story 10.4a code review (2026-04-24).
+
+---
+
 ## Resolved
+
+### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [RESOLVED 2026-04-24 — AWS CLI v2.34.35 ships the binding]
+
+Story 10.4a's implementation probe confirmed `aws bedrock-agentcore-control create-agent-runtime help` returns the full parameter reference on AWS CLI v2.34.35 (Homebrew, 2026-04). The Story 9.4 decision doc's Step 6 block can be reverted from the boto3 one-liner back to `aws bedrock-agentcore-control list-agent-runtimes …` at the next edit pass. No code change required.
 
 ### TD-084 — `chat_default.bedrock` ARN missing `-v*:0` suffix [RESOLVED 2026-04-23 — not-a-bug]
 

@@ -154,6 +154,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "redis" },
     { name = "sqlmodel" },
+    { name = "tiktoken" },
     { name = "uvicorn" },
 ]
 
@@ -192,6 +193,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "redis", specifier = ">=7.3.0" },
     { name = "sqlmodel", specifier = ">=0.0.37" },
+    { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "uvicorn", specifier = ">=0.42.0" },
 ]
 

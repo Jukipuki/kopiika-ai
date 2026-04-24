@@ -1625,14 +1625,20 @@ Primary region: `eu-central-1` (aligns with existing infra + GDPR posture). **Ep
 
 **Data-residency review for cross-region inference.** Owner: DPO + Legal (not Dev Team). Criteria: (1) whether the inference payload contains raw user PII or only pseudonymized/aggregated content; (2) whether the target region offers an equivalent data-protection regime or a lawful transfer mechanism (SCC, adequacy); (3) retention and logging posture at the model endpoint. Decision logged as an ADR under `docs/adr/` and referenced from this section. No cross-region inference traffic ships before the ADR is signed off.
 
-### AgentCore Deployment Model
+### Chat Runtime — Phased to AgentCore (see ADR-0004)
 
-The Chat Agent runs on **AWS-managed AgentCore runtime**, not on ECS Celery workers. Rationale: session state, multi-turn memory, and tool orchestration are AgentCore's native primitives; reimplementing them on Celery is non-trivial and throws away the main reason Epic 10 pulled the Bedrock migration forward. Boundary:
+The Chat Agent's runtime ships in two phases, gated by the `settings.CHAT_RUNTIME` env toggle. The public handler API (`ChatSessionHandler` at [backend/app/agents/chat/session_handler.py](../../backend/app/agents/chat/session_handler.py)) is identical across both — Phase B is a backend swap, not a handler rewrite.
 
-- **Celery ECS workers** — batch agents (Epics 3/8), invoked via `llm.py` → Bedrock `InvokeModel`
-- **AgentCore runtime (AWS-managed)** — Chat Agent only; invoked via `bedrock-agentcore:*` from FastAPI handlers
+**Phase A (current — Story 10.4a):** Chat runs in-process on the FastAPI App Runner instance. Model calls route through [backend/app/agents/llm.py](../../backend/app/agents/llm.py) → `bedrock-runtime:InvokeModel` / `InvokeModelWithResponseStream`, same provider seam Celery batch uses. Conversation history is DB-owned (`chat_messages`); memory bounds + summarization are enforced in Python before each model call. No AgentCore runtime provisioned.
 
-VPC attachment, IAM, and observability plumbing for AgentCore are provisioned in Stories 9.7 and 10.4a.
+**Phase B (target — new story `10.4a-runtime`, scheduled after Story 10.5):** Chat moves to **AWS-managed AgentCore Runtime** — a container fabric hosting the agent loop in an ECR image. The handler-API boundary is preserved. AgentCore Runtime is a container-hosted service (verified via `bedrock-agentcore-control:create-agent-runtime` — requires `--agent-runtime-artifact`), not a managed model endpoint; it is architecturally distinct from Bedrock Agents (`aws_bedrockagent_agent`), which was rejected as a pivot in ADR-0004.
+
+Invariant boundary (both phases):
+
+- **Celery ECS workers** — batch agents (Epics 3/8), invoked via `llm.py` → Bedrock `InvokeModel`. Unchanged.
+- **Chat Agent** — Phase A: FastAPI App Runner → `llm.py` → `bedrock-runtime:InvokeModel`. Phase B: FastAPI App Runner → `bedrock-agentcore:InvokeAgentRuntime` → container → `bedrock-runtime:InvokeModel` from inside the container.
+
+Phase B Terraform module, ECR repo, container IAM role, build-and-push pipeline, and App Runner IAM swap are provisioned in the `10.4a-runtime` story; not in 10.4a. See [ADR-0004](../../docs/adr/0004-chat-runtime-phasing.md) for the feature-by-feature Phase A / Phase B equivalence matrix and the Phase B trigger criteria.
 
 ### IAM & Infrastructure
 
@@ -1641,10 +1647,10 @@ VPC attachment, IAM, and observability plumbing for AgentCore are provisioned in
 - `bedrock:InvokeModel` on allowlisted model ARNs (sourced from `models.yaml`)
 - `bedrock:ApplyGuardrail` on the configured Guardrail ID
 
-**FastAPI ECS task role** (new scope for chat):
+**FastAPI App Runner instance role** (chat scope — phased per ADR-0004):
 
-- `bedrock-agentcore:InvokeAgent` / `GetSession` / `DeleteSession` scoped to the Chat Agent's AgentCore identifier
-- No direct `bedrock:InvokeModel` — chat model calls flow through AgentCore
+- **Phase A (current):** `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` on the `chat_default` inference profile ARNs (sourced from `models.yaml`) + `bedrock:ApplyGuardrail` on the Story 10.2 Guardrail ARN. Same model ARN surface Celery already has — no new grants beyond Guardrail.
+- **Phase B (target, `10.4a-runtime` story):** Instance role loses `bedrock:InvokeModel` for chat and gains `bedrock-agentcore:InvokeAgentRuntime` / `GetSession` / `DeleteSession` scoped to the AgentCore runtime ARN. The container's own execution role (principal `bedrock-agentcore.amazonaws.com`, provisioned with the runtime) carries `bedrock:InvokeModel` + `bedrock:ApplyGuardrail` instead. Celery ECS task role is unaffected by the phase swap.
 
 **Config surface:** Non-secret config (model ARNs, region, Guardrail ID, AgentCore runtime ID) lives in ECS task-definition env vars, managed via Terraform. Provider API keys continue to use the existing `kopiika-ai/<env>/llm-api-keys` Secrets Manager entry.
 
@@ -1716,8 +1722,8 @@ Canary tokens are high-entropy strings injected into the system prompt and rotat
 
 ### Memory & Session Bounds
 
-- **Per-session context window:** 20 turns or 8k tokens, whichever is first. Older turns are summarized server-side, not dropped silently.
-- **Per-user cross-session memory:** not implemented in Epic 10. Each session starts fresh. Persistent per-user memory is tracked as **TD-040** — FR66 is satisfied by durable chat *history* (viewable, resumable, deletable), not by cross-session *context carry-over*.
+- **Per-session context window:** 20 turns or 8k tokens, whichever is first. Older turns are summarized server-side, not dropped silently. The DB (`chat_messages`) is the source of truth for conversation history on both Phase A and Phase B runtimes (ADR-0004); memory bounds are enforced in Python (`backend/app/agents/chat/memory_bounds.py`) before each model call, independent of whether the call goes via `bedrock-runtime:InvokeModel` (Phase A) or `bedrock-agentcore:InvokeAgentRuntime` (Phase B).
+- **Per-user cross-session memory:** not implemented in Epic 10. Each session starts fresh. Persistent per-user memory is tracked as **TD-040** — FR66 is satisfied by durable chat *history* (viewable, resumable, deletable), not by cross-session *context carry-over*. AgentCore's Memory strategies are not consumed in either phase; if adopted in a future epic, they become an implementation option for TD-040, not a redefinition of this bound.
 - **Concurrency:** 10 concurrent sessions per user (matches *Rate Limits*).
 
 ### Rate Limits
@@ -1770,7 +1776,7 @@ Incident-response runbook for each metric lives in [../../docs/operator-runbook.
 
 New component alongside the existing batch agents (see [backend/app/agents/](../../backend/app/agents/) for the authoritative list):
 
-- Session handler on AgentCore (stateful, multi-turn, per-user session isolation)
+- Session handler behind a stable 4-method API (`create_session`, `send_turn`, `terminate_session`, `terminate_all_user_sessions`); runtime backend is phased per ADR-0004 (Phase A direct Bedrock, Phase B AgentCore Runtime). Stateful multi-turn behavior is DB-backed; per-user session isolation is enforced by `chat_sessions.user_id` FK + per-row authorization on every `chat_messages` read.
 - Tool manifest (read-only allowlist): user transactions, user profile, teaching-feed history, RAG corpus
 - Memory policy: per *Memory & Session Bounds* above; retention aligned with `chat_processing` consent
 - Guardrails attachment: input + output, with grounding threshold configured
