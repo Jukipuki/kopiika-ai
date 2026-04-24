@@ -190,6 +190,10 @@ class TestDataSummaryEndpoint:
             assert data["healthScoreHistory"][1]["score"] == 78
             assert len(data["consentRecords"]) == 1
             assert data["consentRecords"][0]["consentType"] == "ai_processing"
+            # Story 10.1a: revokedAt present on every record, null for
+            # pre-10.1a ai_processing rows.
+            assert "revokedAt" in data["consentRecords"][0]
+            assert data["consentRecords"][0]["revokedAt"] is None
 
             # Feedback summary assertions (Story 7.4)
             assert data["feedbackSummary"]["voteCounts"]["up"] == 1

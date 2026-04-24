@@ -1,9 +1,15 @@
 name: Consent Version Sync
 
-# Ensures the CURRENT_CONSENT_VERSION constant in the backend and the
-# frontend mirror never drift. If they do, a stale client will POST an
-# outdated version string and the backend will 422 — breaking onboarding.
-# See Story 5.2 for context.
+# Ensures consent-version constants in the backend and the frontend mirror
+# never drift. If they do, a stale client will POST an outdated version
+# string and the backend will 422 — breaking onboarding or chat first-use.
+#
+# Two independent streams are checked separately (AC #10 of Story 10.1a):
+#   - CURRENT_CONSENT_VERSION       (ai_processing   — Story 5.2)
+#   - CURRENT_CHAT_CONSENT_VERSION  (chat_processing — Story 10.1a)
+#
+# Bumping one MUST NOT require bumping the other; this job enforces that
+# each pair stays internally consistent.
 
 on:
   push:
@@ -26,25 +32,55 @@ jobs:
       - name: Extract and compare consent versions
         run: |
           set -euo pipefail
+          BE_FILE=backend/app/core/consent.py
+          FE_FILE=frontend/src/features/onboarding/consent-version.ts
           PATTERN='[0-9]{4}-[0-9]{2}-[0-9]{2}-v[0-9]+'
-          BE_VERSION=$(grep -Eo "$PATTERN" backend/app/core/consent.py | head -n1 || true)
-          FE_VERSION=$(grep -Eo "$PATTERN" frontend/src/features/onboarding/consent-version.ts | head -n1 || true)
 
-          echo "Backend  CURRENT_CONSENT_VERSION = ${BE_VERSION:-<not found>}"
-          echo "Frontend CURRENT_CONSENT_VERSION = ${FE_VERSION:-<not found>}"
+          extract() {
+            # Args: <file> <constant-name>
+            # Find the declaration line for the constant, then extract the
+            # YYYY-MM-DD-vN value from that line. No fallback — a missing
+            # match is an error (handled by the caller).
+            local file="$1"
+            local const="$2"
+            grep -E "^[[:space:]]*(export[[:space:]]+const[[:space:]]+)?${const}[[:space:]:=]" "$file" \
+              | grep -Eo "$PATTERN" \
+              | head -n1 || true
+          }
 
-          if [[ -z "$BE_VERSION" ]]; then
-            echo "::error file=backend/app/core/consent.py::Could not find CURRENT_CONSENT_VERSION matching $PATTERN"
+          fail=0
+          check_pair() {
+            local name="$1"
+            local be="$2"
+            local fe="$3"
+            echo "Backend  $name = ${be:-<not found>}"
+            echo "Frontend $name = ${fe:-<not found>}"
+            if [[ -z "$be" ]]; then
+              echo "::error file=$BE_FILE::Could not find $name matching $PATTERN in $BE_FILE"
+              fail=1
+              return
+            fi
+            if [[ -z "$fe" ]]; then
+              echo "::error file=$FE_FILE::Could not find $name matching $PATTERN in $FE_FILE"
+              fail=1
+              return
+            fi
+            if [[ "$be" != "$fe" ]]; then
+              echo "::error::$name drift detected — $BE_FILE=$be $FE_FILE=$fe. Bump both in the same commit."
+              fail=1
+              return
+            fi
+            echo "OK: $name is in sync ($be)"
+          }
+
+          BE_AI=$(extract "$BE_FILE" CURRENT_CONSENT_VERSION)
+          FE_AI=$(extract "$FE_FILE" CURRENT_CONSENT_VERSION)
+          check_pair CURRENT_CONSENT_VERSION "$BE_AI" "$FE_AI"
+
+          BE_CHAT=$(extract "$BE_FILE" CURRENT_CHAT_CONSENT_VERSION)
+          FE_CHAT=$(extract "$FE_FILE" CURRENT_CHAT_CONSENT_VERSION)
+          check_pair CURRENT_CHAT_CONSENT_VERSION "$BE_CHAT" "$FE_CHAT"
+
+          if [[ "$fail" -ne 0 ]]; then
             exit 1
           fi
-          if [[ -z "$FE_VERSION" ]]; then
-            echo "::error file=frontend/src/features/onboarding/consent-version.ts::Could not find CURRENT_CONSENT_VERSION matching $PATTERN"
-            exit 1
-          fi
-
-          if [[ "$BE_VERSION" != "$FE_VERSION" ]]; then
-            echo "::error::CURRENT_CONSENT_VERSION drift detected — backend=$BE_VERSION frontend=$FE_VERSION. Bump both in the same commit."
-            exit 1
-          fi
-
-          echo "OK: consent versions are in sync ($BE_VERSION)"

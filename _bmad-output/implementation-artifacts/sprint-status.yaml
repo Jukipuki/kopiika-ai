@@ -206,7 +206,7 @@ development_status:
   # Source: docs/decisions/embedding-model-comparison-2026-04.md
   9-6-embedding-migration-conditional: done
   9-7-bedrock-iam-observability: done
-  9-8-pipeline-orchestration-evaluation-spike: backlog
+  9-8-pipeline-orchestration-evaluation-spike: ready-for-dev
   epic-9-retrospective: optional
 
   # Epic 10: Chat-with-Finances (AgentCore + AI Safety)
@@ -214,8 +214,8 @@ development_status:
   # Splits applied 2026-04-19 (SP run): 10.1 → 10.1a/b, 10.3 → 10.3a/b,
   # 10.4 → 10.4a/b/c (rate-limit envelope de-duped → moved to 10.11),
   # 10.6 → 10.6a/b, 10.8 → 10.8a/b. See _bmad-output/planning-artifacts/epics.md.
-  epic-10: backlog
-  10-1a-chat-processing-consent: backlog
+  epic-10: in-progress
+  10-1a-chat-processing-consent: review
   10-1b-chat-sessions-messages-schema-cascade: backlog
   10-2-bedrock-guardrails-configuration: backlog
   10-3a-chat-ux-skeleton: backlog

@@ -490,6 +490,22 @@ The parent dashboard layout ([frontend/src/app/[locale]/(dashboard)/layout.tsx](
 
 **Related stories:** 5.1 (encryption at rest — underlying compliance posture), 5.5 (delete-my-data — uses the `ON DELETE CASCADE` on `user_consents.user_id`), 5.6 (view-my-stored-data — surfaces the consent history to the user).
 
+#### Chat Processing Consent
+
+_Added by Story 10.1a._
+
+`chat_processing` is a **second, independent consent stream** sharing the same `user_consents` table as `ai_processing`. It covers the conversational surface: conversation logging, cross-session memory, retention window, and use of anonymized conversation signals for chat-quality improvement. It is granted on first chat use (see Stories 10.3b + 10.7 for the UX) and is revocable independently of `ai_processing`.
+
+- **Independent version stream.** `CURRENT_CHAT_CONSENT_VERSION` lives alongside `CURRENT_CONSENT_VERSION` in [backend/app/core/consent.py](../../backend/app/core/consent.py) and [frontend/src/features/onboarding/consent-version.ts](../../frontend/src/features/onboarding/consent-version.ts). Bumping one MUST NOT bump the other — CI (`.github/workflows/consent-version-sync.yml`) enforces each pair independently.
+- **Append-only revocation via `revoked_at`.** Migration `b5e8d1f2a3c7` adds a nullable `revoked_at TIMESTAMP` column. Revocation is **always** an `INSERT` of a new row with `revoked_at = utcnow()`, never an `UPDATE`. `ai_processing` rows always keep `revoked_at = NULL` (their revocation path is whole-account deletion via Story 5.5). This preserves the audit trail that Story 5.2 established.
+- **"Current" resolution semantics.** `get_current_consent_status` reads the most-recent row for `(user_id, consent_type)` and returns `hasCurrentConsent = (row is not None) AND (row.revoked_at IS NULL) AND (row.version == required_version)`. This handles grant → revoke → re-grant sequences uniformly.
+- **`revoke_chat_consent()` is the single integration hook for Story 10.1b.** The function lives in [backend/app/services/consent_service.py](../../backend/app/services/consent_service.py) with a `TODO(10.1b)` marker at its tail. Story 10.1b wires the `chat_sessions` → `chat_messages` cascade by editing this exact function — no parallel hook elsewhere, no premature import of `chat_sessions` in 10.1a (the table doesn't exist yet).
+- **API surface:** `POST /api/v1/users/me/consent` accepts `consentType: 'ai_processing' | 'chat_processing'` (default `'ai_processing'` for Story 5.2 back-compat); `GET /api/v1/users/me/consent?type=…` widened accordingly; `DELETE /api/v1/users/me/consent?type=chat_processing` is the new revoke route. `DELETE …?type=ai_processing` returns `400 CONSENT_TYPE_NOT_REVOCABLE` pointing at account deletion.
+- **Rate limit.** Grants and revokes share the existing per-user `check_consent_rate_limit` bucket (10/hour) — grant→revoke→grant loops that would spam the audit log are throttled together.
+- **Data-summary parity.** `GET /api/v1/users/me/data-summary` now includes `revokedAt` (nullable) on each `consentRecords` entry, satisfying FR35 export parity.
+
+**Known gap — `consent_version_at_creation` on chat sessions.** The "Consent Drift Policy" subsection below defines `chat_sessions.consent_version_at_creation`. That column and its capture logic ship in **Story 10.1b** alongside the `chat_sessions` / `chat_messages` tables; Story 10.1a only persists the consent grant/revoke itself and exposes the revoke hook.
+
 ### API & Communication Patterns
 
 | Decision | Choice | Version | Rationale |
@@ -1714,6 +1730,8 @@ Single source of truth for chat throttling — implemented in Story 10.11 (rate-
 - **Global per-IP cap** at the API-gateway layer (reuses existing limit) — abuse scenario only
 
 ### Consent Drift Policy
+
+See [Consent Management → Chat Processing Consent](#consent-management) for the schema + version semantics (independent version stream, append-only `revoked_at`, `revoke_chat_consent()` integration hook). The policy below governs how active chat sessions behave when the consent version bumps or is revoked.
 
 `chat_sessions.consent_version_at_creation` captures the `chat_processing` consent version that authorized the session. Policy:
 

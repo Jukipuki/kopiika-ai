@@ -48,7 +48,12 @@ class ConsentRecord(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     consent_type: str
-    granted_at: datetime
+    # Mutually-exclusive event timestamps (Story 10.1a H1 fix): grant rows
+    # have ``granted_at`` set and ``revoked_at`` null; revoke rows have
+    # ``granted_at`` null and ``revoked_at`` set. Clients can discriminate
+    # event type from which field is populated.
+    granted_at: datetime | None = None
+    revoked_at: datetime | None = None
 
 
 class FeedbackVoteCounts(BaseModel):
@@ -166,15 +171,22 @@ async def get_data_summary(
         for s in hs_result.all()
     ]
 
-    # Consent records (most recent 100)
+    # Consent records (most recent 100). Revoke rows carry granted_at=NULL;
+    # sort by event-time = COALESCE(granted_at, revoked_at) so grants and
+    # revokes interleave chronologically.
+    consent_event_time = func.coalesce(UserConsent.granted_at, UserConsent.revoked_at)
     consent_result = await session.exec(
         select(UserConsent)
         .where(UserConsent.user_id == user_id)
-        .order_by(UserConsent.granted_at.desc())
+        .order_by(consent_event_time.desc(), UserConsent.id.desc())
         .limit(100)
     )
     consent_records = [
-        ConsentRecord(consent_type=c.consent_type, granted_at=c.granted_at)
+        ConsentRecord(
+            consent_type=c.consent_type,
+            granted_at=c.granted_at,
+            revoked_at=c.revoked_at,
+        )
         for c in consent_result.all()
     ]
 

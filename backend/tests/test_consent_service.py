@@ -15,9 +15,16 @@ from contextlib import asynccontextmanager
 import pytest
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
-from app.core.consent import CONSENT_TYPE_AI_PROCESSING, CURRENT_CONSENT_VERSION
+from app.core.consent import (
+    CONSENT_TYPE_AI_PROCESSING,
+    CONSENT_TYPE_CHAT_PROCESSING,
+    CURRENT_CHAT_CONSENT_VERSION,
+    CURRENT_CONSENT_VERSION,
+)
+from app.models.consent import UserConsent
 from app.models.user import User
 from app.services import consent_service
+from sqlmodel import select
 
 
 @asynccontextmanager
@@ -157,3 +164,107 @@ async def test_get_current_consent_status_ignores_old_version(async_engine):
         )
 
     assert status["hasCurrentConsent"] is False
+
+
+@pytest.mark.asyncio
+async def test_revoke_chat_consent_inserts_append_only_row(async_engine):
+    """``revoke_chat_consent`` appends a NEW row with ``revoked_at`` set,
+    never updates the existing grant row."""
+    async with _session_ctx(async_engine) as session:
+        user = await _make_user(session)
+        grant = await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        revoke = await consent_service.revoke_chat_consent(
+            session=session,
+            user=user,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+
+        result = await session.exec(
+            select(UserConsent).where(
+                UserConsent.user_id == user.id,
+                UserConsent.consent_type == CONSENT_TYPE_CHAT_PROCESSING,
+            )
+        )
+        rows = list(result.all())
+        assert len(rows) == 2
+        grant_row = next(r for r in rows if r.id == grant.id)
+        assert grant_row.revoked_at is None
+        assert grant_row.granted_at is not None
+        revoke_row = next(r for r in rows if r.id == revoke.id)
+        assert revoke_row.revoked_at is not None
+        # H1: revoke rows must have granted_at=NULL so that granted_at and
+        # revoked_at are mutually-exclusive event-type discriminators.
+        assert revoke_row.granted_at is None
+        assert revoke_row.version == CURRENT_CHAT_CONSENT_VERSION
+
+
+@pytest.mark.asyncio
+async def test_get_current_consent_status_resolves_grant_revoke_regrant(
+    async_engine,
+):
+    """Most-recent row wins — grant → revoke → regrant ends in
+    hasCurrentConsent=True."""
+    async with _session_ctx(async_engine) as session:
+        user = await _make_user(session)
+
+        await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        after_grant = await consent_service.get_current_consent_status(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+        )
+        assert after_grant["hasCurrentConsent"] is True
+        assert after_grant["revokedAt"] is None
+
+        await consent_service.revoke_chat_consent(
+            session=session,
+            user=user,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        after_revoke = await consent_service.get_current_consent_status(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+        )
+        assert after_revoke["hasCurrentConsent"] is False
+        assert after_revoke["revokedAt"] is not None
+
+        await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        after_regrant = await consent_service.get_current_consent_status(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+        )
+        assert after_regrant["hasCurrentConsent"] is True
+        assert after_regrant["revokedAt"] is None
