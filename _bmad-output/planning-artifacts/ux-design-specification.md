@@ -1269,14 +1269,15 @@ Each upload adds to the picture. Historical comparisons reward repeat usage. Hea
 ### Navigation Patterns
 
 **Mobile Navigation:**
-- Bottom tab bar with 3-4 items: Feed, Upload, Score, Settings
+- Bottom tab bar with 4-5 items: Feed, Upload, Chat, Score, Settings (Chat added per Story 10.3a — see _Chat-with-Finances (Epic 10) — Skeleton Spec_ below)
 - Active tab: accent color icon + label. Inactive: tertiary text color
 - Upload action is center/prominent (fab-style or highlighted tab)
+- Chat tab: filled icon variant + subtle accent dot when an active session exists (affordance only — state rules layered by Story 10.3b)
 - Tab bar hides on scroll down, reappears on scroll up
 
 **Desktop Navigation:**
 - Top horizontal nav bar (sticky)
-- Same items as mobile tabs, laid out horizontally
+- Same items as mobile tabs (Feed, Upload, Chat, Score, Settings), laid out horizontally
 - Active state: underline accent + primary text color
 - Upload CTA as prominent button in nav bar
 
@@ -1560,22 +1561,236 @@ kopiika-ai is designed mobile-first because the primary target (Monobank users) 
 
 ---
 
-## Chat-with-Finances (Epic 10) — Spec Placeholder
+## Chat-with-Finances (Epic 10) — Skeleton Spec (Story 10.3a)
 
-This section is a placeholder. Full specification is split across **Story 10.3a** (chat UX skeleton — IA, conversation/composer/streaming/citation-chip layout, mobile-first viewport, basic accessibility scaffold) and **Story 10.3b** (chat UX states — refusals with reason enum + correlation-ID, consent first-use + version-bump re-prompt, deletion, rate-limit soft-block, optional session-summarization, full WCAG 2.1 AA, UA + EN edge cases). Story 10.3a is scope-locked before Story 10.7 frontend scaffolding begins; Story 10.3b is scope-locked before Story 10.7's refusal/consent/rate-limit UX is finalized. Stories 10.4a–10.6b can proceed in parallel.
+> **Scope note.** Happy-path layout, IA, streaming pattern, citation chips, mobile-first viewport, a11y scaffold. States (refusals, consent, deletion, rate-limit, full WCAG 2.1 AA pass) are layered by Story 10.3b.
 
-### Scope to be specified
+### Delivered by Story 10.3a (this story)
 
-- Chat screen layout (conversation list + composer + active-conversation pane)
-- Message rendering: user messages, assistant messages, streaming tokens, citation chips, refusal state
-- `chat_processing` consent prompt — **first-use modal** (link to privacy explanation) AND **version-bump re-prompt** flow (active sessions continue under captured version; new sessions gated on current version)
-- Principled refusal UX — **reason-specific copy** keyed on the `reason` enum from the `CHAT_REFUSED` envelope (`guardrail_blocked` / `ungrounded` / `rate_limited` / `prompt_leak_detected`), neutral tone, no leakage of filter rationale
-- **Correlation-ID display** — refusal UI surfaces the `correlation_id` from the error envelope (copy-to-clipboard affordance) so users can reference it in a "contact support" flow
-- Abuse / rate-limit UX — soft-block with retry guidance when hourly cap or daily token cap hit
-- Chat history management (list sessions, delete single session, delete all chat history)
-- **Session-summarization UX (optional — decide during 10.3b design)** — when the per-session 20-turn / 8k-token memory window is reached, the agent summarizes older turns server-side; decide whether and how to surface this to the user (e.g., subtle "earlier messages summarized" affordance vs silent)
-- Mobile-first layout, UA + EN, WCAG 2.1 AA
-- Streaming response rendering pattern consistent with existing SSE pipeline-progress UX
+- Chat screen layout (session list + active-conversation pane + composer)
+- Message rendering for the four happy-path message types (user / assistant-complete / assistant-streaming / system-meta)
+- Citation chip row layout (horizontal strip + tap-to-open detail panel affordance)
+- Mobile-first viewport with three-zone responsive behavior
+- Basic accessibility scaffold (structural ARIA, focus order, keyboard-send semantics)
+- Streaming pattern cross-reference to the existing SSE precedent
+
+### Reserved for Story 10.3b
+
+- `chat_processing` consent — first-use modal + version-bump re-prompt flow
+- Principled refusal UX — reason-specific copy keyed on the `reason` enum of the `CHAT_REFUSED` envelope (see architecture.md §API Pattern — Chat Streaming)
+- Correlation-ID surface — copy-to-clipboard affordance inside the refusal UI
+- Abuse / rate-limit soft-block UX (caps owned by Story 10.11)
+- Chat history management UI (list, delete single, delete all — owned by Story 10.10)
+- Optional session-summarization surface ("earlier messages summarized" affordance vs. silent)
+- Full WCAG 2.1 AA conformance pass, screen-reader narration copy audit, focus-trap testing under refusal/consent/deletion flows
+- UA + EN copy edge cases (translatable strings)
+- Citation detail panel **content** (fields shown, RAG-corpus excerpt render, transaction-citation shape — consumed from Story 10.6b payload)
+
+### IA & Entry Point
+
+**Decision: Option A — Chat as a 5th bottom tab (mobile) and an additional top-nav item (desktop).** Mobile tab order: Feed / Upload / Chat / Score / Settings. The Chat tab uses the filled-icon variant with a subtle accent dot when an active session exists (affordance only — state rules are 10.3b).
+
+Rationale: Chat is a primary feature of Epic 10 and the "one primary feature = one tap" pattern already established in the Navigation Patterns section above governs it. The existing Feed screen owns the card-stack navigation surface; overlaying a FAB there would create thumb-reachability collisions on small phones with the defining swipe interaction. A 5-item bar is visually heavier than 4 but is the least-surprising model for a user who already has muscle memory for bottom-tab navigation in this app.
+
+- **Option B rejected:** FAB/floating affordance over the Feed. Reason above (thumb-reachability collision with card swipe).
+- **Option C rejected:** Chat nested under Settings. Violates "primary feature is one tap away" from the existing principle set.
+
+The Navigation Patterns section above has been updated in place (tab count 3–4 → 4–5 and Chat added to the named item list). No other changes to that section.
+
+### Three-Zone Layout
+
+Responsive behavior follows the existing breakpoints (see _Breakpoint Strategy_ above — mobile `< 640px`, tablet `640–1024px`, desktop `≥ 1024px`).
+
+**Zone 1 — Session list.**
+- Rows are most-recent-first. Each row shows:
+  - Session title (derived from the first user turn, max ~40 chars, truncated with ellipsis)
+  - Relative `last_active_at` stamp ("2h ago", "yesterday", "14 Apr")
+- "New session" CTA pinned at the top of the list.
+- Per-row overflow (delete / rename) is **out of scope for 10.3a** — the skeleton reserves a kebab-affordance slot on each row; menu contents are owned by Story 10.3b (refusal/rate-limit states) and Story 10.10 (history deletion).
+- Data view: rows are a projection of `chat_sessions(user_id, last_active_at desc)` — the operational index is already in place (Story 10.1b).
+- Placement: left pane on desktop (≥ 1024px, fixed `280 px` width), drawer-on-demand on mobile (triggered from a hamburger affordance in the chat screen header).
+
+**Zone 2 — Active conversation pane.**
+- Scrollable message list, **oldest at top, newest at bottom** — standard chat reading order, opposite of the Feed's card stack.
+- Auto-scroll-to-bottom on new tokens **only if the user is already within ~80 px of the bottom** (scroll-lock-on-scroll-up). If the user has scrolled up to re-read earlier messages, tokens append silently and a non-intrusive "↓ New messages" button (bottom-right of the pane, above the composer) offers a jump-to-bottom.
+- Sticky header on mobile with session-drawer toggle (hamburger) and session title.
+- Placement: center on desktop, full-screen on mobile when a session is open.
+
+**Zone 3 — Composer.**
+- Multi-line `<textarea>` that auto-grows up to ~5 lines, then scrolls internally.
+- Send button to the right of the textarea.
+- Character counter that appears **only** when input exceeds 70% of the hard input cap. The cap itself is owned by Story 10.4b (input validator); the skeleton reserves the counter slot but does **not** pin a number.
+- Placement: sticky at the bottom of the conversation pane on all breakpoints; on mobile, sticky above the on-screen keyboard.
+
+**Responsive summary.**
+- Mobile (`< 640px`): Zone 1 is a slide-in drawer; Zone 2 is full-screen; Zone 3 is sticky above the keyboard.
+- Tablet (`640–1024px`): Zones 1, 2, 3 are visible side-by-side, matching the desktop arrangement (Zone 1 fixed 280 px, Zone 2 flex, Zone 3 spans Zone 2's width).
+- Desktop (`≥ 1024px`): all three zones visible — Zone 1 fixed 280 px, Zone 2 flex, Zone 3 spans the width of Zone 2.
+
+### Message Rendering — Four Happy-Path Types
+
+Only these four message types are in scope for 10.3a. "Refused", "blocked", "rate-limited", and any other states are reserved for Story 10.3b.
+
+| Type | Alignment | Surface | Notes |
+|---|---|---|---|
+| **User message** | Right-aligned bubble (desktop); right-aligned full-width-minus-gutter bubble (mobile) | Accent-color background per the existing Color System | No avatar; timestamp on hover (desktop) / long-press (mobile) |
+| **Assistant message — complete** | Left-aligned bubble | Neutral surface color | Optional trailing citation chip row (see below); timestamp on hover / long-press |
+| **Assistant message — streaming** | Left-aligned bubble, same layout as complete | Neutral surface color | Visible streaming indicator (non-animated caret or subtle three-dot affordance at the tail of the currently-rendering token sequence); **honor `prefers-reduced-motion`** per the _Accessibility Development_ guidance above — provide a static alternative that does not pulse or animate. The bubble grows token-by-token; the container is reserved up front so the surrounding conversation does not reflow on each token |
+| **System / meta** | Center-aligned | De-emphasized type, no bubble | E.g., "New session started". Skeleton defines the slot only; further system-message triggers are owned by Story 10.3b |
+
+**Bubble geometry (pinned for all types).**
+- Max bubble width: 75% of the conversation-pane width on desktop; 88% on mobile.
+- Vertical rhythm: `8 px` inter-bubble within the same turn, `16 px` inter-turn.
+- Word-break: `overflow-wrap: anywhere` — prevents long unbroken tokens (URLs, IBANs) from overflowing the bubble.
+
+### Citation Chip Row
+
+Layout only. The chip **content contract** and the detail-panel content are owned by Story 10.6b (citation payload) and Story 10.3b (surface copy + correlation-ID), respectively.
+
+- Render chips in a single-line horizontally-scrollable strip **directly below** the assistant bubble, flush with the bubble's left edge, `gap: 8 px`.
+- Each chip is a compact pill: `height: 24–28 px`, `padding: 4 px 10 px`, rounded corners. Label examples: `Transaction · 2026-03-14`, `Category · Groceries`, `Profile · Savings Ratio`, `Corpus · <source id>`. Long labels truncate with an ellipsis at the right.
+- **Interaction (skeleton-only in 10.3a).** Clicking or tapping a chip opens a detail panel:
+  - Desktop: Sheet per the existing _Modal & Overlay Patterns_ section above (slides in from the right).
+  - Mobile: bottom-sheet matching the existing Dialog mobile-sheet behavior from the same section.
+  - Dismissal ties: X control, Escape key, click-outside. All three are required.
+- **Icon-slot mapping.** Chips pointing to user-owned data (transaction, profile field, category) use the `data-ref` icon slot. Chips pointing to the RAG corpus use the `book` icon slot. The slots reference the existing design-system tokens — **do not introduce new tokens in 10.3a**. If the design system lacks a `data-ref` or `book` icon, call it out in Story 10.7's scaffolding pass; do not file against `docs/tech-debt.md` from 10.3a.
+- **Empty state.** No citations ⇒ no chip row is rendered. Do not leave an empty strip.
+
+### Streaming Pattern
+
+Honor the existing SSE precedent from Story 3.7 — 10.7's FE engineer should reuse the pattern rather than re-derive it.
+
+- Cross-references:
+  - _Animation & Transition Patterns_ section above (motion tokens — `fast` / `normal` / `slow` / `dramatic`, `prefers-reduced-motion` posture).
+  - [Story 3.7 — Progressive Card Appearance SSE Integration](../implementation-artifacts/3-7-progressive-card-appearance-sse-integration.md): the pattern precedent for connecting an SSE event stream to incremental UI render.
+- **Token-append cadence.** Render on every SSE token event. No UI-layer batching or throttling in the spec — the FE token consumer is cheap; any batching is an optimization for Story 10.7 to measure, not a spec requirement.
+- **Scroll behavior during streaming.** The scroll-lock rule from Zone 2 applies: if the user has scrolled up, do not auto-scroll during streaming. Surface the "↓ New messages" button anchored to the bottom-right of the conversation pane (must not overlap the composer); clicking jumps to the bottom. Styling of the button is 10.7's call; existence + placement are pinned here.
+- **Stream lifecycle.** User types → Enter (or Ctrl/Cmd+Enter) → user bubble renders immediately → SSE connection opens → assistant streaming bubble appears with streaming indicator → tokens append → stream closes → streaming indicator is removed (aria-busy flips — see Accessibility Scaffold) → (optional) citation chip row is rendered below the bubble.
+
+### Basic Accessibility Scaffold
+
+Structural decisions only. Full WCAG 2.1 AA conformance pass, screen-reader narration copy audit, and focus-trap testing under refusal/consent/deletion flows are reserved for Story 10.3b. This scaffold operates under the "semantic HTML first" posture from the _Accessibility Development_ section above.
+
+- **Conversation pane.** `role="log"` with `aria-live="polite"` and `aria-relevant="additions"`. New messages are announced without interrupting the current screen-reader utterance. This matches how modern well-reviewed chat UIs (Claude.ai, ChatGPT) expose their message logs.
+- **Assistant message bubble.** Rendered as `<article>` with a computed accessible name (e.g., "Assistant, at 14:32") so the bubble can be navigated as an item in the log. The streaming bubble sets `aria-busy="true"` while tokens stream and flips to `aria-busy="false"` when the stream closes.
+- **User message bubble.** Also `<article>`, with accessible name ("You, at 14:31").
+- **Composer.** A `<form>` wrapping a `<textarea>` with a **visible** `<label>` (placeholder-as-label is not accepted — see _Accessibility Development_ above).
+  - `Enter` sends the message. `Shift+Enter` inserts a newline. This split is a specific product decision — if left unstated, FE may ship the `<textarea>` default (Enter = newline).
+  - `Ctrl/Cmd + Enter` is an alternate send.
+  - `Esc` closes an open citation detail panel (no effect otherwise in 10.3a).
+- **Initial focus on page load.** The composer. (The primary task on entering the chat screen is "ask a question", not "pick a previous session".)
+- **Tab order.** Composer → Send button → Session-list toggle (hamburger on mobile; first session row on desktop) → Session rows → Conversation-pane scroll area.
+- **Out of scope (explicit).** Full WCAG 2.1 AA conformance pass, narration-copy audit, focus-trap testing under refusal / consent / deletion flows — all layered by Story 10.3b. Any further keyboard shortcuts beyond the ones listed above are also 10.3b.
+
+### Wireframes
+
+**Wireframe 1 — Mobile viewport (`< 640px`)**
+
+```
++---------------------------------------------+
+| [≡]  Session: "How much did I spend on ..."| <- header: session-drawer toggle + title
++---------------------------------------------+
+|                                             |
+|                              +-----------+  |
+|                              | You 14:28 |  | <- Turn 1: User bubble (right-aligned)
+|                              | Groceries |  |    accent background
+|                              +-----------+  |
+|                                             |
+|  +-------------------------+                |
+|  | Assistant 14:28         |                | <- Turn 1: Assistant-complete
+|  | Based on your data ...  |                |    neutral surface
+|  +-------------------------+                |
+|  [Transaction · 2026-03-14] [Category · G..]| <- citation chip strip (scrolls →)
+|                                             |
+|                              +-----------+  |
+|                              | You 14:30 |  | <- Turn 2: User bubble
+|                              | And dining|  |
+|                              +-----------+  |
+|                                             |
+|  +-------------------------+                |
+|  | Assistant 14:30         |                | <- Turn 2: Assistant-complete
+|  | Dining is roughly ...   |                |
+|  +-------------------------+                |
+|                                             |
+|  +-------------------------+                |
+|  | Assistant (streaming ▍) |                | <- Turn 3: Assistant-streaming
+|  | You typically spend ... |                |    indicator at tail
+|  +-------------------------+                |
+|                                             |
+|                    [ ↓ New messages ]       | <- scroll-lock jump affordance
++---------------------------------------------+
+| Ask about your finances...           [Send] | <- Zone 3: Composer (sticky)
++---------------------------------------------+
+```
+
+Zones: header + Zone 2 (conversation) occupy the viewport; Zone 1 is a slide-in drawer from the left (not shown — triggered by `[≡]`); Zone 3 sticks above the on-screen keyboard.
+
+**Wireframe 2 — Desktop viewport (`≥ 1024px`)**
+
+```
++----------------+------------------------------------------+
+|  + New session |  Session: "How much did I spend on ..."  |
+|  ------------- |------------------------------------------|
+|  > "How much.. |                                          |
+|    2h ago  [⋮] |                          +------------+  |
+|                |                          | You 14:31  |  |
+|    "Budget for |                          | Groceries  |  |
+|    April"  [⋮] |                          +------------+  |
+|    yesterday   |                                          |
+|                |  +--------------------------+            |
+|    "Where does |  | Assistant 14:31          |            |
+|    my money.." |  | Based on your data ...   |            |
+|    14 Apr  [⋮] |  +--------------------------+            |
+|                |  [Transaction · 2026-03-14] [Cat · G..]  |
+|                |                                          |
+|                |  +--------------------------+            |
+|                |  | Assistant (streaming ▍)  |            |
+|                |  | You typically spend ...  |            |
+|                |  +--------------------------+            |
+|                |                                          |
+|                |------------------------------------------|
+|                | Ask about your finances...       [Send]  |
++----------------+------------------------------------------+
+  Zone 1 (280px)   Zone 2 (flex)                          Zone 3 sticks to bottom of Zone 2
+```
+
+Breakpoint: `≥ 1024px`. Zone 1 is a fixed 280 px pane. Zone 2 is flex. Zone 3 is sticky at the bottom of Zone 2 and spans its width. `[⋮]` = reserved kebab-affordance slot (menu contents are 10.3b + 10.10).
+
+**Flow diagram — Happy-path turn lifecycle**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Composer
+    participant ConversationPane as Conversation Pane
+    participant SSE as SSE Stream
+    participant Assistant
+
+    User->>Composer: Type message
+    User->>Composer: Enter (or Ctrl/Cmd+Enter)
+    Composer->>ConversationPane: Render user bubble (immediate)
+    Composer->>SSE: Open stream
+    SSE-->>ConversationPane: Streaming bubble appears (aria-busy=true)
+    loop Token events
+        SSE-->>ConversationPane: token
+        ConversationPane->>ConversationPane: Append token to bubble
+    end
+    SSE-->>ConversationPane: Stream close
+    ConversationPane->>ConversationPane: Remove streaming indicator (aria-busy=false)
+    Assistant-->>ConversationPane: (optional) citations payload
+    ConversationPane->>ConversationPane: Render citation chip row
+```
+
+No refusal / error branches — those belong to Story 10.3b's Mermaid.
+
+### Frontend Implementation Handoff
+
+This is a **file-shape pointer**, not a code spec. Library / state-management / SSE-client decisions belong to Story 10.7.
+
+- **Page route:** `frontend/src/app/[locale]/(dashboard)/chat/page.tsx` (follows the existing App-Router `[locale]/(dashboard)/` pattern used by [`feed/`](../../frontend/src/app/[locale]/\(dashboard\)/feed/), [`history/`](../../frontend/src/app/[locale]/\(dashboard\)/history/), [`profile/`](../../frontend/src/app/[locale]/\(dashboard\)/profile/), [`settings/`](../../frontend/src/app/[locale]/\(dashboard\)/settings/), [`upload/`](../../frontend/src/app/[locale]/\(dashboard\)/upload/)).
+- **Feature folder:** `frontend/src/features/chat/` — mirror the shape of [`features/settings/`](../../frontend/src/features/settings/) (components / hooks / types subfolders).
+- **i18n namespace:** `chat` under [`frontend/src/i18n/`](../../frontend/src/i18n/). New namespace — copy is reserved for Story 10.3b; 10.7 stubs the namespace so it has somewhere to land translatable strings. The UA + EN posture is inherited from the existing i18n setup; this skeleton does not write a single translatable string.
+- **Do not prescribe** component library choices, state-management library, or SSE-client implementation (EventSource vs. fetch+ReadableStream, SWR vs. custom hook). Those are 10.7's technical-decision space.
 
 ### Out of scope for initial chat UX
 

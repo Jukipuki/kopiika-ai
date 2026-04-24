@@ -218,7 +218,7 @@ development_status:
   10-1a-chat-processing-consent: done
   10-1b-chat-sessions-messages-schema-cascade: done
   10-2-bedrock-guardrails-configuration: done
-  10-3a-chat-ux-skeleton: backlog
+  10-3a-chat-ux-skeleton: done
   10-3b-chat-ux-states-spec: backlog
   10-4a-agentcore-session-handler-memory-bounds: backlog
   10-4b-system-prompt-hardening-canaries: backlog
