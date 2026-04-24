@@ -1,5 +1,7 @@
 from app.models.audit_log import AuditLog
 from app.models.bank_format_registry import BankFormatRegistry
+from app.models.chat_message import ChatMessage
+from app.models.chat_session import ChatSession
 from app.models.consent import UserConsent
 from app.models.detected_subscription import DetectedSubscription
 from app.models.embedding import DocumentEmbedding
@@ -23,6 +25,8 @@ __all__ = [
     "BankFormatRegistry",
     "CardFeedback",
     "CardInteraction",
+    "ChatMessage",
+    "ChatSession",
     "DetectedSubscription",
     "DocumentEmbedding",
     "FeedbackResponse",

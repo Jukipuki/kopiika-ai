@@ -504,7 +504,7 @@ _Added by Story 10.1a._
 - **Rate limit.** Grants and revokes share the existing per-user `check_consent_rate_limit` bucket (10/hour) — grant→revoke→grant loops that would spam the audit log are throttled together.
 - **Data-summary parity.** `GET /api/v1/users/me/data-summary` now includes `revokedAt` (nullable) on each `consentRecords` entry, satisfying FR35 export parity.
 
-**Known gap — `consent_version_at_creation` on chat sessions.** The "Consent Drift Policy" subsection below defines `chat_sessions.consent_version_at_creation`. That column and its capture logic ship in **Story 10.1b** alongside the `chat_sessions` / `chat_messages` tables; Story 10.1a only persists the consent grant/revoke itself and exposes the revoke hook.
+**`consent_version_at_creation` on chat sessions.** Shipped in **Story 10.1b** — the `chat_sessions` / `chat_messages` tables (Alembic revision `e3c5f7d9b2a1`), the `create_chat_session` helper in [backend/app/services/chat_session_service.py](../../backend/app/services/chat_session_service.py), and the revocation cascade inside `consent_service.revoke_chat_consent` now pin and enforce the version end-to-end.
 
 ### API & Communication Patterns
 
@@ -1733,7 +1733,7 @@ Single source of truth for chat throttling — implemented in Story 10.11 (rate-
 
 See [Consent Management → Chat Processing Consent](#consent-management) for the schema + version semantics (independent version stream, append-only `revoked_at`, `revoke_chat_consent()` integration hook). The policy below governs how active chat sessions behave when the consent version bumps or is revoked.
 
-`chat_sessions.consent_version_at_creation` captures the `chat_processing` consent version that authorized the session. Policy:
+`chat_sessions.consent_version_at_creation` (Alembic revision `e3c5f7d9b2a1`, Story 10.1b) captures the `chat_processing` consent version that authorized the session. Policy:
 
 - **Active sessions continue under their captured version** (in-flight conversations aren't interrupted mid-turn by a consent bump).
 - **New sessions require the current version** — frontend gate re-prompts if the user's consent is stale.
@@ -1784,10 +1784,10 @@ New component alongside the existing batch agents (see [backend/app/agents/](../
 
 ### Data Model Additions
 
-New tables (Alembic migration in Epic 10):
+New tables (Alembic migration [`e3c5f7d9b2a1_add_chat_sessions_and_messages.py`](../../backend/alembic/versions/e3c5f7d9b2a1_add_chat_sessions_and_messages.py), shipped in Story 10.1b). Models: [`backend/app/models/chat_session.py`](../../backend/app/models/chat_session.py), [`backend/app/models/chat_message.py`](../../backend/app/models/chat_message.py). `role` and `guardrail_action` are modelled as `TEXT + CHECK` constraints (not Postgres ENUMs) to follow the repo convention (`card_feedback.vote`, `upload.status`) — ALTER TYPE is painful under Alembic.
 
 - `chat_sessions` — `id` UUID PK, `user_id` UUID FK (cascade delete), `created_at` timestamptz, `last_active_at` timestamptz, `consent_version_at_creation` text
-- `chat_messages` — `id` UUID PK, `session_id` UUID FK (cascade delete), `role` enum(`user` | `assistant` | `system`), `content` text, `redaction_flags` JSONB (shape: `{"pii_types": ["email" | "iban" | "card" | ...], "filter_source": "input" | "output"}`), `guardrail_action` enum(`none` | `blocked` | `modified`), `created_at` timestamptz
+- `chat_messages` — `id` UUID PK, `session_id` UUID FK (cascade delete), `role` text CHECK (`user` | `assistant` | `system`), `content` text, `redaction_flags` JSONB (shape: `{"pii_types": ["email" | "iban" | "card" | ...], "filter_source": "input" | "output"}`), `guardrail_action` text CHECK (`none` | `blocked` | `modified`), `created_at` timestamptz
 
 Deletion cascade aligned with FR31 + FR70: account deletion → `chat_sessions` deletion → `chat_messages` deletion.
 

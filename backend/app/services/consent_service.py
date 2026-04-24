@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
@@ -110,11 +111,22 @@ async def revoke_chat_consent(
         user_agent=record.user_agent,
         revoked_at=record.revoked_at,
     )
+    # Cascade: delete all chat_sessions for this user in the same transaction
+    # as the revocation-row INSERT. The ON DELETE CASCADE on
+    # ``chat_messages.session_id`` removes their messages atomically. Per the
+    # Consent Drift Policy, revoke succeeds iff cascade succeeds.
+    #
+    # TODO(10.4a): call AgentCore session terminator here before DB cascade so
+    # in-flight streams cancel cleanly. No in-memory session to terminate yet
+    # (10.4a has not shipped), so the DB cascade alone is sufficient today.
+    # Import locally to avoid any future circular-import risk if
+    # chat_session_service grows a consent read.
+    from app.models.chat_session import ChatSession
+
+    await session.exec(
+        sa_delete(ChatSession).where(ChatSession.user_id == user.id)
+    )
     await session.commit()
-    # TODO(10.1b): cascade chat_sessions delete here — terminate any active
-    # chat sessions + delete chat_messages per the "Consent Drift Policy"
-    # (architecture.md §Consent Drift Policy). 10.1a leaves this as a no-op
-    # because chat_sessions / chat_messages do not exist until 10.1b.
     return detached
 
 

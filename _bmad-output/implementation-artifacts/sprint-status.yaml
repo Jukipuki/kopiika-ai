@@ -215,8 +215,8 @@ development_status:
   # 10.4 → 10.4a/b/c (rate-limit envelope de-duped → moved to 10.11),
   # 10.6 → 10.6a/b, 10.8 → 10.8a/b. See _bmad-output/planning-artifacts/epics.md.
   epic-10: in-progress
-  10-1a-chat-processing-consent: review
-  10-1b-chat-sessions-messages-schema-cascade: backlog
+  10-1a-chat-processing-consent: done
+  10-1b-chat-sessions-messages-schema-cascade: done
   10-2-bedrock-guardrails-configuration: backlog
   10-3a-chat-ux-skeleton: backlog
   10-3b-chat-ux-states-spec: backlog

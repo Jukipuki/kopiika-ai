@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.core.audit import anonymize_user_audit_records
 from app.core.config import settings
+from app.models.chat_session import ChatSession
 from app.models.consent import UserConsent
 from app.models.feedback import CardFeedback, CardInteraction
 from app.models.financial_health_score import FinancialHealthScore
@@ -74,6 +75,8 @@ async def delete_all_user_data(
     # card_id -> insights.id ON DELETE CASCADE path (which would fire if we
     # deleted Insight first). Net effect is the same; ordering here makes the
     # deletion chain readable without depending on DB-level cascades.
+    # ChatSession listed; ChatMessage removed by DB cascade on session_id
+    # (mirrors the CardInteraction / insights.id pattern above).
     child_tables = [
         FlaggedImportRow,
         CardFeedback,
@@ -83,6 +86,7 @@ async def delete_all_user_data(
         ProcessingJob,
         FinancialHealthScore,
         FinancialProfile,
+        ChatSession,
         UserConsent,
         Upload,
     ]

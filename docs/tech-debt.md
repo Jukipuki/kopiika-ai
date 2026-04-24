@@ -1423,6 +1423,20 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-092 — AgentCore session terminator pre-cascade hook not yet wired [MEDIUM]
+
+**Where:** [backend/app/services/consent_service.py](../backend/app/services/consent_service.py) — the `TODO(10.4a)` marker inside `revoke_chat_consent` immediately before `await session.exec(sa_delete(ChatSession)...)`.
+
+**Problem:** The Consent Drift Policy requires that on `chat_processing` revocation the runtime "terminates active sessions, cancels in-flight streaming turns" **before** DB rows disappear. Story 10.1b ships the DB cascade (sessions + messages are deleted atomically with the revoke INSERT), but there is no AgentCore runtime yet, so no in-memory session termination happens. Today that is a no-op because 10.4a has not shipped and no sessions can be live; once 10.4a lands, a revoke during an in-flight stream will tear rows out from under the running turn.
+
+**Why deferred:** 10.4a owns the AgentCore session handler, including the terminator. Wiring a no-op hook in 10.1b would be premature — the handler's shape is defined in 10.4a's architecture.
+
+**Fix shape:** When Story 10.4a ships, replace the `TODO(10.4a)` line in `revoke_chat_consent` with a call to the AgentCore session terminator (e.g., `await agentcore_sessions.terminate_for_user(user.id)`) before the `sa_delete(ChatSession)` cascade. Add a unit test that asserts the terminator is called in the revoke path. Owner: Epic 10 / Story 10.4a.
+
+**Surfaced in:** Story 10.1b implementation (2026-04-24)
+
+---
+
 ## Resolved
 
 ### TD-084 — `chat_default.bedrock` ARN missing `-v*:0` suffix [RESOLVED 2026-04-23 — not-a-bug]
