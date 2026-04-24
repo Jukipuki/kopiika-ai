@@ -29,7 +29,10 @@ data "aws_iam_policy_document" "apprunner_secrets_read" {
     actions = [
       "secretsmanager:GetSecretValue",
     ]
-    resources = values(var.secrets_arns)
+    # Story 10.4b extends the existing secrets-read statement with the chat
+    # canaries ARN. Scoped exact-ARN (never wildcard) — App Runner needs it,
+    # ECS/Celery does not. One statement is easier to review than two.
+    resources = concat(values(var.secrets_arns), [var.chat_canaries_secret_arn])
   }
 }
 

@@ -22,6 +22,9 @@ def test_agentcore_backend_create_session():
 def test_agentcore_backend_invoke():
     # Phase B: calls bedrock-agentcore:InvokeAgentRuntime, same exception
     # translation table as DirectBedrockBackend.
+    # Story 10.4b note: invoke() now takes a `system_prompt: str` kwarg —
+    # AgentCoreBackend will need to map this onto AgentCore's own
+    # system-prompt surface when Phase B lands.
     ...
 
 

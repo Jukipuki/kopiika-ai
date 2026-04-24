@@ -9,3 +9,8 @@ output "secret_arns" {
     llm_api_keys = aws_secretsmanager_secret.llm_api_keys.arn
   }
 }
+
+output "chat_canaries_secret_arn" {
+  description = "ARN of the chat canaries secret (Story 10.4b). Consumed by the App Runner module to scope GetSecretValue IAM."
+  value       = aws_secretsmanager_secret.chat_canaries.arn
+}

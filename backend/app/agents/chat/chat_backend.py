@@ -83,8 +83,7 @@ def _bedrock_only_guard() -> None:
     if settings.LLM_PROVIDER != "bedrock":
         if settings.CHAT_RUNTIME == "agentcore":
             detail = (
-                "Phase B requires LLM_PROVIDER=bedrock and "
-                "AGENTCORE_RUNTIME_ARN set."
+                "Phase B requires LLM_PROVIDER=bedrock and AGENTCORE_RUNTIME_ARN set."
             )
             extras = (
                 f" Current provider: {settings.LLM_PROVIDER}; "
@@ -119,6 +118,7 @@ class ChatBackend(abc.ABC):
             Any
         ],  # list[ChatMessage] — kept loose to avoid import cycle
         user_message: str,
+        system_prompt: str,  # Story 10.4b — hardened, canary-bearing system prompt
     ) -> ChatInvocationResult: ...
 
     @abc.abstractmethod
@@ -152,6 +152,7 @@ class DirectBedrockBackend(ChatBackend):
         db_session_id: uuid.UUID,
         context_messages: list[Any],
         user_message: str,
+        system_prompt: str,
     ) -> ChatInvocationResult:
         # Local imports keep the module importable on non-bedrock dev machines
         # (langchain_aws pulls boto3; boto3 credentials chain resolution does
@@ -165,7 +166,10 @@ class DirectBedrockBackend(ChatBackend):
         from app.agents.llm import _get_client_for, record_failure, record_success
         from app.models.chat_message import ChatMessage
 
-        lc_messages = []
+        # Story 10.4b — hardened system prompt is position [0]. Summary rows
+        # from history (role='system') come AFTER as auxiliary context, never
+        # before — reversing would invert the persona anchor.
+        lc_messages = [SystemMessage(content=system_prompt)]
         for m in context_messages:
             if m.role == "user":
                 lc_messages.append(HumanMessage(content=m.content))
@@ -191,6 +195,11 @@ class DirectBedrockBackend(ChatBackend):
                     f"Bedrock transient error on chat invocation "
                     f"(session {db_session_id}): {code}"
                 ) from exc
+            # Intentional pass-through for unknown error codes: the handler
+            # treats this as "already translated" upstream (session_handler
+            # Step 4 comment). `record_failure` has fired; the raw ClientError
+            # reaches the caller for forensic inspection. If operations ever
+            # surface a common unknown code, add an explicit branch here.
             raise
         except Exception:
             record_failure("bedrock")

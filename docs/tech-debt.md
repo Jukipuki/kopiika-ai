@@ -1479,6 +1479,48 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-097 — Unicode-normalize canary detection (reject zero-width / BOM insertions) [MEDIUM]
+
+**Where:** [backend/app/agents/chat/canary_detector.py](../backend/app/agents/chat/canary_detector.py).
+
+**Problem:** `scan_for_canaries` does a literal substring match (case-sensitive, no regex metacharacters) for each of the three canary tokens in model output. A model that emits the canary with a zero-width space, BOM, or other format character inserted between the token characters evades detection. AC #3 of Story 10.4b documents this as a known limitation with an explicit TD pointer.
+
+**Why deferred:** The architecture's Canary Detection spec ([architecture.md §Canary Detection L1714-L1721](../_bmad-output/planning-artifacts/architecture.md#L1714-L1721)) does not mandate unicode-normalization, and the Story 10.8a red-team corpus is the intended gate for catching model-specific evasion. Fixing it speculatively before Story 10.8b's harness surfaces a real miss would inflate 10.4b's scope.
+
+**Fix shape:** NFC-normalize + strip `\p{C}` (format / control / private-use) from `output_text` before the substring check — or switch to a per-canary regex that inserts `[\p{Cf}\s]*` between each character. Either adds ~1ms/turn (negligible vs LLM latency). Trigger the fix if Story 10.8b reports any `chat.canary.leaked` false-negative in the red-team suite or if prod emits one that correlates with a model-output inspection.
+
+**Surfaced in:** Story 10.4b (2026-04-24) — AC #3 / AC #13.
+
+---
+
+### TD-098 — Add `lifecycle.ignore_changes = [secret_string]` to `aws_secretsmanager_secret_version.llm_api_keys` [LOW]
+
+**Where:** [infra/terraform/modules/secrets/main.tf:93-96](../infra/terraform/modules/secrets/main.tf#L93-L96).
+
+**Problem:** The `llm_api_keys` secret is seeded with `jsonencode({})` and then populated out-of-band via `aws secretsmanager put-secret-value`. If an operator ever rotates those keys by hand, a subsequent `terraform apply` (even a no-op one touching the module) would overwrite the rotated value back to `{}`. Story 10.4b's new `chat_canaries` secret uses `lifecycle.ignore_changes = [secret_string]` to prevent exactly this failure mode; `llm_api_keys` does not, so it's currently exposed to the same footgun.
+
+**Why deferred:** Not currently rotating `llm_api_keys` out-of-band — the secret is populated once at deploy time and stays static. Cross-referenced from Story 10.4b AC #8 but fixing `llm_api_keys` is explicitly out of scope there.
+
+**Fix shape:** Copy the `lifecycle { ignore_changes = [secret_string] }` block from the `chat_canaries` version resource to the `llm_api_keys` version resource. One-line change, no state surgery required (lifecycle changes don't force replacement).
+
+**Surfaced in:** Story 10.4b (2026-04-24) — AC #8 / AC #13.
+
+---
+
+### TD-099 — Emit `CanaryLeaked` CloudWatch metric + sev-1 alarm from `chat.canary.leaked` log event [MEDIUM]
+
+**Where:** `infra/terraform/modules/<observability-module-tbd>/` — metric-filter + CloudWatch alarm.
+
+**Problem:** Story 10.4b ships the structured log event `chat.canary.leaked` at ERROR with `canary_slot` / `canary_prefix` / `canary_set_version_id` / `output_prefix_hash` fields. The architecture calls for a dimensional `CanaryLeaked` metric + sev-1 security alarm ([architecture.md §Observability & Alarms L1764-L1772](../_bmad-output/planning-artifacts/architecture.md#L1764-L1772)). The metric filter + alarm are not yet wired.
+
+**Why deferred:** Story 10.9 owns the chat observability + alarms story and will author the metric filter against this exact event name. Tracker entry only; Story 10.9's PR resolves this TD.
+
+**Fix shape:** A CloudWatch Logs metric filter matching `{ $.message = "chat.canary.leaked" }` on the App Runner log group, dimensioned by `$.canary_slot`; a sev-1 alarm on `count > 0` over a 5-minute window routing to the security on-call SNS topic. Runbook entry in Story 10.9 covers rotation + forensic triage.
+
+**Surfaced in:** Story 10.4b (2026-04-24) — AC #11 / AC #13. Pins the event-name contract so 10.9's metric filter is a pattern match, not a rewrite.
+
+---
+
 ## Resolved
 
 ### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [RESOLVED 2026-04-24 — AWS CLI v2.34.35 ships the binding]

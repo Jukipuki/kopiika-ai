@@ -81,6 +81,40 @@ def test_bedrock_client_built_for_eu_central_1(bedrock_env):
 
 
 @pytest.mark.asyncio
+async def test_invoke_places_system_prompt_at_position_zero(bedrock_env):
+    """Story 10.4b — hardened system_prompt prepends as SystemMessage[0];
+    history-derived role='system' summary rows follow at positions >= 1.
+    """
+    from langchain_core.messages import SystemMessage
+
+    ai_msg = MagicMock()
+    ai_msg.content = "ok"
+    ai_msg.usage_metadata = {"input_tokens": 1, "output_tokens": 1}
+    fake_client = MagicMock()
+    fake_client.ainvoke = AsyncMock(return_value=ai_msg)
+
+    backend = DirectBedrockBackend()
+    summary_row = ChatMessage(session_id=uuid.uuid4(), role="system", content="SUMMARY")
+    user_row = ChatMessage(session_id=uuid.uuid4(), role="user", content="u1")
+    with patch("app.agents.llm._get_client_for", return_value=fake_client):
+        with patch("app.agents.llm.record_success"):
+            await backend.invoke(
+                db_session_id=uuid.uuid4(),
+                context_messages=[summary_row, user_row],
+                user_message="hey",
+                system_prompt="HARDENED_PROMPT_TEXT",
+            )
+    lc_messages = fake_client.ainvoke.call_args[0][0]
+    assert isinstance(lc_messages[0], SystemMessage)
+    assert lc_messages[0].content == "HARDENED_PROMPT_TEXT"
+    # Summary row follows at >= index 1, never before.
+    summary_positions = [
+        i for i, m in enumerate(lc_messages) if getattr(m, "content", "") == "SUMMARY"
+    ]
+    assert summary_positions and min(summary_positions) >= 1
+
+
+@pytest.mark.asyncio
 async def test_invoke_returns_text_and_model_tokens(bedrock_env):
     ai_msg = MagicMock()
     ai_msg.content = "Spent 2,450 UAH on groceries in March."
@@ -100,6 +134,7 @@ async def test_invoke_returns_text_and_model_tokens(bedrock_env):
                     db_session_id=uuid.uuid4(),
                     context_messages=[],
                     user_message="How much did I spend last month?",
+                    system_prompt="sys",
                 )
     assert result.text == "Spent 2,450 UAH on groceries in March."
     assert result.input_tokens == 42
@@ -125,6 +160,7 @@ async def test_invoke_falls_back_to_tiktoken_when_usage_missing(bedrock_env):
                 db_session_id=uuid.uuid4(),
                 context_messages=[_user_msg("hi")],
                 user_message="hey",
+                system_prompt="sys",
             )
     assert result.token_source == "tiktoken"
     assert result.input_tokens >= 1
@@ -150,6 +186,7 @@ async def test_invoke_no_tools_payload_shape(bedrock_env):
                 db_session_id=uuid.uuid4(),
                 context_messages=[],
                 user_message="hello",
+                system_prompt="sys",
             )
     call_args, call_kwargs = fake_client.ainvoke.call_args
     # The positional arg is a list of LC messages.
@@ -182,6 +219,7 @@ async def test_access_denied_maps_to_configuration_error(bedrock_env):
                     db_session_id=uuid.uuid4(),
                     context_messages=[],
                     user_message="q",
+                    system_prompt="sys",
                 )
     rec_fail.assert_called_once_with("bedrock")
 
@@ -199,6 +237,7 @@ async def test_throttling_and_unavailable_map_to_transient_error(bedrock_env, co
                     db_session_id=uuid.uuid4(),
                     context_messages=[],
                     user_message="q",
+                    system_prompt="sys",
                 )
 
 
@@ -214,6 +253,7 @@ async def test_unknown_client_error_propagates_raw(bedrock_env):
                     db_session_id=uuid.uuid4(),
                     context_messages=[],
                     user_message="q",
+                    system_prompt="sys",
                 )
 
 

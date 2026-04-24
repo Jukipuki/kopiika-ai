@@ -14,7 +14,6 @@ AgentCore Runtime without changing this file.
 ## Deferrals by scope (do NOT add here — sibling/downstream stories own them)
 
 - Tool manifest + tool-use loop              → Story 10.4c
-- System-prompt hardening + canary tokens    → Story 10.4b
 - SSE streaming + CHAT_REFUSED envelope      → Story 10.5
 - Bedrock Guardrails attach at invoke        → Story 10.5
 - Contextual-grounding threshold tuning      → Story 10.6a
@@ -29,7 +28,8 @@ conversational quality. **Summarization runs on ``agent_default`` (Haiku)**
 via ``get_llm_client()`` — a reduction operation where cost/latency beats
 quality. A future cost-optimization pass must keep this split.
 
-# Downstream: 10.4b adds system-prompt + canary injection at send_turn boundary; 10.4c adds tool manifest; 10.5 wraps send_turn in an SSE streaming wrapper + CHAT_REFUSED envelope; 10.6a tunes grounding at Guardrail attach time.
+# 10.4b landed: system prompt + input validator + canary scan ship here.
+# Downstream: 10.4c adds tool manifest; 10.5 wraps send_turn in an SSE streaming wrapper + CHAT_REFUSED envelope; 10.6a tunes grounding at Guardrail attach time.
 # ADR: docs/adr/0004-chat-runtime-phasing.md (Phase A vs B split — handler API stable across phases).
 """
 
@@ -45,18 +45,34 @@ from sqlalchemy import update as sa_update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
+from app.agents.chat.canaries import CanaryLoadError, get_canary_set
+from app.agents.chat.canary_detector import (
+    ChatPromptLeakDetectedError,
+    scan_for_canaries,
+)
 from app.agents.chat.chat_backend import (
     ChatBackend,
+    ChatConfigurationError,
     ChatProviderNotSupportedError,
     ChatSessionCreationError,
     ChatSessionTerminationFailed,
     build_backend,
+)
+from app.agents.chat.input_validator import (
+    INPUT_VALIDATOR_VERSION,
+    ChatInputBlockedError,
+    _prefix_hash,
+    validate_input,
 )
 from app.agents.chat.memory_bounds import (
     count_turns,
     estimate_tokens,
     should_summarize,
     split_for_summarization,
+)
+from app.agents.chat.system_prompt import (
+    CHAT_SYSTEM_PROMPT_VERSION,
+    render_system_prompt,
 )
 from app.core.config import settings
 from app.models.chat_message import ChatMessage
@@ -185,9 +201,19 @@ class ChatSessionHandler:
         handle: ChatSessionHandle,
         user_message: str,
     ) -> ChatTurnResponse:
-        """Persist user turn → (maybe summarize) → invoke model → persist assistant turn.
+        """Persist user turn → validate → (maybe summarize) → invoke → scan → persist assistant turn.
 
-        Transaction topology (per AC #7):
+        Story 10.4b six-step pipeline (order = threat model; reversing steps
+        defeats the layers):
+          Step 0 — persist user message (audit-trail invariant from 10.4a)
+          Step 1 — input validator  (Story 10.4b AC #4, defense layer 1)
+          Step 2 — load canaries + render hardened system prompt (AC #1 + #2)
+          Step 3 — memory bounds / summarization (unchanged from 10.4a)
+          Step 4 — backend invoke with system_prompt kwarg (AC #5)
+          Step 5 — canary scan on model output (AC #3, defense layer "canary")
+          Step 6 — persist assistant + bump last_active_at (unchanged from 10.4a)
+
+        Transaction topology (per 10.4a AC #7):
         - User message is committed first (own txn) so a mid-flight crash
           still leaves an audit trail.
         - Assistant message + ``last_active_at`` update commit together
@@ -196,7 +222,7 @@ class ChatSessionHandler:
         correlation_id = self._correlation_id_factory()
         history = await self._load_history(db, handle.db_session_id)
 
-        # 1. Persist the user turn eagerly (separate txn).
+        # Step 0 — persist the user turn eagerly (separate txn).
         user_row = ChatMessage(
             session_id=handle.db_session_id, role="user", content=user_message
         )
@@ -204,12 +230,56 @@ class ChatSessionHandler:
         await db.commit()
         history.append(user_row)
 
-        # 2. Apply memory bounds BEFORE model invocation (AC #9 "trim before invoke").
+        # Step 1 — input validator (Story 10.4b AC #4). Runs AFTER the user
+        # row is persisted (preserves audit-trail invariant) but BEFORE
+        # memory-bounds evaluation and model invocation.
+        try:
+            validate_input(user_message)
+        except ChatInputBlockedError as exc:
+            user_row.guardrail_action = "blocked"
+            user_row.redaction_flags = {
+                "filter_source": "input_validator",
+                "reason": exc.reason,
+                "pattern_id": exc.pattern_id,
+            }
+            db.add(user_row)
+            await db.commit()
+            logger.info(
+                "chat.input.blocked",
+                extra={
+                    "correlation_id": correlation_id,
+                    "db_session_id": str(handle.db_session_id),
+                    "reason": exc.reason,
+                    "pattern_id": exc.pattern_id,
+                    "input_char_len": len(user_message),
+                    "input_prefix_hash": _prefix_hash(user_message),
+                },
+            )
+            raise
+
+        # Step 2 — load canaries + render the hardened system prompt. A
+        # CanaryLoadError hard-fails the turn (non-recoverable — chat cannot
+        # safely invoke a model without its leak detector primed).
+        try:
+            canaries = await get_canary_set()
+        except CanaryLoadError as exc:
+            logger.error(
+                "chat.canary.load_failed",
+                extra={
+                    "correlation_id": correlation_id,
+                    "db_session_id": str(handle.db_session_id),
+                    "error_class": type(exc).__name__,
+                    "error_message": str(exc)[:200],
+                },
+            )
+            raise ChatConfigurationError(
+                f"Chat canary load failed: {type(exc).__name__}"
+            ) from exc
+        rendered = render_system_prompt(canaries)
+
+        # Step 3 — apply memory bounds (unchanged from 10.4a).
         # NOTE on consent drift: consent is verified at create_session only.
-        # A synchronous send_turn after a mid-session revoke will still
-        # invoke the model; the revoke cascade will clean up rows afterwards.
-        # Stream-level cancellation (the "in-flight turn" half of Consent
-        # Drift Policy) is Story 10.5's SSE concern, not 10.4a's.
+        # Stream-level cancellation is Story 10.5's SSE concern.
         summarization_applied = False
         turns = count_turns(history)
         tokens = estimate_tokens(history)
@@ -226,22 +296,58 @@ class ChatSessionHandler:
                 correlation_id=correlation_id,
             )
 
-        # 3. Invoke backend. Context messages are history MINUS the trailing
-        #    user row (the backend appends it as the prompt separately).
+        # Step 4 — invoke backend with hardened system prompt.
         context_messages = history[:-1]
         try:
             result = await self._backend.invoke(
                 db_session_id=handle.db_session_id,
                 context_messages=context_messages,
                 user_message=user_message,
+                system_prompt=rendered.text,
             )
         except Exception:
             # Backend already translated to ChatConfigurationError / ChatTransientError.
-            # Caller (10.5's SSE route) owns the user-facing envelope. Do not
-            # swallow here — the user turn is already persisted as audit trail.
             raise
 
-        # 4. Persist assistant turn + bump last_active_at atomically.
+        # Step 5 — canary scan on model output (Story 10.4b AC #3). Runs
+        # BEFORE persisting the assistant row so a leaked-canary response
+        # is stored explicitly as blocked, never silently as a normal turn.
+        try:
+            scan_for_canaries(result.text, canaries)
+        except ChatPromptLeakDetectedError as exc:
+            assistant_row = ChatMessage(
+                session_id=handle.db_session_id,
+                role="assistant",
+                content=result.text,
+                guardrail_action="blocked",
+                redaction_flags={
+                    "filter_source": "canary_detector",
+                    "canary_slot": exc._matched_position_slot,
+                    "canary_prefix": exc.matched_canary_prefix,
+                },
+            )
+            db.add(assistant_row)
+            await db.exec(
+                sa_update(ChatSession)
+                .where(ChatSession.id == handle.db_session_id)
+                .values(last_active_at=_now())
+            )
+            await db.commit()
+            logger.error(
+                "chat.canary.leaked",
+                extra={
+                    "correlation_id": correlation_id,
+                    "db_session_id": str(handle.db_session_id),
+                    "canary_slot": exc._matched_position_slot,
+                    "canary_prefix": exc.matched_canary_prefix,
+                    "canary_set_version_id": canaries.version_id,
+                    "output_char_len": len(result.text),
+                    "output_prefix_hash": _prefix_hash(result.text),
+                },
+            )
+            raise
+
+        # Step 6 — persist assistant turn + bump last_active_at atomically.
         assistant_row = ChatMessage(
             session_id=handle.db_session_id,
             role="assistant",
@@ -265,6 +371,9 @@ class ChatSessionHandler:
                 "session_turn_count": count_turns(history),
                 "summarization_applied": summarization_applied,
                 "token_source": result.token_source,
+                "system_prompt_version": CHAT_SYSTEM_PROMPT_VERSION,
+                "input_validator_version": INPUT_VALIDATOR_VERSION,
+                "canary_set_version_id": canaries.version_id,
             },
         )
         return ChatTurnResponse(

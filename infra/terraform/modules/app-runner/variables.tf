@@ -52,6 +52,13 @@ variable "secrets_arns" {
 # chat per ADR-0004 — no AgentCore Runtime yet). Phase B story 10.4a-runtime
 # provisions the runtime + swaps this to a concrete ARN; until then the
 # agentcore_policy_enabled regex gate in main.tf skips the live invoke grant.
+# Story 10.4b — chat canaries secret ARN (scoped GetSecretValue grant for the
+# chat prompt-leak detector's canary token loader).
+variable "chat_canaries_secret_arn" {
+  description = "ARN of the chat canaries secret. Set by root main.tf from module.secrets.chat_canaries_secret_arn. Scoped exact-ARN grant keeps ECS (Celery) out of the chat canary read surface."
+  type        = string
+}
+
 variable "agentcore_runtime_arn" {
   description = "ARN for the Bedrock AgentCore runtime. Wildcard default is a Phase A placeholder (Story 10.4a ships direct-Bedrock chat per ADR-0004). Phase B story 10.4a-runtime swaps this to a concrete ARN."
   type        = string

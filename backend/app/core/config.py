@@ -72,6 +72,30 @@ class Settings(BaseSettings):
     # to a single role='system' summary message. Not env-overridable by design.
     CHAT_SUMMARIZATION_KEEP_RECENT_TURNS: int = 6
 
+    # Story 10.4b — AWS region / secret-name resolution for the chat canary
+    # loader. AWS_REGION matches .env.example; AWS_SECRETS_PREFIX is the
+    # existing `{project}/{env}` namespace (e.g. "kopiika-ai/prod") set by
+    # App Runner and used by the canary loader to construct the secret name
+    # when CHAT_CANARIES_SECRET_ID is not overridden.
+    AWS_REGION: str = "eu-central-1"
+    AWS_SECRETS_PREFIX: Optional[str] = None
+
+    # Story 10.4b — chat prompt-leak defense layer.
+    #
+    # CHAT_CANARIES_SECRET_ID: Secrets Manager secret NAME (not ARN). When
+    # None, the loader constructs f"{AWS_SECRETS_PREFIX}/chat-canaries".
+    # Rationale in AC #2 / AC #10 / architecture.md L1714-L1721.
+    CHAT_CANARIES_SECRET_ID: Optional[str] = None
+    # CHAT_INPUT_MAX_CHARS: single-source-of-truth for the input validator's
+    # length cap. `input_validator.MAX_CHAT_INPUT_CHARS` is seeded from this
+    # at import and cross-checked. Keeps load-test tuning a config flip.
+    # Rationale in AC #4 / AC #10.
+    CHAT_INPUT_MAX_CHARS: int = 4000
+    # CHAT_CANARY_CACHE_TTL_SECONDS: 15-minute in-process cache for canaries
+    # so each turn doesn't round-trip Secrets Manager. Env-overridable only
+    # for load tests; production value is pinned. Rationale in AC #2.
+    CHAT_CANARY_CACHE_TTL_SECONDS: int = 900
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property

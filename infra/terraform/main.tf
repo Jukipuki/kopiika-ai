@@ -112,6 +112,7 @@ module "app_runner" {
   private_subnet_ids           = module.networking.private_subnet_ids
   app_runner_security_group_id = module.networking.app_runner_security_group_id
   secrets_arns                 = module.secrets.secret_arns
+  chat_canaries_secret_arn     = module.secrets.chat_canaries_secret_arn
 
   agentcore_runtime_arn = var.agentcore_runtime_arn
 }
