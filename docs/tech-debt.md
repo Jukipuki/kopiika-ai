@@ -1437,6 +1437,20 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-093 — UA plural forms mix adjective and noun case (`few` branch) [LOW]
+
+**Where:** [frontend/messages/uk.json:148](../frontend/messages/uk.json#L148) (`completionSummary.newCount` — `few {# нових транзакції}`), and the newly authored `chat.ratelimit.activeCount` in [_bmad-output/planning-artifacts/ux-design-specification.md:2039](../_bmad-output/planning-artifacts/ux-design-specification.md#L2039) (`few {# активних чати}`). Likely repeats elsewhere in `uk.json` wherever an ICU `few` branch pairs an adjective with a noun.
+
+**Problem:** In Ukrainian, after numerals 2/3/4 the adjective + noun must agree in case. The current pattern uses the genitive-plural adjective ("нових", "активних") with the nominative-plural noun ("транзакції", "чати"), which is grammatically mixed. Modern standard Ukrainian expects either full nominative plural ("нові транзакції", "активні чати") or full genitive plural ("нових транзакцій", "активних чатів").
+
+**Why deferred:** The spec row was authored consistent with existing codebase precedent (Developer Guardrail #10 says "authored, not machine-translated" — but also, do not unilaterally diverge from codebase posture). A one-off fix in the chat spec would drift from the rest of `uk.json`. Needs a coordinated sweep with a UA-native reviewer.
+
+**Fix shape:** Have a UA-native reviewer scan every ICU `few {…}` branch in `frontend/messages/uk.json` (and the new `chat.*` keys when Story 10.7 stubs them) and standardize on either nominative-throughout or genitive-throughout agreement. Cross-check against CLDR Ukrainian plural rules. Single follow-up PR touching the strings only (no code). Not blocking any feature.
+
+**Surfaced in:** Story 10.3b code review (2026-04-24)
+
+---
+
 ## Resolved
 
 ### TD-084 — `chat_default.bedrock` ARN missing `-v*:0` suffix [RESOLVED 2026-04-23 — not-a-bug]

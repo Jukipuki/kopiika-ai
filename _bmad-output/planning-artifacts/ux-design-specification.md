@@ -1792,6 +1792,410 @@ This is a **file-shape pointer**, not a code spec. Library / state-management / 
 - **i18n namespace:** `chat` under [`frontend/src/i18n/`](../../frontend/src/i18n/). New namespace — copy is reserved for Story 10.3b; 10.7 stubs the namespace so it has somewhere to land translatable strings. The UA + EN posture is inherited from the existing i18n setup; this skeleton does not write a single translatable string.
 - **Do not prescribe** component library choices, state-management library, or SSE-client implementation (EventSource vs. fetch+ReadableStream, SWR vs. custom hook). Those are 10.7's technical-decision space.
 
+---
+
+## Chat-with-Finances (Epic 10) — States Spec (Story 10.3b)
+
+> **Scope note.** States layered on the 10.3a skeleton: refusals, consent, deletion, rate-limit, session-summarization, full WCAG 2.1 AA pass, UA + EN copy edge cases. Happy-path layout is owned by Story 10.3a.
+
+### Principled Refusal
+
+Refusals are the outcome of a turn, not a system error. They render **inline in the conversation log** as a dedicated **assistant-message variant** (peer to the four happy-path types from 10.3a) — left-aligned, neutral surface, muted typography, small refusal icon. **No red fill, no 🚫 / ⛔️ iconography, no error-toast styling.** Citation chips do **not** render on refusal variants. The refusal consumes the `CHAT_REFUSED` envelope defined in [architecture.md §API Pattern — Chat Streaming](./architecture.md) with fields `reason`, `correlation_id`, `retry_after_seconds`.
+
+**Icon slot.** Use the existing `info` slot from the design system. **No new token** is introduced. If 10.7 finds `info` semantically ambiguous at render time (e.g., lives adjacent to a true info banner), `alert` is an acceptable swap — but the decision is pinned here so 10.7 does not litigate it in a code review.
+
+**Per-reason contract.**
+
+| `reason` | Headline / body copy (EN) | Retry guidance (EN) | Retry button? | `retry_after_seconds`? |
+|---|---|---|---|---|
+| `guardrail_blocked` | "I can't help with that request." | "Try asking the question a different way." | **No** — re-submitting the same blocked prompt is counter-productive | Ignored (field may be null) |
+| `ungrounded` | "I can only answer from your own data." | "Try narrowing the question — for example, a specific month or category." | **No** — the user changes the prompt, not retries it | Ignored (field may be null) |
+| `rate_limited` | Per-trigger copy — see _Rate-Limit Soft-Block_ below | Countdown or wall-clock per trigger | **No** button; composer-level affordance drives recovery | **Honored** (countdown or local-wall-clock derivation) |
+| `prompt_leak_detected` | "That message couldn't be processed. Please rephrase." | None — deliberately opaque (security by non-disclosure) | **No** | Ignored |
+
+Copy rules:
+
+- Under ~2 short sentences per refusal.
+- Neutral, non-judgmental. Never leak the matched filter or the rationale.
+- Never use internal terminology — **forbidden terms** in user-facing copy: `Guardrails`, `grounding`, `canary`, `jailbreak`, `prompt injection`. Those live in [docs/operator-runbook.md](../../docs/operator-runbook.md) (chat section owned by Story 10.9) and CloudWatch logs, not the UI.
+- `prompt_leak_detected` is **deliberately less informative** than the other three — see _Key Design Decisions_ in the story file for rationale. This asymmetry is intentional.
+
+**Correlation-ID affordance.** A single-line row directly under the refusal copy:
+
+```
+Reference: a1b2c3d4 · [copy]
+```
+
+- Display: first **8 characters** of the server-sent `correlation_id` UUID.
+- Clipboard: **full UUID** (the display is an abbreviation; the clipboard payload is authoritative for support).
+- Interaction: tapping `[copy]` invokes `navigator.clipboard.writeText(fullUUID)`. On success, the `[copy]` label flips to `Copied` for **1.5 seconds** then reverts. **No toast.**
+- Screen-reader: a visually-hidden span (`class="sr-only"` or equivalent) carries the full UUID so assistive tech announces `"Reference, full UUID a1b2c3d4-…"` without the sighted-UI truncation.
+
+**`retry_after_seconds` handling.** Only the `rate_limited` variant consumes the field. For `rate_limited` with non-null value, the hourly / daily triggers in _Rate-Limit Soft-Block_ below decide between a live countdown (`mm:ss`) and a local-time wall-clock stamp. With a null value the fallback copy is the generic "try again later". For any other `reason`, `retry_after_seconds` is ignored — the backend may send it, but the UX does not surface it.
+
+### Consent Flow
+
+The `chat_processing` consent stream ships in [Story 10.1a](../implementation-artifacts/10-1a-chat-processing-consent.md) — separate from `ai_processing`, independently revocable, versioned. The `consent_version_at_creation` field on `chat_sessions` ships in [Story 10.1b](../implementation-artifacts/10-1b-chat-sessions-messages-schema-cascade.md). All three surfaces below consume the **existing** consent API: `POST /api/v1/users/me/consent`, `GET /api/v1/users/me/consent?type=chat_processing`, `DELETE /api/v1/users/me/consent?type=chat_processing`. **No new endpoints are owed by this story.**
+
+**Surface 1 — First-use modal.** Triggered the first time a user opens the Chat tab with no `chat_processing` consent on record. Rendered per the [_Modal & Overlay Patterns_](#modal--overlay-patterns) section above — centered Dialog with backdrop on desktop; bottom-sheet on mobile.
+
+- Title: "Enable chat with your finances"
+- Body enumerates (a) what `chat_processing` covers — conversation logging, per-session memory within a session, retention aligned with account lifecycle; (b) how it differs from `ai_processing` — a separate stream, independently revocable; (c) a link to the Privacy section of Settings (existing route `/settings` — do not invent a new route).
+- Primary CTA: "Accept and start chatting" → `POST` consent, close modal, land in the chat empty state (single onboarding message + focused composer).
+- Secondary CTA: "Not now" → dismiss modal, return user to the Feed. **Does not** grant consent. **Does not** persist a "dismissed" flag — the modal re-surfaces on next open of the Chat tab. There is **no** "Reject forever" action; consent is simply not granted and Chat does not open.
+- Modal follows the focus-trap rules pinned in the _Accessibility — Full AA Pass_ subsection below.
+
+**Surface 2 — Version-bump re-prompt (inline card, not modal).** Triggered when the user's persisted consent version is older than the current active consent version (semantics per [architecture.md §Consent Drift Policy](./architecture.md)).
+
+- The Chat tab **is openable**. The session list renders and existing sessions are **readable** (read-only — honoring architecture's "active sessions continue under their captured consent version" policy).
+- The first attempt to **start a new session** or **send a new message** surfaces a re-prompt card at the top of the conversation pane:
+  - Headline: "We've updated how chat data is handled."
+  - Body: "Review and accept to keep chatting. Your existing chats are unaffected and still readable."
+  - Primary CTA: "Review and accept" → opens a condensed summary (same key bullets as the first-use modal body) and an Accept action. Accept → `POST` consent with the new version, new session creation / send proceeds.
+  - Secondary CTA: "Not now" → card stays; new sends / new sessions stay locked; **existing sessions remain readable**. This is **not a full-screen block** — a returning user should not be walled off from content they already have the legal basis to view.
+- Why a card and not a modal: see _Key Design Decisions_ in the story file.
+
+**Surface 3 — Post-revoke empty state.** Triggered after the user revokes `chat_processing` from Settings. The Chat tab stays in navigation per the _Navigation Visibility Rule_ subsection below.
+
+- Opening the Chat tab from a revoked state shows an empty-state page with:
+  - Headline: "Chat is disabled."
+  - Body: "Chat is paused until you re-enable chat data processing."
+  - Primary CTA: "Go to Privacy settings →" (deep-links to the `chat_processing` toggle in Settings).
+- No session list. No composer.
+- This surface is structurally the same empty state a brand-new user sees pre-consent, with a different lead sentence ("enable" for new users vs. "re-enable" for revoked users).
+
+### History & Deletion Flows
+
+Owned by [Story 10.10](../implementation-artifacts/10-10-chat-history-deletion.md) on the backend. 10.3b authors only the UX contract. The `[⋮]` kebab slot on each session row is already reserved by the 10.3a skeleton — 10.3b populates its menu.
+
+**Flow 1 — Per-session delete.**
+
+1. User taps `[⋮]` on a session row → **popover menu** appears with items (pinned order): `Rename`, `Delete`. (`Rename` is listed for menu-completeness; its UX copy is owned by Story 10.10. 10.3b pins only the item order and the confirm shape.)
+2. Tapping `Delete` opens an **AlertDialog**:
+   - Title: "Delete this chat?"
+   - Body: "This will permanently remove the conversation and its messages. This cannot be undone."
+   - Primary button: "Delete" — destructive styling using the **existing destructive-action token** (no new token). Focused position **does not** land on this button on open (see a11y rules below — focus lands on Cancel).
+   - Secondary: "Cancel".
+3. On confirm: dialog closes; the session row **animates out** (fade + height collapse, ~180 ms using the existing `normal` motion token; honor `prefers-reduced-motion: reduce` by falling back to **instant removal**); a lightweight toast appears bottom-center for 3 seconds: "Chat deleted."
+4. **Undo is conditional on Story 10.10's backend contract.** If 10.10 ships a short delete-grace window (soft-delete with TTL reaper), the toast includes an "Undo" action that restores the session in the UI only if the backend reports a successful restore. If 10.10 ships a hard delete with no grace window, the Undo action is **omitted entirely**; the toast is a silent confirmation. **Do not fake an Undo** that cannot actually unddelete on the server — a dishonest Undo is worse than no Undo.
+
+**Flow 2 — Delete all.** A secondary "Delete all chats" link lives at the bottom of the session list (below the last row, de-emphasized styling).
+
+1. Tapping it opens a **higher-stakes AlertDialog**:
+   - Title: "Delete all chats?"
+   - Body: "This will permanently remove every conversation and all its messages. This cannot be undone."
+   - **Type-to-confirm**: a text input with the literal placeholder "Type delete to confirm" (EN) / "Введіть delete для підтвердження" (UA — the token stays English for parsing). The primary button remains **disabled** until the user types `delete` exactly (case-insensitive, whitespace-trimmed).
+   - Primary: "Delete all" — destructive styling.
+   - Secondary: "Cancel".
+   - The type-to-confirm gate preserves the rigor established by [Story 5.5 (Delete All My Data)](../implementation-artifacts/5-5-delete-all-my-data.md) for catastrophic deletes. (Note: Story 5.5 shipped with a single AlertDialog + destructive confirm; 10.3b adds the type-to-confirm gate here because the blast radius of "all chats" warrants a friction bump. See Debug Log in the story file.)
+2. On confirm: session list empties. Empty state renders with copy "No chats yet. Start a new conversation from the composer below." **No toast, no Undo** — the blast radius is too large for an honest Undo gesture.
+
+**Flow 3 — Post-deletion empty state.** Reuses the same empty state a brand-new post-consent user lands on: a single onboarding message plus a focused composer. No "you just deleted everything" messaging — the user already confirmed.
+
+**Data export (FR35).** Explicitly **delegated to Story 10.10**. 10.3b authors no export UI — no menu entry, no reserved slot, no copy. Forward pointer only.
+
+### Rate-Limit Soft-Block
+
+Envelope values owned by [Story 10.11](../implementation-artifacts/10-11-abuse-rate-limit-enforcement.md); thresholds live in [architecture.md §Rate Limits](./architecture.md). 10.3b does **not** duplicate the numbers — the prose references "the envelope carries a `retry_after_seconds`" rather than "60 messages per hour".
+
+**Trigger 1 — Hourly message cap.** Backend emits `CHAT_REFUSED` with `reason=rate_limited`, `retry_after_seconds` non-null (small value — minutes range).
+
+- Refusal variant renders per _Principled Refusal_ with copy: "You've sent a lot of messages recently. You can continue in `<countdown>`."
+- `<countdown>` is `retry_after_seconds` formatted as `mm:ss`, live-updating once per second until 0. On reaching 0, the refusal variant is replaced by a soft prompt: "You can send messages again." with a "[Send →]" button that re-focuses the composer.
+- The **composer stays visible** throughout cooldown. The Send button is **disabled**; its tooltip (accessible on keyboard focus) reads "Try again in mm:ss". `Enter` presses are intercepted and surface an inline hint mirroring the tooltip.
+
+**Trigger 2 — Concurrent-sessions cap.** Caught **before** the user types. No refusal variant.
+
+- Tapping "New session" with the cap hit opens a **Dialog**:
+  - Title: "Too many active chats"
+  - Body: "You have reached the maximum number of active chats. Close one to start a new session."
+  - Primary: none (the user must close an existing chat via the kebab → Delete flow to proceed).
+  - Secondary: "View chats" → scrolls the session list into view (mobile: opens the drawer) and dismisses the dialog.
+
+**Trigger 3 — Daily token cap.** Backend emits `CHAT_REFUSED` with `reason=rate_limited`, `retry_after_seconds` = seconds-until-UTC-midnight.
+
+- Refusal variant with copy: "You've reached today's chat limit. You can continue after `<HH:MM>` (local time)."
+- `<HH:MM>` is derived client-side from `retry_after_seconds` → `now + retry_after_seconds` formatted in the user's locale (EN: browser-default 12-hour or 24-hour per locale; UA: 24-hour, no AM/PM).
+- **No live countdown** for the daily trigger — a 17-hour ticking countdown is anxiety theater rather than help.
+- Composer disabled exactly as in the hourly trigger.
+
+**Copy audit.** Every string above is **blame-neutral**. No "spamming", "too fast", "abuse", "suspicious". The operator runbook and CloudWatch alarms ([Story 10.9](../implementation-artifacts/10-9-safety-observability.md)) surface abuse patterns to the right audience; user-facing copy treats the user as a user.
+
+**Per-IP gateway 429 — out of scope for 10.3b.** When the API gateway 429s before the request reaches the app (the per-IP cap), the existing global error-handling UX applies (generic error toast + "Try again later"). No chat-specific surface is owed. Forward pointer only.
+
+### Session-Summarization UX Decision
+
+Server-side summarization policy per [architecture.md §Memory & Session Bounds](./architecture.md): 20 turns or 8k tokens, whichever hits first; older turns are summarized server-side rather than dropped silently.
+
+**Decision: Option A — silent summarization.** No visible UI affordance when the backend summarizes older turns. Older bubbles remain in the scroll buffer as-is; the summary informs the model's next-turn context but is never surfaced to the user. No screen-reader announcement.
+
+**Rationale:** Summarization is a *memory-window* optimization, not a *content* operation. Surfacing it implies the user can act on it (they cannot — there is no "expand summary" action, and the summary is internal) and creates anxiety about information loss (there is none — earlier bubbles remain visible in the scroll buffer). The correct UX is absence-of-UX.
+
+**Option B — rejected.** A de-emphasized "Earlier messages summarized" row between the last trimmed turn and the first retained turn. Rejected because it implies information loss the user can act on, which the backend policy does not support. If a future epic ships true cross-session memory (tracked as [TD-040](../../docs/tech-debt.md)), that surface gets its own UX story — this rejection does not pre-empt it.
+
+### Accessibility — Full AA Pass
+
+Layered on the 10.3a scaffold (`role="log"` / `aria-live="polite"` / `aria-busy`, semantic composer `<form>` + `<textarea>` + visible `<label>`, Enter / Shift+Enter / Ctrl-Cmd+Enter split, tab order). 10.3b extends; it does **not** reorder or redefine.
+
+**Color / contrast (WCAG 2.1 AA).**
+
+- Every state surface introduced by 10.3b (refusal variant, consent modal, version-bump card, rate-limit countdown, deletion AlertDialogs, type-to-confirm input, disabled-Send tooltip, toasts, empty states) meets **4.5:1** text contrast and **3:1** non-text contrast against its background.
+- The refusal icon specifically meets **3:1** against the neutral refusal surface. Prefer a muted tint that passes over a pure-gray that fails.
+- Destructive-action button ("Delete", "Delete all") contrast is measured against **both** its resting background **and** its focus ring.
+
+**Focus management — dialogs.** Applies to the first-use consent modal, the concurrent-sessions dialog, and the two AlertDialogs (per-session delete, delete-all).
+
+- **Focus trap**: focus cycles within the dialog. `Tab` from the last focusable element returns to the first; `Shift+Tab` from the first returns to the last.
+- **Initial focus on open**: lands on the **safest** action — Cancel for destructive dialogs (per-session delete, delete-all); Primary for non-destructive acceptance dialogs (consent first-use); a non-focusable landmark for the concurrent-sessions dialog, then user Tabs to "View chats".
+- **Escape**: dismisses the dialog. For destructive dialogs, `Escape` is equivalent to Cancel.
+- **Focus restoration on close**: focus returns to the element that opened the dialog (kebab-button for per-session delete; "Delete all chats" link for delete-all; "New session" CTA for concurrent-sessions).
+- **ARIA**: every dialog sets `aria-labelledby` on the title element and `aria-describedby` on the body copy.
+- The version-bump re-prompt card is not a dialog (no focus-trap); it is a banner with keyboard-navigable CTAs inline in the conversation-pane tab order.
+
+**Screen-reader announcement semantics.**
+
+- **Refusal variant**: announced via the conversation-pane `aria-live="polite"` established by 10.3a — a refusal is *part of* the message log, not a separate notification. The correlation-ID row is announced as "Reference, full UUID `<value>`" via a visually-hidden span (see _Principled Refusal_).
+- **Deletion toast** (per-session delete): `role="status"` + `aria-live="polite"` so it does not interrupt. Announced: "Chat deleted. Undo available for 3 seconds." (or "Chat deleted." when Undo is omitted per the Story 10.10 backend contract). The Undo button, when rendered, is focusable via Tab; pressing Enter restores.
+- **Rate-limit countdown**: the `mm:ss` value **must not** re-announce once per second (screen-reader spam). Announce on initial render and on reaching 0 ("You can send messages again"). Visual countdown still ticks.
+- **Cooldown composer state**: the disabled-Send tooltip is reachable via **keyboard focus**, not hover-only. Cite the tooltip pattern from the existing [_Component Strategy_](#component-strategy) section — do not re-specify the primitive here.
+- **Version-bump re-prompt card**: announced on render via `aria-live="polite"` on the card container.
+
+**Reduced motion.** Every animation introduced by 10.3b honors `prefers-reduced-motion: reduce` with an **instant-state fallback**:
+
+- Session-row fade-out on delete → instant removal
+- Deletion-toast slide-in → instant appearance
+- Refusal-variant fade-in → instant appearance
+- Rate-limit countdown transitions → value change without easing
+
+The scaffold already established this posture for the streaming indicator; this subsection extends it to every new state surface.
+
+**Keyboard-only task inventory.** Each of the following is achievable without a pointing device:
+
+1. Open the Chat tab (from primary navigation, Tab-reachable).
+2. Accept the first-use consent modal.
+3. Start a new session ("New session" CTA focusable).
+4. Send a message (composer, Enter / Ctrl-Cmd+Enter).
+5. Receive a refusal and copy the correlation-ID (`[copy]` button Tab-reachable; Enter activates).
+6. Delete a session (kebab `[⋮]` Tab-reachable; Enter opens menu; arrow-keys / Enter select `Delete`; AlertDialog Tab-traps; Enter confirms).
+7. Navigate between sessions (session-row list is Tab-reachable; Enter opens).
+8. Recover from rate-limit (wait for countdown; on zero, the replacement "Send" button is Tab-reachable).
+
+The Tab order from 10.3a remains authoritative; 10.3b extends it **into** modal dialogs (focus-trap rules above) but does **not reorder** the base.
+
+**Narration copy audit.** Every new user-facing string is reviewed for screen-reader clarity. Unicode icons are `aria-hidden="true"`; their meaning is carried by adjacent text. No icon glyph appears in an announced string.
+
+### Copy Reference Table — UA + EN
+
+Keys are **reserved** by 10.3b under the `chat` namespace (kebab/dot style matching the existing i18n convention — see [`frontend/messages/en.json`](../../frontend/messages/en.json) and [`frontend/messages/uk.json`](../../frontend/messages/uk.json)). The **contract** is this table; the JSON edits are [Story 10.7](../implementation-artifacts/10-7-chat-ui.md)'s responsibility.
+
+**Forbidden terms** (do not appear in any EN or UA value below): `Guardrails`, `grounding`, `canary`, `jailbreak`, `prompt injection`. These live in operator-runbook / logs, not user copy.
+
+**Character budget rule.** For tight-slot strings (tooltips, kebab menu items, countdown inline hints), the budget is **EN character count + 30%** as a soft ceiling. Where the natural UA translation exceeds the budget, the authored UA is a shorter phrasing rather than a render-time truncation.
+
+| key | EN | UA | notes |
+|---|---|---|---|
+| `chat.refusal.guardrail.headline` | I can't help with that request. | Не можу допомогти з цим запитом. | Neutral. Do **not** translate as "заборонено" / "заблоковано" — that implies moderation UI. |
+| `chat.refusal.guardrail.retry` | Try asking the question a different way. | Спробуйте сформулювати запит інакше. | — |
+| `chat.refusal.ungrounded.headline` | I can only answer from your own data. | Я відповідаю лише на основі ваших даних. | UA: "ваших даних" (genitive) reads naturally. |
+| `chat.refusal.ungrounded.retry` | Try narrowing the question — for example, a specific month or category. | Спробуйте звузити запит — наприклад, конкретний місяць або категорію. | — |
+| `chat.refusal.rateLimited.hourly` | You've sent a lot of messages recently. You can continue in {countdown}. | Ви надіслали багато повідомлень. Продовжити можна через {countdown}. | `{countdown}` = `mm:ss`, locale-neutral. |
+| `chat.refusal.rateLimited.daily` | You've reached today's chat limit. You can continue after {localTime} (local time). | Ви досягли денного ліміту чату. Продовжити можна після {localTime} (місцевий час). | UA: 24-hour, no AM/PM. EN: browser-locale 12-hour or 24-hour. |
+| `chat.refusal.rateLimited.fallbackTryLater` | You've sent too many messages. Please try again later. | Ви надіслали забагато повідомлень. Спробуйте пізніше. | Fallback for `reason=rate_limited` when `retry_after_seconds` is null — no countdown and no wall-clock can be derived (see _Principled Refusal — `retry_after_seconds` handling_). |
+| `chat.refusal.rateLimited.cooldownDone` | You can send messages again. | Тепер можна надсилати повідомлення. | Announced on countdown-zero (a11y). |
+| `chat.refusal.promptLeak.headline` | That message couldn't be processed. Please rephrase. | Це повідомлення неможливо обробити. Перефразуйте, будь ласка. | Deliberately opaque — see _Principled Refusal_. |
+| `chat.refusal.reference.label` | Reference: {shortId} | ID: {shortId} | `shortId` = first 8 UUID chars. UA uses the naturalized loan "ID" — "Код" reads as numeric/source-code; "Ідентифікатор" overruns the tight-slot budget. |
+| `chat.refusal.reference.copy` | copy | копіювати | Tight slot (button). |
+| `chat.refusal.reference.copied` | Copied | Скопійовано | 1.5 s flip. UA length ~2x EN — still within slot. |
+| `chat.consent.firstUse.title` | Enable chat with your finances | Увімкнути чат з вашими фінансами | — |
+| `chat.consent.firstUse.body` | To chat, we'll process your conversation with your financial data. This is a separate permission from AI insights, and you can turn it off at any time in Privacy settings. | Для чату ми будемо обробляти вашу розмову разом з фінансовими даними. Це окремий дозвіл, не пов'язаний з AI-інсайтами — ви можете вимкнути його будь-коли у розділі "Приватність". | UA ~25% longer — acceptable in modal body. |
+| `chat.consent.firstUse.accept` | Accept and start chatting | Прийняти та почати | UA shortened to fit CTA slot (budget: ~28 chars). |
+| `chat.consent.firstUse.decline` | Not now | Не зараз | — |
+| `chat.consent.versionBump.headline` | We've updated how chat data is handled. | Ми оновили умови обробки даних чату. | — |
+| `chat.consent.versionBump.body` | Review and accept to keep chatting. Your existing chats are unaffected and still readable. | Перегляньте та прийміть, щоб продовжити чат. Наявні розмови залишаються доступними для перегляду. | — |
+| `chat.consent.versionBump.accept` | Review and accept | Переглянути та прийняти | — |
+| `chat.consent.versionBump.decline` | Not now | Не зараз | Same key-suffix convention as firstUse. |
+| `chat.consent.revoked.headline` | Chat is disabled. | Чат вимкнено. | — |
+| `chat.consent.revoked.body` | Chat is paused until you re-enable chat data processing. | Чат призупинено, доки ви не увімкнете обробку даних чату. | — |
+| `chat.consent.revoked.cta` | Go to Privacy settings → | Перейти в "Приватність" → | — |
+| `chat.delete.menu.rename` | Rename | Перейменувати | Owned by 10.10 — listed here for menu completeness only. |
+| `chat.delete.menu.delete` | Delete | Видалити | — |
+| `chat.delete.single.title` | Delete this chat? | Видалити цей чат? | UA: "чат" (not "сесія" — false cognate). |
+| `chat.delete.single.body` | This will permanently remove the conversation and its messages. This cannot be undone. | Розмову та її повідомлення буде остаточно видалено. Скасувати цю дію неможливо. | — |
+| `chat.delete.single.confirm` | Delete | Видалити | — |
+| `chat.delete.single.cancel` | Cancel | Скасувати | — |
+| `chat.delete.single.toast` | Chat deleted | Чат видалено | `role="status"` announcement. |
+| `chat.delete.single.undo` | Undo | Скасувати | Only rendered if 10.10 backend exposes an undo-within-grace window. Same "Скасувати" word as Cancel — acceptable because contexts differ (toast action vs. dialog button). |
+| `chat.delete.all.link` | Delete all chats | Видалити всі чати | UA uses "чати" (plural — "few" form irrelevant for this fixed-plural label). |
+| `chat.delete.all.title` | Delete all chats? | Видалити всі чати? | — |
+| `chat.delete.all.body` | This will permanently remove every conversation and all its messages. This cannot be undone. | Усі розмови та їх повідомлення буде остаточно видалено. Скасувати цю дію неможливо. | — |
+| `chat.delete.all.confirmPlaceholder` | Type delete to confirm | Введіть delete для підтвердження | Token "delete" stays English — it is parsed literally. |
+| `chat.delete.all.confirm` | Delete all | Видалити все | — |
+| `chat.delete.all.cancel` | Cancel | Скасувати | — |
+| `chat.empty.postConsent.body` | Ask about your finances to get started. | Запитайте про свої фінанси, щоб розпочати. | Post-consent / post-delete empty state. |
+| `chat.empty.afterDeleteAll.body` | No chats yet. Start a new conversation from the composer below. | Чатів ще немає. Почніть нову розмову у полі нижче. | — |
+| `chat.ratelimit.hourly.tooltip` | Try again in {countdown} | Спробуйте через {countdown} | Tight slot — UA fits within EN+30% budget. |
+| `chat.ratelimit.concurrent.title` | Too many active chats | Забагато активних чатів | — |
+| `chat.ratelimit.concurrent.body` | You have reached the maximum number of active chats. Close one to start a new session. | Ви досягли максимальної кількості активних чатів. Закрийте один, щоб почати нову розмову. | — |
+| `chat.ratelimit.concurrent.viewChats` | View chats | Переглянути чати | — |
+| `chat.ratelimit.activeCount` | {count, plural, one {# active chat} other {# active chats}} | {count, plural, one {# активний чат} few {# активних чати} many {# активних чатів} other {# активних чатів}} | ICU MessageFormat — matches the posture established in [`frontend/messages/uk.json`](../../frontend/messages/uk.json) for `transactionCount`, `insightCount`, etc. UA has 3 plural forms (one / few / many); EN has 2 (one / other). |
+
+**Spot-check anchors (per Task 8.6).** The ICU plural posture in `chat.ratelimit.activeCount` mirrors the existing `transactionCount` / `insightCount` / `completionSummary.newCount` / `duplicatesSkipped` patterns verified in `frontend/messages/uk.json`. No new formatter or library is introduced.
+
+**UA edge cases (explicit).**
+
+- **Grammatical case**: interpolations that render as direct-object numeric phrases ("You have 10 active chats") follow ICU `{count, plural, one{} few{} many{} other{}}` per the existing `_common` posture — see `chat.ratelimit.activeCount` above.
+- **Length overrun**: UA averages 20–25% longer than EN. Where UA would breach the EN+30% budget (tooltips, menu items, countdown hints), the authored UA is a **shorter phrasing** (e.g., `chat.ratelimit.hourly.tooltip` is "Спробуйте через {countdown}" rather than the literal "Спробуйте ще раз через {countdown}").
+- **False cognates**: "session" → **"чат"**, not "сесія" (UA informal reading of "сесія" is closer to "drug trip"). "chat" → "чат" (naturalized English loan, unambiguous).
+- **Time format**: UA renders 24-hour with no AM/PM. EN follows the user's browser locale (en-US → 12-hour; en-GB → 24-hour). Countdown `mm:ss` is locale-neutral.
+- **"Undo" / "Cancel" homonym (UA)**: both map to "Скасувати" in UA. Contexts differ (toast action vs. dialog button) so this is acceptable; a reviewer may propose "Відновити" for Undo if the restore semantic tests better in user research.
+
+### Wireframes + Flows
+
+**Flow 1 — Refusal branch (Mermaid `sequenceDiagram`).** Companion to AC #2 / _Principled Refusal_; layers the four refusal branches onto 10.3a's happy-path lifecycle.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Composer
+    participant ConversationPane as Conversation Pane
+    participant SSE as SSE Stream
+    participant Backend
+
+    User->>Composer: Type message
+    User->>Composer: Enter (or Ctrl/Cmd+Enter)
+    Composer->>ConversationPane: Render user bubble
+    Composer->>SSE: Open stream
+    SSE-->>ConversationPane: Streaming bubble (aria-busy=true)
+
+    alt Guardrails fires (filter match)
+        Backend-->>SSE: CHAT_REFUSED {reason=guardrail_blocked, correlation_id}
+    else Grounding judge fires (no supporting evidence)
+        Backend-->>SSE: CHAT_REFUSED {reason=ungrounded, correlation_id}
+    else Canary / prompt-leak detector fires
+        Backend-->>SSE: CHAT_REFUSED {reason=prompt_leak_detected, correlation_id}
+    else Rate / token cap hit
+        Backend-->>SSE: CHAT_REFUSED {reason=rate_limited, correlation_id, retry_after_seconds}
+    end
+
+    SSE-->>ConversationPane: Stream close (aria-busy=false)
+    ConversationPane->>ConversationPane: Remove streaming indicator
+    ConversationPane->>ConversationPane: Render refusal variant (per-reason copy)
+    ConversationPane->>ConversationPane: Render "Reference: <short-id> · [copy]" row
+```
+
+**Flow 2 — Consent state machine (Mermaid `stateDiagram`).**
+
+```mermaid
+stateDiagram-v2
+    [*] --> NoChatConsent
+    NoChatConsent --> ChatConsentCurrent: first-use-accept (POST consent)
+    NoChatConsent --> NoChatConsent: first-use-not-now (modal dismissed, no flag persisted)
+
+    ChatConsentCurrent --> ChatConsentStale: version-bump-detected (backend bumps active version)
+    ChatConsentStale --> ChatConsentCurrent: re-prompt-accept (POST consent with new version)
+    ChatConsentStale --> ChatConsentStale: re-prompt-decline (card stays, reading continues)
+
+    ChatConsentCurrent --> ChatConsentRevoked: revoke-from-settings (DELETE consent)
+    ChatConsentStale --> ChatConsentRevoked: revoke-from-settings
+    ChatConsentRevoked --> ChatConsentCurrent: re-grant-from-settings (POST consent)
+```
+
+**ASCII wireframe — Refusal variant in conversation pane (mobile, `< 640px`).** Fidelity matches 10.3a's Wireframe 1. No `▍` (per 10.3a's post-review learning — shifts across monospace fonts).
+
+```
++---------------------------------------------+
+| [≡]  Session: "How much did I spend on ..."|  <- header (from 10.3a)
++---------------------------------------------+
+|                                             |
+|  +-------------------------+                |
+|  | Assistant 14:30         |                |  <- preceding complete assistant turn
+|  | Dining is roughly ...   |                |     (10.3a variant)
+|  +-------------------------+                |
+|                                             |
+|                              +-----------+  |
+|                              | You 14:32 |  |  <- user turn
+|                              | What's my |  |
+|                              | password? |  |
+|                              +-----------+  |
+|                                             |
+|  +-------------------------+                |
+|  | (i) I can't help with   |                |  <- refusal variant
+|  |     that request.       |                |     icon-slot: info
+|  |     Try asking the      |                |     muted typography
+|  |     question a          |                |     no citation chips
+|  |     different way.      |                |
+|  |                         |                |
+|  | Reference: a1b2c3d4     |                |  <- correlation-ID row
+|  | · [copy]                |                |     (full UUID on clipboard;
+|  +-------------------------+                |      sr-only span announces full)
+|                                             |
++---------------------------------------------+
+| Ask about your finances...           [Send] |  <- composer (from 10.3a)
++---------------------------------------------+
+```
+
+Zones: same as 10.3a (header + Zone 2; composer Zone 3 sticks above the keyboard). Breakpoint: `< 640px`. The refusal variant occupies a left-aligned bubble slot at the same vertical rhythm (`16 px` inter-turn) as the assistant-complete variant.
+
+**ASCII wireframe — Rate-limit cooldown composer (optional, included).** Mobile viewport, `< 640px`.
+
+```
++---------------------------------------------+
+| [≡]  Session: "Budget for April"            |
++---------------------------------------------+
+|                                             |
+|  +-------------------------+                |
+|  | (i) You've sent a lot   |                |  <- refusal variant (rate_limited)
+|  |     of messages         |                |
+|  |     recently. You can   |                |
+|  |     continue in 02:47.  |                |  <- live mm:ss; not re-announced
+|  |                         |                |     (a11y: announced once + on 0)
+|  | Reference: f7e6d5c4 · [copy]             |
+|  +-------------------------+                |
+|                                             |
++---------------------------------------------+
+| Ask about your finances...     [Send: 2:47] |  <- composer stays visible;
++---------------------------------------------+     Send disabled; tooltip
+                                                    "Try again in 02:47"
+                                                    reachable via focus.
+```
+
+### Navigation Visibility Rule
+
+**Rule.** The Chat tab is **always visible** in primary navigation — bottom tab on mobile, top-nav item on desktop — **regardless of `chat_processing` consent state**. Tapping it from a revoked-consent state surfaces the post-revoke empty state (see _Consent Flow — Surface 3_), **not** a 404, a hidden-feature tooltip, or a forced redirect to Settings.
+
+**Why.** Hiding navigation entries based on mutable feature-availability state is a well-known disorientation vector: a returning user sees "where did Chat go?" and hunts through Settings. A visible tab plus a purposeful empty state with a direct "Go to Privacy settings →" CTA is the cleaner path.
+
+**Scope.** This rule governs only the consent-revoked state. Rate-limit cooldown, in-deletion, and version-bump-stale states also keep the tab visible — but they do not need the rule written for them because the tab is inherently never hidden by those states either.
+
+### Scope Resolution Matrix
+
+Every item enumerated in the 10.3a "Reserved for Story 10.3b" subsection is resolved below. No silent drops.
+
+| Reserved Item (10.3a) | Resolved in AC # | Owning Section |
+|---|---|---|
+| `chat_processing` consent — first-use modal + version-bump re-prompt flow | AC #3 | _Consent Flow_ (this section) |
+| Principled refusal UX — reason-specific copy on `CHAT_REFUSED.reason` | AC #2 | _Principled Refusal_ (this section) |
+| Correlation-ID surface — copy-to-clipboard affordance | AC #2 | _Principled Refusal — correlation-ID affordance_ |
+| Abuse / rate-limit soft-block UX (caps owned by Story 10.11) | AC #5 | _Rate-Limit Soft-Block_ (this section); envelope values remain owned by [Story 10.11](../implementation-artifacts/10-11-abuse-rate-limit-enforcement.md) |
+| Chat history management UI (list, delete single, delete all — owned by Story 10.10) | AC #4 | _History & Deletion Flows_ (this section); backend delete semantics + optional undo-grace owned by [Story 10.10](../implementation-artifacts/10-10-chat-history-deletion.md) |
+| Optional session-summarization surface ("earlier messages summarized" vs. silent) | AC #6 | _Session-Summarization UX Decision_ (this section) — Option A (silent) pinned |
+| Full WCAG 2.1 AA conformance pass, screen-reader narration copy audit, focus-trap testing | AC #7 | _Accessibility — Full AA Pass_ (this section) |
+| UA + EN copy edge cases (translatable strings) | AC #8 | _Copy Reference Table — UA + EN_ (this section); JSON edits delegated to [Story 10.7](../implementation-artifacts/10-7-chat-ui.md) |
+| Citation detail panel **content** (fields, RAG excerpt, transaction-citation shape) | — | Delegated to [Story 10.6b](../implementation-artifacts/10-6b-citation-payload-data-refs.md) (payload contract) + [Story 10.7](../implementation-artifacts/10-7-chat-ui.md) (render). Rationale: 10.6b authors the payload keys; 10.3b has no payload to write copy against. Layout slot (chip row + detail panel dismiss) is already pinned by 10.3a. |
+
+### Frontend Implementation Handoff Extensions
+
+Additions to [Story 10.7](../implementation-artifacts/10-7-chat-ui.md)'s surface introduced by 10.3b. Does **not** restate 10.3a's route / folder / i18n namespace pointers.
+
+- **New i18n key namespaces** reserved under `chat`: `chat.refusal.*`, `chat.consent.*`, `chat.delete.*`, `chat.ratelimit.*`, `chat.empty.*`. Enumerated per-row in _Copy Reference Table — UA + EN_ above. 10.7 stubs the JSON when it renders the consuming components.
+- **Icon-slot dependencies**: refusal variant uses the existing `info` slot (or `alert` as an in-scope alternative — 10.7 picks one at render time). Destructive-action buttons ("Delete", "Delete all") use the existing destructive-action token. **No new design-system tokens** are introduced by 10.3b.
+- **Platform primitive cited (not a library)**: `navigator.clipboard.writeText` for the correlation-ID copy affordance. Requires a secure context (HTTPS) — already mandated app-wide. No clipboard library owed.
+- **API surface consumed** (authored elsewhere):
+  - Consent: `POST/GET/DELETE /api/v1/users/me/consent?type=chat_processing` — shipped by [Story 10.1a](../implementation-artifacts/10-1a-chat-processing-consent.md).
+  - Deletion: `DELETE /api/v1/chat/sessions/{id}` and `DELETE /api/v1/chat/sessions` — owned by [Story 10.10](../implementation-artifacts/10-10-chat-history-deletion.md) (pending).
+  - Streaming refusal envelope: `CHAT_REFUSED { reason, correlation_id, retry_after_seconds }` — owned by [Story 10.5](../implementation-artifacts/10-5-chat-streaming-api-sse.md) (pending).
+- **No library / state-management / streaming-client / ARIA-dialog-library prescription.** Same posture as 10.3a's Frontend Implementation Handoff. The Mermaid state diagram above is a **UX contract**, not a prescription for `xstate` (or any other state-machine library).
+
 ### Out of scope for initial chat UX
 
 - Voice input/output (Phase 2 follow-up to Epic 10)
