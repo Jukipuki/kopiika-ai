@@ -14,8 +14,18 @@ from app.agents.chat.session_handler import (
     get_chat_session_handler,
     terminate_all_user_sessions_fail_open,
 )
+from app.agents.chat.tools import CHAT_TOOL_MANIFEST_VERSION, TOOL_ALLOWLIST
+from app.agents.chat.tools.dispatcher import ToolResult
+from app.agents.chat.tools.tool_errors import (
+    ChatToolAuthorizationError,
+    ChatToolExecutionError,
+    ChatToolLoopExceededError,
+    ChatToolNotAllowedError,
+    ChatToolSchemaError,
+)
 
 __all__ = [
+    "CHAT_TOOL_MANIFEST_VERSION",
     "ChatConfigurationError",
     "ChatInputBlockedError",
     "ChatPromptLeakDetectedError",
@@ -24,8 +34,15 @@ __all__ = [
     "ChatSessionHandle",
     "ChatSessionHandler",
     "ChatSessionTerminationFailed",
+    "ChatToolAuthorizationError",
+    "ChatToolExecutionError",
+    "ChatToolLoopExceededError",
+    "ChatToolNotAllowedError",
+    "ChatToolSchemaError",
     "ChatTransientError",
     "ChatTurnResponse",
+    "TOOL_ALLOWLIST",
+    "ToolResult",
     "get_chat_session_handler",
     "terminate_all_user_sessions_fail_open",
 ]

@@ -1,7 +1,7 @@
 import hashlib
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
@@ -101,3 +101,41 @@ async def get_transactions_for_user(
     next_cursor = str(items[-1].id) if has_more and items else None
 
     return PaginatedResult(items=items, total=total, next_cursor=next_cursor, has_more=has_more)
+
+
+async def get_transactions_for_chat(
+    session: SQLModelAsyncSession,
+    user_id: uuid.UUID,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    category: str | None = None,
+    limit: int = 50,
+) -> tuple[list[Transaction], bool]:
+    """Return ``(rows, truncated)`` for the chat ``get_transactions`` tool.
+
+    User-scoped by ``user_id`` — the WHERE clause always pins to the caller;
+    optional filters (inclusive date range, exact category, row limit) are
+    layered on top. Fetches ``limit + 1`` rows so truncation can be reported
+    accurately. Ordered by ``date DESC, created_at DESC`` to match the
+    cursor-paginated REST path for consistency.
+
+    Owned by the service layer so the chat tool handler does not write raw
+    SQL — preserves the Epic 10 invariant that user-data access paths live
+    in ``app.services``.
+    """
+    stmt = (
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .order_by(col(Transaction.date).desc(), col(Transaction.created_at).desc())
+    )
+    if start_date is not None:
+        stmt = stmt.where(Transaction.date >= datetime.combine(start_date, time.min))
+    if end_date is not None:
+        stmt = stmt.where(Transaction.date <= datetime.combine(end_date, time.max))
+    if category is not None:
+        stmt = stmt.where(Transaction.category == category)
+    stmt = stmt.limit(limit + 1)
+    rows = list((await session.exec(stmt)).all())
+    truncated = len(rows) > limit
+    return rows[:limit], truncated

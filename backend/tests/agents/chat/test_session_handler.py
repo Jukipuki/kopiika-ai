@@ -639,3 +639,143 @@ async def test_terminate_all_user_sessions_fail_open_wrapper_skips_non_bedrock(
             await sh.terminate_all_user_sessions_fail_open(db, consented_user)
     finally:
         sh._reset_singleton_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Story 10.4c — tool-row persistence + tool-error handling
+# ---------------------------------------------------------------------------
+
+
+def _tool_result(
+    tool_name: str = "get_transactions",
+    ok: bool = True,
+    payload: dict | None = None,
+    error_kind: str | None = None,
+    tool_use_id: str = "tu_1",
+    elapsed_ms: int = 1,
+):
+    from app.agents.chat.tools.dispatcher import ToolResult
+
+    return ToolResult(
+        tool_use_id=tool_use_id,
+        tool_name=tool_name,
+        ok=ok,
+        payload=payload or {"rows": [], "row_count": 0, "truncated": False},
+        error_kind=error_kind,
+        elapsed_ms=elapsed_ms,
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_turn_persists_tool_rows_in_order(
+    fk_engine, consented_user, handler, fake_backend
+):
+    """Happy-path tool turn: backend returns 2 tool_calls; the handler persists
+    ``role='tool'`` rows with ``filter_source='tool_dispatcher'`` BEFORE the
+    assistant row.
+    """
+    tc1 = _tool_result(tool_name="get_transactions", tool_use_id="tu_1")
+    tc2 = _tool_result(tool_name="get_profile", tool_use_id="tu_2")
+    fake_backend.invoke.return_value = ChatInvocationResult(
+        text="summary",
+        input_tokens=5,
+        output_tokens=9,
+        token_source="model",
+        tool_calls=(tc1, tc2),
+    )
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        await handler.send_turn(db, handle, "show me the numbers")
+
+    async with SQLModelAsyncSession(fk_engine) as db:
+        result = await db.exec(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == handle.db_session_id)  # type: ignore[arg-type]
+            .order_by(ChatMessage.created_at)  # type: ignore[arg-type]
+        )
+        rows = [row[0] for row in result.all()]
+    assert [r.role for r in rows] == ["user", "tool", "tool", "assistant"]
+    for tool_row in rows[1:3]:
+        assert tool_row.redaction_flags["filter_source"] == "tool_dispatcher"
+        assert tool_row.guardrail_action == "none"
+    assert rows[1].redaction_flags["tool_name"] == "get_transactions"
+    assert rows[2].redaction_flags["tool_name"] == "get_profile"
+
+
+@pytest.mark.asyncio
+async def test_send_turn_chat_turn_completed_carries_new_fields(
+    fk_engine, consented_user, handler, fake_backend, caplog
+):
+    fake_backend.invoke.return_value = ChatInvocationResult(
+        text="ok",
+        input_tokens=1,
+        output_tokens=1,
+        token_source="model",
+        tool_calls=(_tool_result(),),
+    )
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with caplog.at_level("INFO"):
+            await handler.send_turn(db, handle, "hi")
+
+    events = [r for r in caplog.records if r.message == "chat.turn.completed"]
+    assert events
+    ev = events[-1]
+    from app.agents.chat.tools import CHAT_TOOL_MANIFEST_VERSION
+
+    assert getattr(ev, "tool_manifest_version", None) == CHAT_TOOL_MANIFEST_VERSION
+    assert getattr(ev, "tool_call_count", None) == 1
+    assert getattr(ev, "tool_hop_count", None) == 1
+
+
+@pytest.mark.asyncio
+async def test_send_turn_loop_exceeded_persists_partial_tool_rows(
+    fk_engine, consented_user, handler, fake_backend, caplog
+):
+    from app.agents.chat.tools.tool_errors import ChatToolLoopExceededError
+
+    err = ChatToolLoopExceededError(hops=6, last_tool_name="get_transactions")
+    err.tool_calls_so_far = (
+        _tool_result(tool_name="get_transactions", tool_use_id=f"tu_{i}")
+        for i in range(5)
+    )
+    # tuple() realization — AsyncMock side_effect raises the instance we attach.
+    err.tool_calls_so_far = tuple(err.tool_calls_so_far)
+    fake_backend.invoke.side_effect = err
+
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with caplog.at_level("ERROR"):
+            with pytest.raises(ChatToolLoopExceededError):
+                await handler.send_turn(db, handle, "loop me")
+
+    async with SQLModelAsyncSession(fk_engine) as db:
+        result = await db.exec(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == handle.db_session_id)  # type: ignore[arg-type]
+            .order_by(ChatMessage.created_at)  # type: ignore[arg-type]
+        )
+        rows = [row[0] for row in result.all()]
+    roles = [r.role for r in rows]
+    assert roles.count("tool") == 5
+    assert "assistant" not in roles
+    assert any(r.message == "chat.tool.loop_exceeded" for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_send_turn_authorization_error_emits_event(
+    fk_engine, consented_user, handler, fake_backend, caplog
+):
+    from app.agents.chat.tools.tool_errors import ChatToolAuthorizationError
+
+    err = ChatToolAuthorizationError(tool_name="get_transactions")
+    err.tool_calls_so_far = ()
+    fake_backend.invoke.side_effect = err
+
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with caplog.at_level("ERROR"):
+            with pytest.raises(ChatToolAuthorizationError):
+                await handler.send_turn(db, handle, "get me someone else's data")
+
+    assert any(r.message == "chat.turn.aborted_authorization" for r in caplog.records)

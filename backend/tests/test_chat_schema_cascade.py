@@ -94,6 +94,88 @@ async def _seed_session_with_messages(
     return chat_id, msg_ids
 
 
+async def _seed_session_with_tool_rows(
+    session: SQLModelAsyncSession, user_id: uuid.UUID
+) -> tuple[uuid.UUID, list[uuid.UUID]]:
+    """Story 10.4c cascade extension — seed a session with role='tool' rows."""
+    chat_id = uuid.uuid4()
+    tool_msg_ids = [uuid.uuid4(), uuid.uuid4()]
+    session.add(
+        ChatSession(
+            id=chat_id,
+            user_id=user_id,
+            consent_version_at_creation=CURRENT_CHAT_CONSENT_VERSION,
+        )
+    )
+    await session.flush()
+    for mid in tool_msg_ids:
+        session.add(
+            ChatMessage(
+                id=mid,
+                session_id=chat_id,
+                role="tool",
+                content='{"tool_name":"get_transactions","ok":true,"payload":{}}',
+                redaction_flags={
+                    "filter_source": "tool_dispatcher",
+                    "tool_name": "get_transactions",
+                    "error_kind": None,
+                },
+            )
+        )
+    await session.commit()
+    return chat_id, tool_msg_ids
+
+
+# ==================== Story 10.4c AC #8 / #12(e): role='tool' rows cascade ====================
+
+
+@pytest.mark.asyncio
+async def test_role_tool_rows_cascade_on_user_delete(fk_engine):
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as session:
+        await session.exec(text("PRAGMA foreign_keys = ON"))
+        user = await _make_user(session)
+        _, tool_msg_ids = await _seed_session_with_tool_rows(session, user.id)
+
+        await session.exec(
+            text("DELETE FROM users WHERE id = :uid").bindparams(uid=str(user.id))
+        )
+        await session.commit()
+
+        msg_count = (await session.exec(
+            text(
+                "SELECT COUNT(*) FROM chat_messages WHERE id IN "
+                "(" + ",".join(f"'{m}'" for m in tool_msg_ids) + ")"
+            )
+        )).one()
+        assert msg_count[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_role_tool_rows_cascade_on_consent_revoke(fk_engine):
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as session:
+        await session.exec(text("PRAGMA foreign_keys = ON"))
+        user = await _make_user(session)
+        await consent_service.grant_consent(
+            session=session,
+            user=user,
+            consent_type=CONSENT_TYPE_CHAT_PROCESSING,
+            version=CURRENT_CHAT_CONSENT_VERSION,
+            locale="en",
+            ip=None,
+            user_agent=None,
+        )
+        _, tool_msg_ids = await _seed_session_with_tool_rows(session, user.id)
+
+        await consent_service.revoke_chat_consent(
+            session=session, user=user, locale="en", ip=None, user_agent=None
+        )
+
+        remaining = list((await session.exec(
+            select(ChatMessage).where(ChatMessage.id.in_(tool_msg_ids))
+        )).all())
+        assert remaining == []
+
+
 # ==================== AC #7(a): user delete cascades sessions + messages ====================
 
 

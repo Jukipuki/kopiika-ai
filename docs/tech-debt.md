@@ -1521,6 +1521,76 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-100 — Revisit `MAX_TOOL_HOPS=5` after first 30 days of chat traffic [LOW]
+
+**Where:** [backend/app/agents/chat/chat_backend.py](../backend/app/agents/chat/chat_backend.py) — module-level `MAX_TOOL_HOPS` constant.
+
+**Problem:** Story 10.4c pins `MAX_TOOL_HOPS=5` as a conservative safety bound on the tool-use loop. The distribution of real `tool_hop_count` values in production is unknown; the ceiling may be too tight (well-formed multi-tool queries forced into `ChatToolLoopExceededError`) or too loose (adversarial prompts get five free hops before the hard refusal).
+
+**Why deferred:** Needs real traffic + the Story 10.9 dashboard for `tool_hop_count` percentiles to make a data-driven change. A blind tuning pass today would be speculative.
+
+**Fix shape:** After ~30 days of chat traffic, inspect the p99 / p999 of `tool_hop_count` from the `chat.turn.completed` log events. Raise the cap if legitimate chats cluster at 4–5; lower it if the bulk sits at ≤2 and the tail is adversarial. Constant lives at module top so the edit is a one-line change in a new story.
+
+**Surfaced in:** Story 10.4c (2026-04-24) — AC #13.
+
+---
+
+### TD-101 — Widen canary scan to tool-result payloads if leak-via-echo surfaces [LOW]
+
+**Where:** [backend/app/agents/chat/canary_detector.py](../backend/app/agents/chat/canary_detector.py) + [backend/app/agents/chat/session_handler.py](../backend/app/agents/chat/session_handler.py) Step 5.
+
+**Problem:** Story 10.4c scopes the canary scan to `result.text` only (the model's final response). A determined attacker could ask the model to emit a canary inside a `tool_use` input (e.g. `get_transactions(description="${canary_a}")`); the dispatcher validates the pydantic schema but does not scan the input for canary tokens, and the tool payload persists to `chat_messages` with `role='tool'`.
+
+**Why deferred:** No known adversarial path today; the canary tokens are long base64-like strings unlikely to appear in legitimate tool inputs, and Story 10.8a's red-team corpus is the right place to surface whether this is a real leak vector. Paying the scan cost on every tool dispatch is not warranted until we see a corpus hit.
+
+**Fix shape:** If Story 10.8a / 10.8b's safety harness produces any `chat.canary.leaked` hit whose forensic shows the canary originated from a tool payload (not `response.text`), add canary scanning to (a) `dispatch_tool`'s `invocation.raw_input` serialization and (b) `ToolResult.payload` before persistence. Peer of TD-093 (Story 10.4b's unicode-normalization extension) — both widen the canary-scan surface.
+
+**Surfaced in:** Story 10.4c (2026-04-24) — AC #13.
+
+---
+
+### TD-102 — Consider a cross-user data-access static check for chat tools [LOW]
+
+**Where:** [backend/.ruff.toml](../backend/.ruff.toml) or a standalone Python lint under `backend/scripts/`.
+
+**Problem:** The tool handlers in `backend/app/agents/chat/tools/` thread `user_id` into every service call by convention, but nothing enforces this at lint time. A future handler that forgets the filter — or widens it — passes code review unless a human notices. The `no-write-ops` AST grep in `test_tool_manifest.py` covers INSERT/UPDATE/DELETE imports but does not verify `user_id` threading.
+
+**Why deferred:** No cross-user bug has been observed in chat; the failure mode is exotic (requires a new handler to be authored without `user_id` in the ORM filter). The hand-review posture + the dispatcher's `PermissionError → ChatToolAuthorizationError` mapping are sufficient belt-and-braces for now.
+
+**Fix shape:** A custom lint rule (either a ruff plugin or a standalone AST walker) that fails if any function in `app.agents.chat.tools.*` performs a `session.exec(...)` / `db.exec(...)` whose WHERE clause does not reference `user_id`. Hook into CI alongside the existing ruff job. Effort: ~1 day once a cross-user bug or close call justifies the tooling investment.
+
+**Surfaced in:** Story 10.4c (2026-04-24) — AC #13.
+
+---
+
+### TD-103 — `tool_hop_count` is a duplicate of `tool_call_count` [LOW]
+
+**Where:** [backend/app/agents/chat/session_handler.py:473-480](../backend/app/agents/chat/session_handler.py#L473-L480)
+
+**Problem:** Story 10.4c's `chat.turn.completed` event carries both `tool_call_count` and `tool_hop_count`, but the handler computes the two from the same number (`len(result.tool_calls)`) because the backend does not expose its loop-level `hops` counter. Under the current series-execution loop the fields are guaranteed equal, so Story 10.9 dashboards cannot distinguish "5 tools in 1 hop" from "5 tools in 5 hops" — the exact split the field was meant to capture.
+
+**Why deferred:** Surfaced in Story 10.4c code review. Fixing requires adding a `hops` field to `ChatInvocationResult` (trivial) and threading it through the handler — sized to about a half-hour of work, but the value is only realized once Story 10.9 builds the per-turn tool dashboards that need the distinction.
+
+**Fix shape:** Add `tool_hop_count: int` to `ChatInvocationResult`, populate it from the backend's `hops` counter at `chat_backend.py`, and read it in the handler's `chat.turn.completed` emit instead of re-deriving from `tool_call_count`.
+
+**Surfaced in:** Story 10.4c code review (2026-04-24).
+
+---
+
+### TD-104 — `savings_ratio` silently drops non-int values [LOW]
+
+**Where:** [backend/app/agents/chat/tools/profile_tool.py:104-108](../backend/app/agents/chat/tools/profile_tool.py#L104-L108)
+
+**Problem:** The profile tool reads `latest.breakdown["savings_ratio"]` and only populates the field when `isinstance(raw, int)`. If a future schema or scoring change stores the ratio as a float (likely for percentage fidelity), the tool silently returns `None` with no log — the model will answer "no savings data available" even though the value is present on the health-score row.
+
+**Why deferred:** No current code path emits a float here; the guard is precautionary. Leaving it as a tech-debt entry so a future breakdown-shape change has an explicit pickup point rather than a hard-to-find silent drop.
+
+**Fix shape:** Replace `isinstance(raw, int)` with `isinstance(raw, (int, float))` + an `int(round(raw))` coercion, OR add a single `logger.warning("chat.tool.profile.savings_ratio_dropped", extra={"raw_type": type(raw).__name__})` when the guard rejects a present-but-unexpected value.
+
+**Surfaced in:** Story 10.4c code review (2026-04-24).
+
+---
+
 ## Resolved
 
 ### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [RESOLVED 2026-04-24 — AWS CLI v2.34.35 ships the binding]

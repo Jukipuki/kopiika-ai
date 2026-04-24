@@ -29,7 +29,8 @@ via ``get_llm_client()`` — a reduction operation where cost/latency beats
 quality. A future cost-optimization pass must keep this split.
 
 # 10.4b landed: system prompt + input validator + canary scan ship here.
-# Downstream: 10.4c adds tool manifest; 10.5 wraps send_turn in an SSE streaming wrapper + CHAT_REFUSED envelope; 10.6a tunes grounding at Guardrail attach time.
+# 10.4c landed: tool manifest + dispatcher + tool-loop in DirectBedrockBackend + role='tool' persistence.
+# Downstream: 10.5 wraps send_turn in an SSE streaming wrapper + CHAT_REFUSED envelope; 10.6a tunes grounding at Guardrail attach time; 10.6b reads role='tool' rows for citation assembly.
 # ADR: docs/adr/0004-chat-runtime-phasing.md (Phase A vs B split — handler API stable across phases).
 """
 
@@ -74,6 +75,12 @@ from app.agents.chat.system_prompt import (
     CHAT_SYSTEM_PROMPT_VERSION,
     render_system_prompt,
 )
+from app.agents.chat.tools import CHAT_TOOL_MANIFEST_VERSION
+from app.agents.chat.tools.tool_errors import (
+    ChatToolAuthorizationError,
+    ChatToolLoopExceededError,
+    ChatToolNotAllowedError,
+)
 from app.core.config import settings
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
@@ -85,6 +92,26 @@ logger = logging.getLogger(__name__)
 def _now() -> datetime:
     # Match the ChatSession model convention — tz-naive UTC.
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _serialize_tool_call(tc: object) -> str:
+    """Serialize a ``ToolResult`` for persistence as ``ChatMessage.content``.
+
+    The resulting JSON string is what Story 10.6b's citation assembler
+    deserializes when building per-message citations.
+    """
+    import json as _json
+
+    return _json.dumps(
+        {
+            "tool_name": getattr(tc, "tool_name", None),
+            "ok": getattr(tc, "ok", None),
+            "payload": getattr(tc, "payload", None),
+            "error_kind": getattr(tc, "error_kind", None),
+            "elapsed_ms": getattr(tc, "elapsed_ms", None),
+        },
+        default=str,
+    )
 
 
 def _hash_user_id(user_id: uuid.UUID) -> str:
@@ -296,7 +323,7 @@ class ChatSessionHandler:
                 correlation_id=correlation_id,
             )
 
-        # Step 4 — invoke backend with hardened system prompt.
+        # Step 4 — invoke backend with hardened system prompt + tool context.
         context_messages = history[:-1]
         try:
             result = await self._backend.invoke(
@@ -304,7 +331,72 @@ class ChatSessionHandler:
                 context_messages=context_messages,
                 user_message=user_message,
                 system_prompt=rendered.text,
+                user_id=handle.user_id,
+                db=db,
             )
+        except (
+            ChatToolLoopExceededError,
+            ChatToolNotAllowedError,
+            ChatToolAuthorizationError,
+        ) as exc:
+            # Step 4.5 — tool-loop hard failure. Persist the forensic tool
+            # rows that DID execute (they carry value — the loop got stuck
+            # somewhere concrete), bump last_active_at, emit the right
+            # observability event, and re-raise for 10.5's SSE translator
+            # to convert into CHAT_REFUSED(reason=tool_blocked).
+            partial_calls = getattr(exc, "tool_calls_so_far", ()) or ()
+            for tc in partial_calls:
+                db.add(
+                    ChatMessage(
+                        session_id=handle.db_session_id,
+                        role="tool",
+                        content=_serialize_tool_call(tc),
+                        guardrail_action="none" if tc.ok else "blocked",
+                        redaction_flags={
+                            "filter_source": "tool_dispatcher",
+                            "tool_name": tc.tool_name,
+                            "error_kind": tc.error_kind,
+                        },
+                    )
+                )
+            await db.exec(
+                sa_update(ChatSession)
+                .where(ChatSession.id == handle.db_session_id)
+                .values(last_active_at=_now())
+            )
+            await db.commit()
+            if isinstance(exc, ChatToolLoopExceededError):
+                logger.error(
+                    "chat.tool.loop_exceeded",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "db_session_id": str(handle.db_session_id),
+                        "hops": exc.hops,
+                        "last_tool_name": exc.last_tool_name,
+                    },
+                )
+            elif isinstance(exc, ChatToolAuthorizationError):
+                # The dispatcher already logged chat.tool.authorization_failed
+                # with the per-tool detail. We add a session-level breadcrumb
+                # so the handler slice of the pipeline shows the refusal.
+                logger.error(
+                    "chat.turn.aborted_authorization",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "db_session_id": str(handle.db_session_id),
+                        "tool_name": exc.tool_name,
+                    },
+                )
+            else:  # ChatToolNotAllowedError at the loop-level guard
+                logger.error(
+                    "chat.turn.aborted_tool_not_allowed",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "db_session_id": str(handle.db_session_id),
+                        "tool_name": exc.tool_name,
+                    },
+                )
+            raise
         except Exception:
             # Backend already translated to ChatConfigurationError / ChatTransientError.
             raise
@@ -347,7 +439,24 @@ class ChatSessionHandler:
             )
             raise
 
-        # Step 6 — persist assistant turn + bump last_active_at atomically.
+        # Step 6 — persist tool rows + assistant turn atomically.
+        # Tool rows come BEFORE the assistant row (by insertion order and
+        # by created_at because the assistant row is added last in the txn).
+        # Story 10.6b's citation assembler reads these rows later.
+        for tc in result.tool_calls:
+            db.add(
+                ChatMessage(
+                    session_id=handle.db_session_id,
+                    role="tool",
+                    content=_serialize_tool_call(tc),
+                    guardrail_action="none" if tc.ok else "blocked",
+                    redaction_flags={
+                        "filter_source": "tool_dispatcher",
+                        "tool_name": tc.tool_name,
+                        "error_kind": tc.error_kind,
+                    },
+                )
+            )
         assistant_row = ChatMessage(
             session_id=handle.db_session_id,
             role="assistant",
@@ -361,6 +470,14 @@ class ChatSessionHandler:
         )
         await db.commit()
 
+        # tool_hop_count: a single AIMessage iteration may emit multiple
+        # tool_use blocks that we dispatch in series, collapsing to one hop.
+        # Approximate hop count as the number of tool-groupings; for the
+        # current series-execution loop each invocation == one hop, so we
+        # count unique ``elapsed_ms + tool_use_id`` groupings. Simpler proxy:
+        # report tool_call_count for both, and let Story 10.9 split if needed.
+        tool_call_count = len(result.tool_calls)
+        tool_hop_count = tool_call_count
         logger.info(
             "chat.turn.completed",
             extra={
@@ -374,6 +491,9 @@ class ChatSessionHandler:
                 "system_prompt_version": CHAT_SYSTEM_PROMPT_VERSION,
                 "input_validator_version": INPUT_VALIDATOR_VERSION,
                 "canary_set_version_id": canaries.version_id,
+                "tool_manifest_version": CHAT_TOOL_MANIFEST_VERSION,
+                "tool_call_count": tool_call_count,
+                "tool_hop_count": tool_hop_count,
             },
         )
         return ChatTurnResponse(

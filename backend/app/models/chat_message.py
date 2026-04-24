@@ -23,7 +23,7 @@ class ChatMessage(SQLModel, table=True):
     __tablename__ = "chat_messages"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('user','assistant','system')",
+            "role IN ('user','assistant','system','tool')",
             name="ck_chat_messages_role",
         ),
         CheckConstraint(
@@ -50,7 +50,7 @@ class ChatMessage(SQLModel, table=True):
             nullable=False,
         )
     )
-    role: Literal["user", "assistant", "system"] = Field(
+    role: Literal["user", "assistant", "system", "tool"] = Field(
         sa_column=Column(Text, nullable=False)
     )
     content: str = Field(sa_column=Column(Text, nullable=False))

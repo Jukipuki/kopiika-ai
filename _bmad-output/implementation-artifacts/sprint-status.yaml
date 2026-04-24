@@ -222,7 +222,7 @@ development_status:
   10-3b-chat-ux-states-spec: done
   10-4a-agentcore-session-handler-memory-bounds: done
   10-4b-system-prompt-hardening-canaries: done
-  10-4c-tool-manifest-read-only: backlog
+  10-4c-tool-manifest-read-only: done
   10-5-chat-streaming-api-sse: backlog
   10-6a-grounding-enforcement-harness: backlog
   10-6b-citation-payload-data-refs: backlog
