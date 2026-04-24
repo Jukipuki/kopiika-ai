@@ -217,7 +217,7 @@ development_status:
   epic-10: in-progress
   10-1a-chat-processing-consent: done
   10-1b-chat-sessions-messages-schema-cascade: done
-  10-2-bedrock-guardrails-configuration: backlog
+  10-2-bedrock-guardrails-configuration: done
   10-3a-chat-ux-skeleton: backlog
   10-3b-chat-ux-states-spec: backlog
   10-4a-agentcore-session-handler-memory-bounds: backlog

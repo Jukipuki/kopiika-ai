@@ -49,9 +49,8 @@ bedrock_invocation_arns = [
   "arn:aws:bedrock:eu-north-1::foundation-model/amazon.nova-micro-v1:0",
 ]
 
-# Story 10.2 Guardrail not yet provisioned; account-scoped wildcard default is
-# carried from variables.tf. Flip to concrete ARN when 10.2 lands.
-# bedrock_guardrail_arn = "arn:aws:bedrock:eu-central-1:573562677570:guardrail/<id>"
+# Story 10.2 Guardrail is now module-owned (module.bedrock_guardrail). ARN
+# flows to module.ecs at plan time; no tfvars override needed.
 
 # Story 10.4a AgentCore runtime not yet provisioned; wildcard default carried
 # from variables.tf. Flip to concrete ARN when 10.4a lands.

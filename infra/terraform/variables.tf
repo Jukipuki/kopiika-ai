@@ -144,12 +144,6 @@ variable "bedrock_invocation_arns" {
   default     = []
 }
 
-variable "bedrock_guardrail_arn" {
-  description = "ARN for the Bedrock Guardrail resource (Story 10.2). Wildcard default until 10.2 provisions a concrete Guardrail."
-  type        = string
-  default     = "arn:aws:bedrock:eu-central-1:*:guardrail/*"
-}
-
 variable "agentcore_runtime_arn" {
   description = "ARN for the Bedrock AgentCore runtime (Story 10.4a). Wildcard default until 10.4a provisions a concrete runtime."
   type        = string

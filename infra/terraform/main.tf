@@ -116,6 +116,19 @@ module "app_runner" {
   agentcore_runtime_arn = var.agentcore_runtime_arn
 }
 
+# --- Bedrock Guardrail (Story 10.2) ---
+# Prod-only: dev/staging run zero chat traffic (no AgentCore runtime, no chat
+# UI in those envs), so a Guardrail would be pure spend. Flip the gate if
+# chat ever lands in staging.
+module "bedrock_guardrail" {
+  source = "./modules/bedrock-guardrail"
+  count  = var.environment == "prod" ? 1 : 0
+
+  project_name                = var.project_name
+  environment                 = var.environment
+  observability_sns_topic_arn = var.observability_sns_topic_arn
+}
+
 # --- ECS Fargate ---
 module "ecs" {
   source = "./modules/ecs"
@@ -134,7 +147,7 @@ module "ecs" {
   github_repo           = var.github_repo
 
   bedrock_invocation_arns   = var.bedrock_invocation_arns
-  bedrock_guardrail_arn     = var.bedrock_guardrail_arn
+  bedrock_guardrail_arns    = try(module.bedrock_guardrail[0].guardrail_arns, [])
   github_bedrock_ci_enabled = var.github_bedrock_ci_enabled
 
   enable_observability_alarms = var.enable_observability_alarms

@@ -64,13 +64,14 @@ variable "bedrock_invocation_arns" {
   default     = []
 }
 
-# `bedrock_guardrail_arn` carries the Story 10.2 Guardrail identifier. Account-
-# scoped wildcard default narrows to a concrete ARN when 10.2 lands (set via
-# per-env tfvars, no HCL edit needed).
-variable "bedrock_guardrail_arn" {
-  description = "ARN for the Bedrock Guardrail resource (Story 10.2). Wildcard default until 10.2 provisions a concrete Guardrail."
-  type        = string
-  default     = "arn:aws:bedrock:eu-central-1:*:guardrail/*"
+# `bedrock_guardrail_arns` carries the Story 10.2 Guardrail identifiers. List
+# shape (not scalar) so the IAM policy can grant ApplyGuardrail on BOTH the
+# unversioned (DRAFT) and the published-version ARN — consumers may target
+# either. Empty list in dev/staging (the `count` guard on the policy document
+# skips it cleanly when bedrock_invocation_arns is also empty).
+variable "bedrock_guardrail_arns" {
+  description = "List of Bedrock Guardrail ARNs (unversioned + versioned) the Celery task role may ApplyGuardrail against. Empty in dev/staging."
+  type        = list(string)
 }
 
 # `github_bedrock_ci_enabled` gates the TD-086 CI role. Prod flips true; dev/

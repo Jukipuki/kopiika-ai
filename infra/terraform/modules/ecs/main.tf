@@ -100,10 +100,13 @@ data "aws_iam_policy_document" "ecs_task_bedrock" {
   }
 
   statement {
-    sid       = "BedrockApplyGuardrail"
-    effect    = "Allow"
-    actions   = ["bedrock:ApplyGuardrail"]
-    resources = [var.bedrock_guardrail_arn]
+    sid     = "BedrockApplyGuardrail"
+    effect  = "Allow"
+    actions = ["bedrock:ApplyGuardrail"]
+    # Both unversioned (DRAFT) and versioned ARNs — consumers may target either
+    # (Story 10.2 AC #5). Empty list is not possible here: the enclosing
+    # count guard keeps dev/staging out of this branch entirely.
+    resources = var.bedrock_guardrail_arns
   }
 }
 
