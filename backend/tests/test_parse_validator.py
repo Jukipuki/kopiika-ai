@@ -1,7 +1,6 @@
 """Unit tests for parse_validator service (Story 11.5)."""
 from datetime import date, datetime
 
-import pytest
 
 from app.agents.ingestion.parsers.base import TransactionData
 from app.services.parse_validator import validate_parsed_rows

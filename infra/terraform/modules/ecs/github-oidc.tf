@@ -38,7 +38,14 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values = [
+        # build-image.yml — OIDC token from a push to main, no environment.
+        "repo:${var.github_repo}:ref:refs/heads/main",
+        # deploy-backend.yml — workflow_dispatch with `environment: production`,
+        # which switches the sub claim format. Required-reviewer protection on
+        # the `production` GitHub Environment is the actual gate.
+        "repo:${var.github_repo}:environment:production",
+      ]
     }
   }
 }
@@ -72,6 +79,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "ecr:BatchCheckLayerAvailability",
       "ecr:GetDownloadUrlForLayer",
       "ecr:BatchGetImage",
+      "ecr:DescribeImages",
       "ecr:PutImage",
       "ecr:InitiateLayerUpload",
       "ecr:UploadLayerPart",
@@ -125,6 +133,19 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "ecs:RegisterTaskDefinition",
     ]
     resources = ["*"]
+  }
+
+  # ecs:TagResource is required by RegisterTaskDefinition when the task-def
+  # carries tags (which ours do — Name + Project + Environment + ManagedBy).
+  # Scoped to the project's task-def family.
+  statement {
+    sid    = "ECSTagTaskDefs"
+    effect = "Allow"
+    actions = [
+      "ecs:TagResource",
+      "ecs:UntagResource",
+    ]
+    resources = ["arn:aws:ecs:*:*:task-definition/${var.project_name}-*"]
   }
 
   statement {

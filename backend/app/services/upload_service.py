@@ -1,7 +1,6 @@
 import csv
 import io
 import logging
-import re
 import uuid
 from datetime import UTC, datetime
 from typing import Optional

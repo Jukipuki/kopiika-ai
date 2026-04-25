@@ -11,7 +11,6 @@ from sqlmodel import Session, SQLModel
 # Import models so SQLModel.metadata picks up ALL tables for create_all.
 import app.models  # noqa: F401
 from app.core import crypto
-from app.models.user_iban_registry import UserIbanRegistry
 from app.services.user_iban_registry import (
     UserIbanRegistryService,
     iban_fingerprint,

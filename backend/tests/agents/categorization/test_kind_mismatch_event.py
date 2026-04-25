@@ -9,7 +9,6 @@ import io
 import logging
 import uuid
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -17,11 +17,6 @@ on:
         description: "Commit sha of the image to deploy (must be already built by build-image.yml)"
         required: true
         type: string
-      run_migrations:
-        description: "Run alembic migrations before deploying API"
-        required: true
-        type: boolean
-        default: true
 
 permissions:
   id-token: write
@@ -56,30 +51,26 @@ jobs:
           SHA: ${{ github.event.inputs.image_sha }}
         run: |
           for tag in "sha-$SHA" "worker-sha-$SHA" "beat-sha-$SHA"; do
-            if ! aws ecr describe-images \
+            # Don't swallow stderr — an IAM denial would otherwise look
+            # identical to "image not found" and waste 10 min of debugging.
+            if ! out=$(aws ecr describe-images \
                 --repository-name "$ECR_REPOSITORY" \
                 --image-ids imageTag="$tag" \
-                --region "$AWS_REGION" >/dev/null 2>&1; then
-              echo "::error::Image $ECR_REPOSITORY:$tag not found in ECR. Did build-image.yml run on this sha?"
+                --region "$AWS_REGION" 2>&1); then
+              echo "::error::Failed to describe $ECR_REPOSITORY:$tag"
+              echo "$out"
               exit 1
             fi
           done
 
-      - name: Run Alembic migrations
-        if: ${{ github.event.inputs.run_migrations == 'true' }}
-        env:
-          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          SHA: ${{ github.event.inputs.image_sha }}
-        run: |
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA
-          docker run --rm \
-            -e AWS_REGION=${{ env.AWS_REGION }} \
-            -e AWS_SECRETS_PREFIX=${{ vars.PROJECT_NAME }}/${{ vars.ENVIRONMENT }} \
-            -e AWS_ACCESS_KEY_ID \
-            -e AWS_SECRET_ACCESS_KEY \
-            -e AWS_SESSION_TOKEN \
-            $ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA \
-            alembic upgrade head
+      # Migrations are run by the API container's entrypoint.sh on every
+      # App Runner deploy — see backend/entrypoint.sh. Running them from the
+      # GitHub runner is impossible because RDS is in private subnets (no
+      # network path from a hosted runner) and would also need DATABASE_URL
+      # injected from Secrets Manager (which the runner can't reach the DB
+      # to use anyway). If a migration fails, App Runner's /health never
+      # returns 200 and the deploy step below times out, surfacing the
+      # failure in CI logs.
 
       # Direct AWS CLI for App Runner update + poll instead of the deprecated
       # awslabs/amazon-app-runner-deploy action (which also required broader
@@ -120,6 +111,16 @@ jobs:
 
           NEW_SRC=$(echo "$CURRENT_SRC" | jq --arg img "$ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA" \
             '.ImageRepository.ImageIdentifier = $img')
+
+          # Skip the update entirely if the desired image is already deployed
+          # (idempotent retry of a previously-succeeded App Runner step).
+          # update-service is a no-op in that case and returns no OperationId.
+          CURRENT_IMG=$(echo "$CURRENT_SRC" | jq -r '.ImageRepository.ImageIdentifier')
+          DESIRED_IMG="$ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA"
+          if [ "$CURRENT_IMG" = "$DESIRED_IMG" ]; then
+            echo "App Runner already on $DESIRED_IMG — skipping update."
+            exit 0
+          fi
 
           OP_ID=$(aws apprunner update-service \
             --region "$AWS_REGION" \

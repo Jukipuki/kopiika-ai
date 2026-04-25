@@ -10,10 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 from sqlmodel import select
 
-from app.agents.ingestion.parsers.base import FlaggedRow, ParseResult, TransactionData
+from app.agents.ingestion.parsers.base import FlaggedRow
 from app.agents.ingestion.parsers.monobank import MonobankParser
 from app.models.flagged_import_row import FlaggedImportRow
 from app.models.transaction import Transaction
@@ -466,7 +465,7 @@ class TestParserServiceParseAndStore:
             header_row=[],
         )
 
-        result = await parse_and_store_transactions(
+        await parse_and_store_transactions(
             session=session,
             user_id=user_id,
             upload_id=upload_id,

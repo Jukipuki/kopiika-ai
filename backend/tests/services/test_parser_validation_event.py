@@ -23,8 +23,8 @@ def _enable_app_logger_propagation():
         yield
     finally:
         app_logger.propagate = prev
-from app.services.format_detector import FormatDetectionResult
-from app.services.parser_service import _parse_and_build_records
+from app.services.format_detector import FormatDetectionResult  # noqa: E402
+from app.services.parser_service import _parse_and_build_records  # noqa: E402
 
 
 def _format_result() -> FormatDetectionResult:

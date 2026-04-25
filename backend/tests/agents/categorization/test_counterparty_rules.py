@@ -29,7 +29,7 @@ def log_capture():
         logger.removeHandler(h)
 
 
-from app.agents.categorization.node import (
+from app.agents.categorization.node import (  # noqa: E402
     _RULE_5_8_BLOCK,
     _apply_counterparty_rules,
     _build_prompt,

@@ -9,11 +9,10 @@ Releases are manual. Merging to `main` does **not** auto-deploy.
    - `kopiika-backend:<sha>` (API + worker code)
    - `kopiika-backend:worker-<sha>` (Celery worker, optimized image)
    - `kopiika-backend:beat-<sha>` (Celery beat)
-3. **Decide to release** — go to Actions → **Deploy Backend** → *Run workflow*. Inputs:
+3. **Decide to release** — go to Actions → **Deploy Backend** → *Run workflow*. Input:
    - `image_sha` — the commit sha you want to release. Verify the build summary on the corresponding `Build Backend Images` run says all 3 tags are present.
-   - `run_migrations` — leave checked unless you've already run alembic out-of-band.
 4. **Approve** — GitHub `production` environment requires you to click *Approve and run*.
-5. **Watch** — workflow runs alembic, App Runner deploy, then ECS worker + beat deploys (each waits for stability).
+5. **Watch** — workflow runs App Runner deploy (entrypoint.sh inside the API container runs `alembic upgrade head` automatically before uvicorn starts), then ECS worker + beat deploys (each waits for stability). Migrations are NOT run from CI — RDS is in private subnets and unreachable from GitHub runners.
 6. **Smoke-test** — hit `/health` on App Runner; tail `/ecs/kopiika-prod-{worker,beat}` log groups for clean startup.
 
 ## First-deploy bootstrap
@@ -87,11 +86,9 @@ docker push $REGISTRY/$REPO:worker-$SHA
 docker build -t $REGISTRY/$REPO:beat-$SHA -f backend/Dockerfile.beat backend/
 docker push $REGISTRY/$REPO:beat-$SHA
 
-# Migrations.
-docker run --rm \
-  -e AWS_REGION -e AWS_SECRETS_PREFIX=kopiika/prod \
-  -v ~/.aws:/root/.aws \
-  $REGISTRY/$REPO:$SHA alembic upgrade head
+# Migrations run automatically inside the App Runner container's entrypoint.sh.
+# Don't run them from your laptop unless you have a VPN/bastion to RDS — the
+# DB is in private subnets and your machine can't reach it.
 
 # App Runner.
 aws apprunner update-service \

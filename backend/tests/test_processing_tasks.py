@@ -3,7 +3,7 @@ import io
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -317,7 +317,6 @@ class TestInsightReadySSEEvents:
 
         # Verify event ordering: insights pipeline-progress must come BEFORE insight-ready
         # (Story 8.1 renamed the old "education" step to "insights".)
-        all_events = [c.args[1]["event"] for c in mock_publish.call_args_list]
         education_idx = next(
             i for i, c in enumerate(mock_publish.call_args_list)
             if c.args[1].get("event") == "pipeline-progress" and c.args[1].get("step") == "insights"
@@ -626,7 +625,7 @@ class TestPipelineMetrics:
 
         from app.tasks.processing_tasks import process_upload
 
-        result = process_upload(str(job_id))
+        process_upload(str(job_id))
 
         # Verify started_at is set
         job = _get_job(sync_engine, job_id)

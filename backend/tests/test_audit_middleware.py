@@ -177,7 +177,7 @@ class TestAuditMiddlewareRecording:
         client, engine = audit_client
 
         # No Authorization header — middleware skips logging
-        response = await client.get("/api/v1/transactions")
+        await client.get("/api/v1/transactions")
         # Response code doesn't matter for this assertion
 
         async with SQLModelAsyncSession(engine) as session:

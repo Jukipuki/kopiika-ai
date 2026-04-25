@@ -24,7 +24,7 @@ import logging
 import re
 import time
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 from sqlalchemy import select

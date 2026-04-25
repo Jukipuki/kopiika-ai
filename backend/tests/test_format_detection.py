@@ -5,7 +5,6 @@ sanitization, error responses, and upload endpoint integration.
 """
 
 import io
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,7 +20,6 @@ from app.services.format_detector import (
 )
 from app.services.upload_service import (
     sanitize_content,
-    validate_and_detect_format,
     validate_csv_structure,
     validate_magic_bytes,
 )

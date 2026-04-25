@@ -11,7 +11,6 @@ from typing import Any
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.agents.categorization.counterparty_patterns import edrpou_kind
 from app.agents.categorization.mcc_mapping import (
     VALID_CATEGORIES,
     VALID_KINDS,

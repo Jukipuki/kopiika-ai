@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock
 from app.models.transaction import Transaction
 from app.models.upload import Upload
 from app.models.user import User
-from app.services.transaction_service import compute_dedup_hash
 
 
 def _utcnow():

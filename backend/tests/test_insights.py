@@ -99,7 +99,6 @@ async def _create_insight(
 async def insight_client(insight_async_engine):
     from app.api.deps import get_db, get_cognito_service, get_rate_limiter
     from app.main import app
-    from unittest.mock import AsyncMock
 
     async def override_get_db():
         async with SQLModelAsyncSession(insight_async_engine) as session:
@@ -134,7 +133,7 @@ class TestInsightsEndpoint:
         from app.main import app
 
         cognito_sub = "insight-empty-sub"
-        user_id = await _create_user(insight_async_session, cognito_sub, "empty@test.com")
+        await _create_user(insight_async_session, cognito_sub, "empty@test.com")
         await insight_async_session.commit()
 
         app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)

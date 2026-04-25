@@ -57,6 +57,11 @@ bedrock_invocation_arns = [
 # the runtime module and flips this to the concrete ARN.
 # agentcore_runtime_arn = "arn:aws:bedrock-agentcore:eu-central-1:573562677570:runtime/<id>"
 
+# GitHub OIDC trust scope — required so role trust policies bind to this
+# repo's workflow tokens. Without it the `sub` claim becomes "repo::ref:..."
+# and AssumeRoleWithWebIdentity always denies.
+github_repo = "Jukipuki/kopiika-ai"
+
 # TD-086 — enable the GitHub OIDC Bedrock CI role only in prod.
 github_bedrock_ci_enabled = true
 

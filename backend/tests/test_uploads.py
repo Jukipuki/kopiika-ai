@@ -1,12 +1,11 @@
 import io
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.core.security import get_current_user_payload
 from app.main import app
-from app.models.user import User
 
 
 # ==================== Helper: create test user and auth ====================
@@ -14,7 +13,6 @@ from app.models.user import User
 
 async def _create_test_user(client):
     """Create a test user via signup+verify+login flow and return cognito_sub."""
-    from app.core.exceptions import RegistrationError
 
     await client.post(
         "/api/v1/auth/signup",
