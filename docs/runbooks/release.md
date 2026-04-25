@@ -48,14 +48,19 @@ aws ecr get-login-password --region $AWS_REGION \
 # "exec format error" + container exit code 255. The flag is harmless on
 # x86 hosts.
 
+# Read the repo-root VERSION (must be done from repo root, not backend/).
+APP_VERSION=$(cat ../VERSION)
+
 # API + worker bootstrap from the API Dockerfile (worker has its own
 # Dockerfile but the bootstrap image just needs to start; CI deploys
 # replace it with the worker-specific image immediately).
-docker build --platform linux/amd64 -t $REGISTRY/$ECR_REPO:bootstrap -f Dockerfile .
+docker build --platform linux/amd64 --build-arg APP_VERSION="$APP_VERSION" \
+  -t $REGISTRY/$ECR_REPO:bootstrap -f Dockerfile .
 docker push $REGISTRY/$ECR_REPO:bootstrap
 
 # Beat has its own Dockerfile (different ENTRYPOINT).
-docker build --platform linux/amd64 -t $REGISTRY/$ECR_REPO:beat-bootstrap -f Dockerfile.beat .
+docker build --platform linux/amd64 --build-arg APP_VERSION="$APP_VERSION" \
+  -t $REGISTRY/$ECR_REPO:beat-bootstrap -f Dockerfile.beat .
 docker push $REGISTRY/$ECR_REPO:beat-bootstrap
 
 # Step 3: Full apply — everything else, App Runner picks up :bootstrap.
@@ -79,11 +84,12 @@ export REGISTRY=573562677570.dkr.ecr.eu-central-1.amazonaws.com
 # Build + push from the laptop (skip if image already exists).
 aws ecr get-login-password --region $AWS_REGION \
   | docker login --username AWS --password-stdin $REGISTRY
-docker build -t $REGISTRY/$REPO:$SHA -f backend/Dockerfile backend/
+APP_VERSION=$(cat VERSION)
+docker build --build-arg APP_VERSION="$APP_VERSION" -t $REGISTRY/$REPO:$SHA -f backend/Dockerfile backend/
 docker push $REGISTRY/$REPO:$SHA
-docker build -t $REGISTRY/$REPO:worker-$SHA -f backend/Dockerfile.worker backend/
+docker build --build-arg APP_VERSION="$APP_VERSION" -t $REGISTRY/$REPO:worker-$SHA -f backend/Dockerfile.worker backend/
 docker push $REGISTRY/$REPO:worker-$SHA
-docker build -t $REGISTRY/$REPO:beat-$SHA -f backend/Dockerfile.beat backend/
+docker build --build-arg APP_VERSION="$APP_VERSION" -t $REGISTRY/$REPO:beat-$SHA -f backend/Dockerfile.beat backend/
 docker push $REGISTRY/$REPO:beat-$SHA
 
 # Migrations run automatically inside the App Runner container's entrypoint.sh.

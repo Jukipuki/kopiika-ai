@@ -31,6 +31,10 @@ COPY . .
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
+# See Dockerfile for rationale.
+ARG APP_VERSION=0.0.0+unknown
+ENV APP_VERSION=$APP_VERSION
+
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser && chown -R appuser:appuser /app
 USER appuser
 

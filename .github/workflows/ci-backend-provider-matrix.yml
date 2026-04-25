@@ -72,8 +72,12 @@ jobs:
       - name: Apply Alembic migrations
         run: uv run alembic upgrade head
 
+      # secrets.* cannot appear in `if:` expressions in GitHub Actions, so
+      # we don't gate on whether the secret exists. With `environment:
+      # bedrock-ci` set on the job (above), the secret is bound to that
+      # environment and is always present at runtime — the gate is the
+      # required-reviewer approval on the bedrock-ci GitHub Environment.
       - name: Configure AWS credentials (Bedrock OIDC)
-        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}

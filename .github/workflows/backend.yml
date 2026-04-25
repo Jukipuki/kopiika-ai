@@ -80,6 +80,13 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      # The repo-root VERSION file lives outside backend/ (the build context)
+      # and can't be COPY'd into the image. Read it on the host and pass it
+      # as a build-arg → ENV → app/core/version.py picks it up.
+      - name: Read app version
+        id: version
+        run: echo "value=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
       # `--platform linux/amd64` on every build for consistency. Mandatory
       # if a build ever runs on Apple-Silicon (laptop break-glass per
       # docs/runbooks/release.md); harmless on x86 GitHub runners.
@@ -87,24 +94,36 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: sha-${{ github.sha }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
-          docker build --platform linux/amd64 -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -f backend/Dockerfile backend/
+          docker build --platform linux/amd64 \
+            --build-arg APP_VERSION="$APP_VERSION" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -f backend/Dockerfile backend/
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Build & push worker image
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: worker-sha-${{ github.sha }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
-          docker build --platform linux/amd64 -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -f backend/Dockerfile.worker backend/
+          docker build --platform linux/amd64 \
+            --build-arg APP_VERSION="$APP_VERSION" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -f backend/Dockerfile.worker backend/
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Build & push beat image
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: beat-sha-${{ github.sha }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
-          docker build --platform linux/amd64 -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -f backend/Dockerfile.beat backend/
+          docker build --platform linux/amd64 \
+            --build-arg APP_VERSION="$APP_VERSION" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -f backend/Dockerfile.beat backend/
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Summary

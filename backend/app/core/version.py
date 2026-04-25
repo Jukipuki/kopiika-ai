@@ -9,6 +9,7 @@ bump policy.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -33,4 +34,15 @@ def _read_version_file() -> str:
     return _FALLBACK_VERSION
 
 
-APP_VERSION: str = _read_version_file()
+def _resolve_version() -> str:
+    # Built-image path: the Dockerfile bakes APP_VERSION as an env var via
+    # --build-arg, sourced from the repo-root VERSION file in CI. The repo-
+    # root file isn't inside the backend/ build context so we can't COPY it.
+    # Local-dev path: walk up to find the VERSION file.
+    env_value = os.environ.get("APP_VERSION", "").strip()
+    if env_value and env_value != _FALLBACK_VERSION:
+        return env_value
+    return _read_version_file()
+
+
+APP_VERSION: str = _resolve_version()

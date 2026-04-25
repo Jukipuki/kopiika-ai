@@ -27,6 +27,13 @@ COPY . .
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
+# App version — passed in by CI from the repo-root VERSION file at build
+# time (the file is outside this Dockerfile's build context, so it can't
+# be COPY'd directly). app/core/version.py prefers this env var over its
+# walk-up VERSION-file lookup.
+ARG APP_VERSION=0.0.0+unknown
+ENV APP_VERSION=$APP_VERSION
+
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser && chown -R appuser:appuser /app
 USER appuser
 
