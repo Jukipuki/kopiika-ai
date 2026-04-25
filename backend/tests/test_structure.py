@@ -35,7 +35,9 @@ def test_backend_alembic_configured():
 def test_ci_workflows_exist():
     workflows = PROJECT_ROOT / ".github" / "workflows"
     assert (workflows / "ci-frontend.yml").is_file()
-    assert (workflows / "ci-backend.yml").is_file()
+    # ci-backend.yml + build-image.yml were merged into backend.yml on
+    # 2026-04-26 to add a quality gate (build needs lint+tests, see TD-119).
+    assert (workflows / "backend.yml").is_file()
 
 
 def test_gitignore_exists():
