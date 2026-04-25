@@ -1806,7 +1806,7 @@ Chat uses server-sent events (SSE) for token streaming, consistent with the exis
 ```json
 {
   "error": "CHAT_REFUSED",
-  "reason": "guardrail_blocked | ungrounded | rate_limited | prompt_leak_detected | tool_blocked",
+  "reason": "guardrail_blocked | ungrounded | rate_limited | prompt_leak_detected | tool_blocked | transient_error",
   "correlation_id": "<uuid>",
   "retry_after_seconds": null
 }

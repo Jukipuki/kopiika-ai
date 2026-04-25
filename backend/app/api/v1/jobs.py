@@ -12,10 +12,10 @@ from pydantic.alias_generators import to_camel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
+from app.api.v1._sse import SSE_RESPONSE_HEADERS
 from app.core.redis import get_job_state, subscribe_job_progress
 from app.core.security import verify_token
 from app.models.processing_job import ProcessingJob
-from app.models.user import User
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -152,8 +152,13 @@ async def _get_user_id_from_token(
     NOTE: Duplicates cognito_sub→user_id lookup from deps.get_current_user_id.
     Needed because EventSource doesn't support Authorization headers.
     If deps.py auth logic changes, update this function too.
+    Story 10.5 extracted a shared equivalent at ``app.api.v1._sse``; jobs
+    still uses this local helper so the existing ``patch("app.api.v1.jobs.
+    verify_token", ...)`` test pattern continues to work.
     """
     from sqlmodel import select
+
+    from app.models.user import User
 
     payload = await verify_token(token)
     cognito_sub = payload.get("sub")
@@ -283,9 +288,5 @@ async def stream_job_progress(
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers=SSE_RESPONSE_HEADERS,
     )

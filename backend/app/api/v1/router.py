@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.account import router as account_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.chat import router as chat_router
 from app.api.v1.consent import router as consent_router
 from app.api.v1.data_summary import router as data_summary_router
 from app.api.v1.feedback import feedback_vote_router, router as feedback_router
@@ -17,6 +18,7 @@ from app.api.v1.uploads import router as uploads_router
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(account_router)
 v1_router.include_router(auth_router)
+v1_router.include_router(chat_router)
 v1_router.include_router(consent_router)
 v1_router.include_router(data_summary_router)
 v1_router.include_router(feedback_router)

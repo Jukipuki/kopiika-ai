@@ -1591,6 +1591,101 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-105 — Merge `invoke` and `invoke_stream` in `DirectBedrockBackend` [LOW]
+
+**Where:** [backend/app/agents/chat/chat_backend.py](../backend/app/agents/chat/chat_backend.py)
+
+**Problem:** Story 10.5 ships `DirectBedrockBackend.invoke_stream` as a clone of `invoke`'s tool-loop, differing only on the final iteration (astream vs. ainvoke) and on the guardrail-intervention detection point. The two methods drift-risk without a shared helper extraction.
+
+**Why deferred:** Story 10.4a/b/c pinned `invoke`'s behavior via 164 passing tests; cloning the loop for the streaming path was the lowest-risk delta in the Story 10.5 scope. The duplication is not painful today — a single shared tool-loop helper is a pure refactor.
+
+**Fix shape:** Extract a private `_run_tool_loop(lc_messages, bound_client, ...)` coroutine that yields `(response, tool_uses, tool_results)` tuples for the non-final iterations; both `invoke` and `invoke_stream` drive it, then finalize with their own `_final_text` / `astream` path.
+
+**Trigger:** ≥ 30 days of Story 10.9's `chat.stream.*` dashboards clean (no per-turn regression uncovered by the streaming split).
+
+**Effort:** ~½ day.
+
+**Surfaced in:** Story 10.5.
+
+---
+
+### TD-106 — Add `invoke_stream` to Phase B `AgentCoreBackend` [MEDIUM]
+
+**Where:** [backend/app/agents/chat/chat_backend.py](../backend/app/agents/chat/chat_backend.py) (Phase B branch — story 10.4a-runtime)
+
+**Problem:** The ChatBackend abstract base's `invoke_stream` default raises `NotImplementedError`. When Phase B lands an `AgentCoreBackend` (ADR-0004 Phase B), it must implement `invoke_stream` so `send_turn_stream` works under AgentCore runtime.
+
+**Why deferred:** Phase B (story 10.4a-runtime) has not started. AgentCore's streaming contract is documented but not yet exercised in this repo.
+
+**Fix shape:** When Phase B ships, implement `AgentCoreBackend.invoke_stream` against `bedrock-agentcore-runtime:InvokeAgentRuntime` (or the pinned SDK equivalent). Preserve the event shape (`BackendTokenDelta` / `BackendToolHop` / `BackendStreamDone`) so `send_turn_stream` doesn't care which backend is wired.
+
+**Trigger:** Story 10.4a-runtime (Phase B cutover).
+
+**Effort:** 1–2 days. Cross-references: **TD-039** (runtime failover) and the `10.4a-runtime` story both consume this.
+
+**Surfaced in:** Story 10.5.
+
+---
+
+### TD-107 — Per-turn chat consent re-verification [LOW]
+
+**Where:** [backend/app/agents/chat/session_handler.py](../backend/app/agents/chat/session_handler.py) — `send_turn` + `send_turn_stream`
+
+**Problem:** Consent is verified at `create_session` only. If a user revokes `chat_processing` mid-session, the next turn will still proceed — the handler does not re-read `consent_service.has_chat_consent(user_id)` at turn time.
+
+**Why deferred:** Story 10.5 observability surfaces this via the `chat.stream.consent_drift` ERROR event (emitted if `ChatConsentRequiredError` ever bubbles out of `send_turn_stream` — which should be impossible under the current consent contract). A per-turn re-verification would add a DB round-trip to every turn; defer until the drift event actually fires.
+
+**Fix shape:** Add a `await consent_service.has_chat_consent(db, user_id)` check at the top of Step 0 in `send_turn` / `send_turn_stream`. Raise `ChatConsentRequiredError` on miss; the existing envelope translator already maps it.
+
+**Trigger:** Any ERROR-level `chat.stream.consent_drift` occurrence in prod logs.
+
+**Effort:** ~1 day.
+
+**Surfaced in:** Story 10.5.
+
+---
+
+### TD-108 — `send_turn_stream` client-disconnect finalizer does not persist partial state [HIGH]
+
+**Where:** [backend/app/agents/chat/session_handler.py:644-862](../backend/app/agents/chat/session_handler.py#L644-L862) — `send_turn_stream`
+
+**Problem:** AC #14 invariant 4 claims "a client disconnect does NOT skip persistence" — that a turn whose tokens streamed to the client but whose SSE was dropped is indistinguishable in the DB from a turn that completed (same `role='tool'` rows, same assistant row, same `last_active_at`). In reality, when `event_generator` calls `agen.aclose()` on `request.is_disconnected()`, `GeneratorExit` propagates into the `async for backend_event in ...` loop and short-circuits past Step 5 (canary scan) and Step 6 (assistant row + tool-row persist). Accumulated tokens already flushed to the wire end up with NO corresponding DB row. The Story 10.5 review fix added the `await agen.aclose()` call, so the handler now gets notified of disconnect — but the handler does not yet exploit the notification to finalize.
+
+**Why deferred:** The fix requires wrapping the ~250-line Step-4-through-Step-6 body in an outer `try:/finally:` with a `_finalized` gate flag — bigger refactor than the review's budget allowed. The existing terminal-path branches (tool-abort, canary-leak, guardrail-intervention) already persist their own rows; the late finalizer only needs to run when `_finalized` is False (disconnect / unexpected exit).
+
+**Fix shape:**
+1. Add `_finalized = False` local before the Step-4 try.
+2. Wrap Steps 4–6 in an outer `try: ... finally:` — set `_finalized = True` in each existing terminal branch (end of happy-path Step 6, canary-leak persist branch, tool-abort branch, guardrail-intervention branch).
+3. In the outer `finally`, when `_finalized is False and accumulated_text`, run `scan_for_canaries(accumulated_text, canaries)` and persist the corresponding row (blocked on leak; normal assistant row otherwise) + tool rows + `last_active_at` bump. Best-effort only — swallow exceptions from the finalizer so it can't mask the original `GeneratorExit`.
+
+**Trigger:** Before Story 10.9's alarms go live (the `chat.stream.disconnected` distribution will underreport partial writes).
+
+**Effort:** ~½ day.
+
+**Surfaced in:** Story 10.5 code review (2026-04-25).
+
+---
+
+### TD-109 — Canary scan does not gate partial token stream (only gates DB commit) [HIGH]
+
+**Where:** [backend/app/agents/chat/session_handler.py:768-770](../backend/app/agents/chat/session_handler.py#L768) — `send_turn_stream` Step 5
+
+**Problem:** The canary scan runs on the fully accumulated final text AFTER the `async for backend_event in self._backend.invoke_stream(...)` loop completes. `BackendTokenDelta` events are yielded to the API layer (and from there to the client) BEFORE the scan fires. If the model emits a canary mid-stream and then throws a `ChatGuardrailInterventionError` or `ChatTransientError` on the trailing chunk, the scan is skipped entirely — the canary text has been delivered to the wire and no `chat.canary.leaked` event is emitted. Even on the happy path, the client has rendered the tokens before the DB block fires: the "refusal frames discard in-flight tokens" UI contract mitigates this per-session, but the raw wire bytes are already transmitted.
+
+**Why deferred:** True mitigation requires either (a) buffering tokens and flushing only after canary-clean checkpoints (adds perceptible TTFB latency to every turn), or (b) running an incremental canary scan on a rolling window (requires a new incremental matcher — the current `scan_for_canaries` is atomic). Both approaches are bigger than a review fix; the DB-gate + UI-discard combination is defensible for now, but the exfil vector should be tracked.
+
+**Fix shape:**
+- Short-term: in the outer `finally` (see TD-108), always scan `accumulated_text` even on error paths and emit `chat.canary.leaked` ERROR so Story 10.9's alarm fires.
+- Medium-term: introduce a rolling-window canary matcher that scans each new delta + a trailing overlap equal to `max(canary_length)-1` chars; on match, stop yielding, persist blocked row, raise `ChatPromptLeakDetectedError`. This gates the wire, not just the DB.
+
+**Trigger:** Any `chat.canary.leaked` event in prod, OR Story 10.8a red-team corpus exercising mid-stream canary exfil.
+
+**Effort:** Short-term ~2h; medium-term ~1 day.
+
+**Surfaced in:** Story 10.5 code review (2026-04-25).
+
+---
+
 ## Resolved
 
 ### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [RESOLVED 2026-04-24 — AWS CLI v2.34.35 ships the binding]
