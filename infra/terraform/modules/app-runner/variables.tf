@@ -60,7 +60,31 @@ variable "chat_canaries_secret_arn" {
 }
 
 variable "agentcore_runtime_arn" {
-  description = "ARN for the Bedrock AgentCore runtime. Wildcard default is a Phase A placeholder (Story 10.4a ships direct-Bedrock chat per ADR-0004). Phase B story 10.4a-runtime swaps this to a concrete ARN."
+  description = "ARN for the Bedrock AgentCore runtime. Empty default fail-closes the IAM policy via the agentcore_policy_enabled regex gate."
   type        = string
-  default     = "arn:aws:bedrock-agentcore:eu-central-1:*:runtime/*"
+  default     = ""
+}
+
+variable "kms_key_arns" {
+  description = "List of KMS CMK ARNs the App Runner instance role needs Decrypt/GenerateDataKey on (secrets, s3 uploads)."
+  type        = list(string)
+  default     = []
+}
+
+variable "image_tag" {
+  description = "ECR image tag for App Runner to bootstrap with. ECR repo is IMMUTABLE so :latest is unavailable; first deploy pushes a concrete tag (e.g. 'bootstrap'), CI updates the service to :sha-<sha> on subsequent releases. lifecycle.ignore_changes prevents Terraform from reverting CI updates."
+  type        = string
+  default     = "bootstrap"
+}
+
+variable "custom_domain" {
+  description = "Custom domain for the App Runner API (e.g. api.kopiika.coach). Empty = no domain (default *.awsapprunner.com URL still works). DNS validation + final CNAME target are output for manual pasting into Squarespace DNS."
+  type        = string
+  default     = ""
+}
+
+variable "ses_send_policy_arn" {
+  description = "ARN of the SES send policy from modules/ses (empty when ses_sender_email is unset). Attached to the instance role so backend code can call SES directly."
+  type        = string
+  default     = ""
 }

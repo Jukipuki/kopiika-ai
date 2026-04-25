@@ -112,7 +112,9 @@ resource "aws_route_table_association" "private" {
 
 # --- Security Groups ---
 
-# RDS Security Group
+# RDS Security Group.
+# No egress: RDS does not initiate outbound traffic. The default-deny posture
+# closes a lateral-movement vector if the DB ever runs custom code.
 resource "aws_security_group" "rds" {
   name_prefix = "${local.name_prefix}-sg-rds-"
   vpc_id      = aws_vpc.main.id
@@ -134,13 +136,6 @@ resource "aws_security_group" "rds" {
     security_groups = [aws_security_group.ecs.id]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Name = "${local.name_prefix}-sg-rds"
   }
@@ -150,7 +145,7 @@ resource "aws_security_group" "rds" {
   }
 }
 
-# Redis Security Group
+# Redis Security Group. No egress, same reasoning as RDS.
 resource "aws_security_group" "redis" {
   name_prefix = "${local.name_prefix}-sg-redis-"
   vpc_id      = aws_vpc.main.id
@@ -170,13 +165,6 @@ resource "aws_security_group" "redis" {
     to_port         = 6379
     protocol        = "tcp"
     security_groups = [aws_security_group.ecs.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
@@ -322,3 +310,4 @@ resource "aws_security_group" "vpc_endpoints" {
 }
 
 data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}

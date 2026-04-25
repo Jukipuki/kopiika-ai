@@ -1,0 +1,88 @@
+name: Build Backend Images
+
+# Builds and pushes the three backend Docker images on every push to main.
+# Does NOT deploy — deploys go through `deploy-backend.yml` (workflow_dispatch
+# only) to keep the merge → release path manual for a regulated solo project.
+#
+# Three images per commit, all immutable (ECR is image_tag_mutability=IMMUTABLE):
+#   <sha>          : API image (from backend/Dockerfile)
+#   worker-<sha>   : Celery worker (from backend/Dockerfile.worker)
+#   beat-<sha>     : Celery beat (from backend/Dockerfile.beat)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/build-image.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REPOSITORY: kopiika-backend
+
+jobs:
+  build:
+    name: Build & Push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Tag scheme: sha-<sha>, worker-sha-<sha>, beat-sha-<sha>.
+      # The "sha-" prefix is required so the ECR lifecycle policy in
+      # infra/terraform/main.tf can reap old images via tagPatternList
+      # (ECR pattern matching is literal-prefix; a bare 40-char hex tag
+      # would not match `sha-*`).
+      - name: Build & push API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -f backend/Dockerfile backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Build & push worker image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: worker-sha-${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f backend/Dockerfile.worker backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Build & push beat image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: beat-sha-${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f backend/Dockerfile.beat backend/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Summary
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## Built images"
+            echo ""
+            echo "| Service | Tag |"
+            echo "|---|---|"
+            echo "| API | \`sha-$SHA\` |"
+            echo "| Worker | \`worker-sha-$SHA\` |"
+            echo "| Beat | \`beat-sha-$SHA\` |"
+            echo ""
+            echo "Run **Deploy Backend** with image_sha = \`$SHA\` to release."
+          } >> "$GITHUB_STEP_SUMMARY"

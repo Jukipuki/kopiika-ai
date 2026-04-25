@@ -14,12 +14,21 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   password_policy {
-    minimum_length                   = 8
+    minimum_length                   = 14
     require_uppercase                = true
     require_lowercase                = true
     require_numbers                  = true
     require_symbols                  = true
     temporary_password_validity_days = 7
+  }
+
+  # OPTIONAL = users may enroll TOTP but most won't. Regulated workload
+  # arguably wants MFA "ON", but pre-launch user base is one operator with
+  # an authenticator already wired out of band. Revisit when there are real
+  # customers — see TD-116 for the path to enforced MFA.
+  mfa_configuration = "OPTIONAL"
+  software_token_mfa_configuration {
+    enabled = true
   }
 
   account_recovery_setting {

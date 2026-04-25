@@ -59,3 +59,17 @@ bedrock_invocation_arns = [
 
 # TD-086 — enable the GitHub OIDC Bedrock CI role only in prod.
 github_bedrock_ci_enabled = true
+
+# Security baseline (Phase C hardening, 2026-04-25)
+security_alarm_email       = "ogumennyj@gmail.com"
+monthly_budget_usd         = 100
+bedrock_monthly_budget_usd = 30
+
+# Bootstrap image tag — operator pushes :bootstrap once before first apply,
+# then CI deploys point services to :sha-<sha>. ECR is IMMUTABLE so no :latest.
+image_tag = "bootstrap"
+
+# Custom domain (Squarespace registered, manual DNS). After first apply, run
+# `terraform output api_acm_validation_records` and `api_app_runner_dns_records`
+# and paste both sets into Squarespace DNS. See docs/runbooks/domain-setup.md.
+api_custom_domain = "api.kopiika.coach"

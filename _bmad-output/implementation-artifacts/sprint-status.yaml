@@ -230,7 +230,7 @@ development_status:
   10-5a-send-turn-stream-disconnect-finalizer: done
   10-6a-grounding-enforcement-harness: backlog
   10-6b-citation-payload-data-refs: backlog
-  10-7-chat-ui: backlog
+  10-7-chat-ui: ready-for-dev
   10-8a-red-team-corpus-authoring: backlog
   10-8b-safety-test-runner-ci-gate: backlog
   10-9-safety-observability: backlog

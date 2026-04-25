@@ -18,6 +18,13 @@ permissions:
 jobs:
   provider-matrix:
     runs-on: ubuntu-latest
+    # The bedrock OIDC role's trust policy locks the `sub` claim to
+    # `repo:<repo>:environment:bedrock-ci` (see modules/ecs/github-oidc.tf).
+    # This environment must therefore be set on the job, and configured in
+    # GitHub repo settings → Environments → bedrock-ci with required reviewers
+    # to fulfil the Phase C audit-fix's defense-in-depth on PR-reachable
+    # Bedrock spend.
+    environment: bedrock-ci
     defaults:
       run:
         working-directory: backend

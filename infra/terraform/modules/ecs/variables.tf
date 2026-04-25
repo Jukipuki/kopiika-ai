@@ -94,3 +94,15 @@ variable "observability_sns_topic_arn" {
   type        = string
   default     = ""
 }
+
+variable "kms_key_arns" {
+  description = "List of KMS CMK ARNs the ECS task role needs Decrypt/GenerateDataKey on (secrets, s3 uploads)."
+  type        = list(string)
+  default     = []
+}
+
+variable "image_tag" {
+  description = "Bootstrap ECR image tag for ECS worker. Beat uses 'beat-<image_tag>'. ECR repo is IMMUTABLE so :latest is unavailable; CI deploys re-register task definition revisions with :sha-<sha> tags via aws ecs register-task-definition."
+  type        = string
+  default     = "bootstrap"
+}

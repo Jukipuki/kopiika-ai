@@ -11,6 +11,32 @@ resource "aws_elasticache_subnet_group" "main" {
   }
 }
 
+# Per-service KMS CMK for Redis at-rest encryption.
+resource "aws_kms_key" "redis" {
+  description             = "${local.name_prefix} Redis encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  tags = {
+    Name = "${local.name_prefix}-redis"
+  }
+}
+
+resource "aws_kms_alias" "redis" {
+  name          = "alias/${local.name_prefix}-redis"
+  target_key_id = aws_kms_key.redis.key_id
+}
+
+# Redis AUTH token. Defense-in-depth: anyone with network reach + a TLS
+# handshake would otherwise have free run of the Redis command set even
+# though the SG only allows app-runner/ecs in.
+# Constraint: AUTH disallows certain special characters; using base62 to
+# avoid escaping issues in connection strings.
+resource "random_password" "redis_auth" {
+  length  = 64
+  special = false
+}
+
 resource "aws_elasticache_replication_group" "main" {
   # Story 5.1 AC #4: converted from aws_elasticache_cluster to
   # aws_elasticache_replication_group so that at_rest_encryption_enabled
@@ -35,6 +61,9 @@ resource "aws_elasticache_replication_group" "main" {
 
   transit_encryption_enabled = true
   at_rest_encryption_enabled = true
+  kms_key_id                 = aws_kms_key.redis.arn
+  auth_token                 = random_password.redis_auth.result
+  auth_token_update_strategy = "ROTATE"
 
   automatic_failover_enabled = false
   multi_az_enabled           = false

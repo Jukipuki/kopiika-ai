@@ -49,3 +49,14 @@ output "github_bedrock_ci_role_arn" {
   description = "ARN of the GitHub OIDC Bedrock CI role (Story 9.7 / TD-086). Paste into repo secret AWS_ROLE_TO_ASSUME to unblock the cross-provider matrix Bedrock column."
   value       = module.ecs.github_bedrock_ci_role_arn
 }
+
+# --- Custom domain DNS records (paste into Squarespace) ---
+output "api_custom_domain" {
+  description = "Configured API custom domain (empty if not set)."
+  value       = module.app_runner.custom_domain
+}
+
+output "api_app_runner_dns_records" {
+  description = "App Runner-issued DNS targets for the custom domain. `dns_target` is the CNAME you point your custom domain at; `certificate_records` are the validation CNAMEs App Runner needs to issue + renew its internal ACM cert. Paste both into Squarespace DNS — see docs/runbooks/domain-setup.md."
+  value       = module.app_runner.app_runner_dns_records
+}

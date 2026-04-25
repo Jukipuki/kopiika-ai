@@ -1,5 +1,28 @@
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
+
+  # Secrets injected as env vars at container start. ECS uses the EXECUTION
+  # role (not task role) to fetch these. JSON-key extraction syntax:
+  # `<secret-arn>:<json-key>::` (the trailing `::` are version-stage and
+  # version-id, both blank → AWSCURRENT).
+  app_env_secrets = [
+    { name = "DATABASE_URL", valueFrom = "${var.secrets_arns["database"]}:connection_string::" },
+    { name = "REDIS_URL", valueFrom = "${var.secrets_arns["redis"]}:connection_url::" },
+    { name = "COGNITO_USER_POOL_ID", valueFrom = "${var.secrets_arns["cognito"]}:user_pool_id::" },
+    { name = "COGNITO_APP_CLIENT_ID", valueFrom = "${var.secrets_arns["cognito"]}:app_client_id::" },
+    { name = "COGNITO_BACKEND_CLIENT_ID", valueFrom = "${var.secrets_arns["cognito"]}:backend_client_id::" },
+    { name = "COGNITO_BACKEND_CLIENT_SECRET", valueFrom = "${var.secrets_arns["cognito"]}:backend_client_secret::" },
+    { name = "S3_UPLOADS_BUCKET", valueFrom = "${var.secrets_arns["s3"]}:bucket_name::" },
+  ]
+
+  # Plain env vars (not from secrets). ENV gates the local-Fernet vs KMS
+  # branch in app/core/crypto.py — must be "prod" in production.
+  app_env_plain = [
+    { name = "ENVIRONMENT", value = var.environment },
+    { name = "ENV", value = var.environment },
+    { name = "AWS_SECRETS_PREFIX", value = "${var.project_name}/${var.environment}" },
+    { name = "AWS_REGION", value = var.aws_region },
+  ]
 }
 
 # ECS Cluster
@@ -52,6 +75,33 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Inline policy granting the EXECUTION role access to fetch secret values
+# at task-launch (for the `secrets` field on container definitions, used to
+# inject DATABASE_URL / REDIS_URL / COGNITO_* / S3_UPLOADS_BUCKET as env
+# vars at container start). The AWS-managed AmazonECSTaskExecutionRolePolicy
+# does NOT include secretsmanager:GetSecretValue or kms:Decrypt.
+data "aws_iam_policy_document" "ecs_execution_secrets" {
+  statement {
+    sid       = "GetSecretsForEnvInjection"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = values(var.secrets_arns)
+  }
+
+  statement {
+    sid       = "DecryptSecretsCMK"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt"]
+    resources = var.kms_key_arns
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_execution_secrets" {
+  name   = "secrets-env-injection"
+  role   = aws_iam_role.ecs_execution.id
+  policy = data.aws_iam_policy_document.ecs_execution_secrets.json
+}
+
 # ECS Task Role (for Secrets Manager access)
 resource "aws_iam_role" "ecs_task" {
   name               = "${local.name_prefix}-ecs-task"
@@ -76,6 +126,32 @@ resource "aws_iam_role_policy" "ecs_task_secrets" {
   name   = "secrets-read"
   role   = aws_iam_role.ecs_task.id
   policy = data.aws_iam_policy_document.ecs_secrets_read.json
+}
+
+# Read-only kms:Decrypt + DescribeKey on the per-service CMKs that wrap
+# Secrets Manager material and S3 uploads. ECS workers (Celery) read both
+# (SecretsManager:GetSecretValue + s3:GetObject) but do NOT write —
+# upload_service.py:put_object runs on App Runner, not ECS. GenerateDataKey
+# is intentionally absent here.
+data "aws_iam_policy_document" "ecs_task_kms" {
+  count = length(var.kms_key_arns) > 0 ? 1 : 0
+
+  statement {
+    sid    = "DecryptDataPlaneCMKs"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = var.kms_key_arns
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_kms" {
+  count  = length(var.kms_key_arns) > 0 ? 1 : 0
+  name   = "kms-decrypt"
+  role   = aws_iam_role.ecs_task.id
+  policy = data.aws_iam_policy_document.ecs_task_kms[0].json
 }
 
 # Story 9.7 — Bedrock invoke + Guardrail for the Celery task role.
@@ -130,30 +206,15 @@ resource "aws_ecs_task_definition" "worker" {
   container_definitions = jsonencode([
     {
       name      = "worker"
-      image     = "${var.ecr_repository_url}:latest"
+      image     = "${var.ecr_repository_url}:${var.image_tag}"
       essential = true
 
       command = [
         "celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"
       ]
 
-      environment = [
-        {
-          name  = "ENVIRONMENT"
-          value = var.environment
-        },
-        {
-          name  = "AWS_SECRETS_PREFIX"
-          value = "${var.project_name}/${var.environment}"
-        },
-        # Story 9.7 — explicit region for boto3's bedrock-runtime client.
-        # ECS task-metadata region works today but is ambiguous when code calls
-        # boto3.client("bedrock-runtime") with no region_name kwarg.
-        {
-          name  = "AWS_REGION"
-          value = var.aws_region
-        },
-      ]
+      environment = local.app_env_plain
+      secrets     = local.app_env_secrets
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -183,6 +244,13 @@ resource "aws_ecs_service" "worker" {
     subnets          = var.private_subnet_ids
     security_groups  = [var.ecs_security_group_id]
     assign_public_ip = false
+  }
+
+  # CI deploys (manual release workflow, Phase D) register a new task-def
+  # revision per :sha-<sha> image and update the service to it. Without this
+  # rule, the next terraform apply would revert to the TF-managed revision.
+  lifecycle {
+    ignore_changes = [task_definition]
   }
 
   tags = {
@@ -228,30 +296,15 @@ resource "aws_ecs_task_definition" "beat" {
       # pinned to :beat-${sha} on every push, so the effective running image
       # is the most recent build, not :beat-latest. See
       # .github/workflows/deploy-backend.yml → "Render beat task definition".
-      image     = "${var.ecr_repository_url}:beat-latest"
+      image     = "${var.ecr_repository_url}:beat-${var.image_tag}"
       essential = true
 
       command = [
         "celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"
       ]
 
-      environment = [
-        {
-          name  = "ENVIRONMENT"
-          value = var.environment
-        },
-        {
-          name  = "AWS_SECRETS_PREFIX"
-          value = "${var.project_name}/${var.environment}"
-        },
-        # Story 9.7 — explicit region for boto3's bedrock-runtime client.
-        # ECS task-metadata region works today but is ambiguous when code calls
-        # boto3.client("bedrock-runtime") with no region_name kwarg.
-        {
-          name  = "AWS_REGION"
-          value = var.aws_region
-        },
-      ]
+      environment = local.app_env_plain
+      secrets     = local.app_env_secrets
 
       # Liveness: verifies the celery app still imports. Catches the
       # "container is there but broken" class of failure; does NOT prove beat
@@ -292,6 +345,10 @@ resource "aws_ecs_service" "beat" {
     subnets          = var.private_subnet_ids
     security_groups  = [var.ecs_security_group_id]
     assign_public_ip = false
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition]
   }
 
   tags = {

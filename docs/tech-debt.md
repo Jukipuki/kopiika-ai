@@ -15,6 +15,132 @@ Each entry should answer: what's wrong, where, why it was deferred, and what fix
 
 ## Open
 
+### TD-111 — Terraform state bucket uses SSE-S3, not KMS CMK [LOW]
+
+**Where:** [docs/runbooks/state-bucket.md](runbooks/state-bucket.md), bucket `kopiika-terraform-state` (eu-central-1).
+
+**Problem:** The state bucket is encrypted with SSE-S3 (AES256). Per the security-hardening pattern applied across the rest of the data plane (per-service KMS CMKs on RDS, Redis, Secrets, S3 uploads, ECR), state — which contains plaintext secrets such as the random_password.rds_master output — should also be wrapped in a CMK.
+
+**Why deferred:** Migrating an existing S3 bucket to a CMK requires re-encrypting every object version. Versioning was enabled retroactively (Phase A) so the value at risk today is one current state file (~23 KB); not worth the migration risk during prod cut-over.
+
+**Fix shape:** Provision a CloudTrail-style KMS key with a key policy granting Terraform principals + S3 service `kms:*`. Run `aws s3 cp s3://bucket/key s3://bucket/key --sse aws:kms --sse-kms-key-id <arn>` to re-encrypt; update bucket-default encryption to KMS. Document in [docs/runbooks/state-bucket.md](runbooks/state-bucket.md).
+
+**Surfaced in:** Terraform audit (2026-04-25)
+
+---
+
+### TD-112 — RDS cross-region automated backup replication [MEDIUM]
+
+**Where:** [infra/terraform/modules/rds/main.tf](../infra/terraform/modules/rds/main.tf)
+
+**Problem:** RDS automated backups stay in eu-central-1 only. A regional outage that takes out both the primary AZ and the backup S3 sink would lose all DB recovery state. Architecture cited the audit's recommendation but the fix wasn't bundled into Phase C because it requires a second-region KMS key + IAM principal setup.
+
+**Why deferred:** Setup involves provisioning resources in a peer region (likely eu-west-1) via a second `aws.replica` provider alias, plus a CMK and replication-IAM-role in that region. Non-trivial diff and adds ~$5/mo of cross-region storage. Wanted to land Phase C without expanding scope into multi-region.
+
+**Fix shape:** Add an `aws.replica` provider alias in `providers.tf`, create `aws_kms_key.rds_replica` and `aws_db_instance_automated_backups_replication` resources. Pair with a runbook on how to restore from a cross-region copy.
+
+**Surfaced in:** Terraform audit (2026-04-25)
+
+---
+
+### TD-113 — Secrets Manager rotation Lambda for DB password [MEDIUM]
+
+**Where:** [infra/terraform/modules/secrets/main.tf](../infra/terraform/modules/secrets/main.tf)
+
+**Problem:** No `aws_secretsmanager_secret_rotation` configured for any secret, including the RDS master password. Regulated environments typically require ≤90-day rotation on database credentials.
+
+**Why deferred:** The rotation Lambda template requires a Lambda function (with VPC access to RDS), a layer with the AWS-published rotation code, IAM for Lambda → Secrets Manager → RDS, and tested rotation hooks. Substantial diff (~150 lines) and not on the critical path for the first prod cut-over.
+
+**Fix shape:** Use the AWS Serverless Application Repository's `SecretsManagerRDSPostgreSQLRotationSingleUser` template via `aws_serverlessapplicationrepository_cloud_formation_stack`. Wire `aws_secretsmanager_secret_rotation` on the `database` secret with 30-day cadence. Validate with a manual `aws secretsmanager rotate-secret` and a `psql` connectivity check.
+
+**Surfaced in:** Terraform audit (2026-04-25)
+
+---
+
+### TD-114 — Network-change CIS alarms (3.10–3.14) not wired [LOW]
+
+**Where:** [infra/terraform/modules/security-baseline/alarms.tf](../infra/terraform/modules/security-baseline/alarms.tf)
+
+**Problem:** The CIS alarm pack lands 7 of 14 §3.x alarms (the high-signal ones: unauthorized API, root-use, IAM/CloudTrail/KMS/S3-policy changes, console-auth-failures). The 7 network-change alarms (NACL changes, route-table changes, SG changes, VPC changes, network gateway changes) are intentionally skipped — they're noisy on a single-developer workload where Terraform applies legitimately churn networking.
+
+**Why deferred:** Decision, not omission. Documented here so a future audit doesn't flag this as missing without context.
+
+**Fix shape:** If audit pressure ever requires the full pack, add the missing five filters/alarms to the `cis_alarms` map in alarms.tf. Treat the noise budget by routing the network-change SNS to a separate inbox / channel so the high-signal alarms keep their salience.
+
+**Surfaced in:** Terraform audit (2026-04-25)
+
+---
+
+### TD-116 — Cognito MFA is OPTIONAL, not enforced [MEDIUM]
+
+**Where:** [infra/terraform/modules/cognito/main.tf](../infra/terraform/modules/cognito/main.tf) (`mfa_configuration = "OPTIONAL"`)
+
+**Problem:** Phase C set MFA to OPTIONAL — users *can* enroll a TOTP app, but most won't. For a regulated workload that gates customer financial data, the policy expectation is closer to "MFA required after first sign-in" or "MFA required for backend client only."
+
+**Why deferred:** Pre-launch, the user base is one operator. Forcing MFA at signup adds friction without security upside (the operator already has an authenticator app set up out of band). Ship OPTIONAL; revisit once there are real customers.
+
+**Fix shape:** Either (a) flip to `mfa_configuration = "ON"` and accept signup friction, or (b) keep OPTIONAL but enforce post-signup via a Cognito post-confirmation Lambda that calls `AdminSetUserMFAPreference`. (b) gives the best UX but adds a Lambda to maintain.
+
+**Surfaced in:** Prod-readiness review (2026-04-25)
+
+---
+
+### TD-117 — Cognito email is the AWS default sender, not SES [MEDIUM]
+
+**Where:** [infra/terraform/environments/prod/terraform.tfvars](../infra/terraform/environments/prod/terraform.tfvars) (`ses_sender_email = ""`)
+
+**Problem:** With no SES sender configured, Cognito falls back to AWS's default sender (`no-reply@verificationemail.com`). This works (50/day free) but: (1) deliverability is mediocre, (2) the from-address is unbranded, (3) some corporate inboxes trash AWS-default mail, and (4) the daily quota is shared across the AWS region.
+
+**Why deferred:** SES domain verification requires DKIM CNAMEs in Squarespace DNS, plus production access (default is sandbox = verified-recipient-only). Not on the critical path for first launch.
+
+**Fix shape:** (1) `aws ses verify-domain-identity --domain kopiika.coach` and add the returned DKIM CNAMEs to Squarespace DNS. (2) Move out of the SES sandbox via support ticket. (3) Set `ses_sender_email = "noreply@kopiika.coach"` in prod tfvars. (4) `terraform apply` — the `aws_ses_identity_policy.cognito` resource (already in the SES module) auto-grants Cognito permission to send. Verify with a real signup confirmation email.
+
+**Surfaced in:** Prod-readiness review (2026-04-25)
+
+---
+
+### TD-118 — `random_password.redis_auth` does not actually rotate [LOW]
+
+**Where:** [infra/terraform/modules/elasticache/main.tf](../infra/terraform/modules/elasticache/main.tf)
+
+**Problem:** The Redis replication group has `auth_token_update_strategy = "ROTATE"`, but the source token is `random_password.redis_auth.result` with no `keepers` block. Without keepers, the random_password value is stable across applies → the auth_token never actually changes → the rotation strategy is window dressing.
+
+**Why deferred:** Manual rotation (`terraform taint random_password.redis_auth && terraform apply`) works for solo operations. Periodic auto-rotation is a nice-to-have.
+
+**Fix shape:** Add a `var.redis_auth_rotation_id` (default `"v1"`) and `keepers = { rotation_id = var.redis_auth_rotation_id }` on the random_password. Bumping the var triggers a new password + ROTATE on the next apply. Document the rotation cadence (e.g. every 90 days, tracked in calendar).
+
+**Surfaced in:** Prod-readiness review (2026-04-25)
+
+---
+
+### TD-119 — `build-image.yml` runs without test gating [LOW]
+
+**Where:** [.github/workflows/build-image.yml](../.github/workflows/build-image.yml)
+
+**Problem:** The build workflow triggers on `push: backend/**` to main. It does not depend on `ci-backend.yml` (the lint+test workflow). If a PR somehow merges with red CI (e.g. branch protection misconfigured, admin override), the build still runs and pushes images to ECR.
+
+**Why deferred:** Branch protection on `main` enforces "require status checks to pass before merging" with `ci-backend / lint-and-test` selected — that's the actual gate. Adding a `workflow_run` trigger on top is belt-and-suspenders, not a fix to a real gap.
+
+**Fix shape:** If branch protection ever loosens, add `on: workflow_run: workflows: [CI Backend]: types: [completed]` and gate steps on `github.event.workflow_run.conclusion == 'success'`. Or merge the workflows into one with sequential `needs:` jobs.
+
+**Surfaced in:** Prod-readiness review (2026-04-25)
+
+---
+
+### TD-115 — App Runner / ECS deploy workflow not yet manual-release-gated [HIGH]
+
+**Where:** `.github/workflows/deploy-backend.yml` (existing); needs replacement under Phase D.
+
+**Problem:** Phase C parameterized the ECR image tag and added `lifecycle.ignore_changes` on App Runner / ECS services so CI deploys can update them out-of-band. The CI workflow itself still needs to be split into (a) PR-time `terraform plan` + tests, (b) merge-to-main image build + push, (c) manual `workflow_dispatch` release that runs `aws apprunner update-service` + `aws ecs register-task-definition` + `update-service`. Until that lands, every merge to main still attempts to deploy.
+
+**Why deferred:** Split out as Phase D of the prod-readiness work — distinct from the security hardening in Phase C.
+
+**Fix shape:** See architect's Phase D plan (2026-04-25 chat). Three workflows: pr-checks, build-image, release. GitHub Environment `prod-deploy` with required reviewer = solo operator.
+
+**Surfaced in:** Architect prod-readiness plan (2026-04-25)
+
+---
+
 ### TD-001 — `(auth)` pages are client components, not server components with `generateMetadata` [HIGH]
 
 **Where:** [frontend/src/app/[locale]/(auth)/login/page.tsx](frontend/src/app/[locale]/(auth)/login/page.tsx), [signup/page.tsx](frontend/src/app/[locale]/(auth)/signup/page.tsx), [forgot-password/page.tsx](frontend/src/app/[locale]/(auth)/forgot-password/page.tsx), [forgot-password/confirm/page.tsx](frontend/src/app/[locale]/(auth)/forgot-password/confirm/page.tsx)

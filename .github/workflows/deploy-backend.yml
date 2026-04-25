@@ -1,11 +1,27 @@
 name: Deploy Backend
 
+# Manual release: deploys a previously-built image (see build-image.yml) to
+# App Runner + ECS. workflow_dispatch only — merging to main does NOT auto-
+# deploy. The `production` environment requires reviewer approval (configured
+# in GitHub repo settings → Environments).
+#
+# Operator flow:
+#   1. Merge PR → build-image.yml builds + pushes <sha>, worker-<sha>, beat-<sha>
+#   2. Open Actions → Deploy Backend → Run workflow → enter image_sha
+#   3. Approve the production-environment gate
+#   4. Watch the run; smoke-test the deployment
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: "Commit sha of the image to deploy (must be already built by build-image.yml)"
+        required: true
+        type: string
+      run_migrations:
+        description: "Run alembic migrations before deploying API"
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   id-token: write
@@ -17,7 +33,7 @@ env:
 
 jobs:
   deploy:
-    name: Build & Deploy
+    name: Deploy ${{ github.event.inputs.image_sha }}
     runs-on: ubuntu-latest
     environment: production
 
@@ -35,73 +51,128 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push API image
-        id: build-api
+      - name: Verify images exist
         env:
-          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          SHA: ${{ github.event.inputs.image_sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f backend/Dockerfile backend/
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          for tag in "sha-$SHA" "worker-sha-$SHA" "beat-sha-$SHA"; do
+            if ! aws ecr describe-images \
+                --repository-name "$ECR_REPOSITORY" \
+                --image-ids imageTag="$tag" \
+                --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "::error::Image $ECR_REPOSITORY:$tag not found in ECR. Did build-image.yml run on this sha?"
+              exit 1
+            fi
+          done
 
       - name: Run Alembic migrations
+        if: ${{ github.event.inputs.run_migrations == 'true' }}
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          SHA: ${{ github.event.inputs.image_sha }}
         run: |
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA
           docker run --rm \
             -e AWS_REGION=${{ env.AWS_REGION }} \
             -e AWS_SECRETS_PREFIX=${{ vars.PROJECT_NAME }}/${{ vars.ENVIRONMENT }} \
             -e AWS_ACCESS_KEY_ID \
             -e AWS_SECRET_ACCESS_KEY \
             -e AWS_SESSION_TOKEN \
-            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            $ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA \
             alembic upgrade head
 
-      - name: Deploy to App Runner
-        uses: awslabs/amazon-app-runner-deploy@v1
-        with:
-          service: kopiika-${{ vars.ENVIRONMENT }}-api
-          image: ${{ steps.build-api.outputs.image }}
-          access-role-arn: ${{ vars.APPRUNNER_ECR_ROLE_ARN }}
-          region: ${{ env.AWS_REGION }}
-          wait-for-service-stability-seconds: 300
-
-      - name: Build and push worker image
+      # Direct AWS CLI for App Runner update + poll instead of the deprecated
+      # awslabs/amazon-app-runner-deploy action (which also required broader
+      # apprunner:StartDeployment / TagResource IAM than UpdateService).
+      #
+      # Polling uses the OperationId returned by update-service against
+      # list-operations, NOT describe-service.Status — describe-service can
+      # briefly still report the previous deploy's RUNNING state for a few
+      # seconds after update-service returns, leading to a false-success race.
+      #
+      # ImageConfiguration MUST be included on every update-service call:
+      # SourceConfiguration.ImageRepository is treated as a full replacement,
+      # so omitting Port / RuntimeEnvironmentVariables would reset the
+      # service to defaults (port 8080, no env vars). The values here MUST
+      # mirror infra/terraform/modules/app-runner/main.tf:170-176.
+      - name: Deploy API to App Runner
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          SHA: ${{ github.event.inputs.image_sha }}
+          SERVICE_NAME: kopiika-${{ vars.ENVIRONMENT }}-api
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:worker-$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:worker-latest -f backend/Dockerfile.worker backend/
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:worker-$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:worker-latest
+          SERVICE_ARN=$(aws apprunner list-services --region "$AWS_REGION" \
+            --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" \
+            --output text)
+          if [ -z "$SERVICE_ARN" ] || [ "$SERVICE_ARN" = "None" ]; then
+            echo "::error::App Runner service $SERVICE_NAME not found"
+            exit 1
+          fi
 
-      - name: Render ECS task definition
-        id: render-task
+          # SourceConfiguration must be passed in full — App Runner replaces
+          # the entire object on update-service. Reading current ImageConfiguration
+          # back from describe-service is the safest way to keep
+          # RuntimeEnvironmentSecrets in sync without duplicating secret ARNs
+          # in this workflow (which would drift from Terraform).
+          CURRENT_SRC=$(aws apprunner describe-service \
+            --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
+            --query 'Service.SourceConfiguration' --output json)
+
+          NEW_SRC=$(echo "$CURRENT_SRC" | jq --arg img "$ECR_REGISTRY/$ECR_REPOSITORY:sha-$SHA" \
+            '.ImageRepository.ImageIdentifier = $img')
+
+          OP_ID=$(aws apprunner update-service \
+            --region "$AWS_REGION" \
+            --service-arn "$SERVICE_ARN" \
+            --source-configuration "$NEW_SRC" \
+            --query 'OperationId' --output text)
+
+          if [ -z "$OP_ID" ] || [ "$OP_ID" = "None" ]; then
+            echo "::error::update-service did not return an OperationId"
+            exit 1
+          fi
+          echo "Tracking App Runner operation $OP_ID"
+
+          # Poll list-operations for THIS specific operation until terminal.
+          for i in $(seq 1 60); do
+            STATUS=$(aws apprunner list-operations \
+              --region "$AWS_REGION" \
+              --service-arn "$SERVICE_ARN" \
+              --query "OperationSummaryList[?Id=='$OP_ID'].Status" \
+              --output text)
+            echo "Operation status: ${STATUS:-pending}"
+            case "$STATUS" in
+              SUCCEEDED) echo "Deploy succeeded."; exit 0 ;;
+              FAILED|ROLLBACK_FAILED)
+                echo "::error::App Runner operation $OP_ID terminal state: $STATUS"
+                exit 1 ;;
+              ROLLBACK_SUCCEEDED)
+                echo "::error::App Runner deploy rolled back; new image rejected"
+                exit 1 ;;
+              PENDING|IN_PROGRESS|ROLLBACK_IN_PROGRESS|"") sleep 5 ;;
+              *) echo "Unknown status '$STATUS', continuing"; sleep 5 ;;
+            esac
+            if [ "$i" = "60" ]; then
+              echo "::error::App Runner deploy timed out after 5 minutes"
+              exit 1
+            fi
+          done
+
+      - name: Render worker task definition
+        id: render-worker
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition-family: kopiika-${{ vars.ENVIRONMENT }}-worker
           container-name: worker
-          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:worker-${{ github.sha }}
+          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:worker-sha-${{ github.event.inputs.image_sha }}
 
-      - name: Deploy to ECS
+      - name: Deploy worker to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.render-task.outputs.task-definition }}
+          task-definition: ${{ steps.render-worker.outputs.task-definition }}
           service: kopiika-${{ vars.ENVIRONMENT }}-worker
           cluster: kopiika-${{ vars.ENVIRONMENT }}-cluster
           wait-for-service-stability: true
-
-      - name: Build and push beat image
-        env:
-          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:beat-$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:beat-latest -f backend/Dockerfile.beat backend/
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:beat-$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:beat-latest
 
       - name: Render beat task definition
         id: render-beat
@@ -109,7 +180,7 @@ jobs:
         with:
           task-definition-family: kopiika-${{ vars.ENVIRONMENT }}-beat
           container-name: beat
-          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:beat-${{ github.sha }}
+          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:beat-sha-${{ github.event.inputs.image_sha }}
 
       - name: Deploy beat to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2

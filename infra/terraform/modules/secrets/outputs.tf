@@ -14,3 +14,8 @@ output "chat_canaries_secret_arn" {
   description = "ARN of the chat canaries secret (Story 10.4b). Consumed by the App Runner module to scope GetSecretValue IAM."
   value       = aws_secretsmanager_secret.chat_canaries.arn
 }
+
+output "kms_key_arn" {
+  description = "Per-env CMK that wraps Secrets Manager material. Consumers need kms:Decrypt to read any secret value."
+  value       = aws_kms_key.secrets.arn
+}

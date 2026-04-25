@@ -31,13 +31,23 @@ resource "random_password" "rds_master" {
   special = false
 }
 
-# Story 5.1 AC #1: pin the RDS KMS key to the AWS-managed alias so the
-# compliance documentation in architecture.md is code-verifiable, not just
-# "whatever AWS defaults to today". `alias/aws/rds` is the default when
-# storage_encrypted = true, so this is a no-op in plan output — but it
-# makes the claim explicit and protected against future AWS default drift.
-data "aws_kms_alias" "rds" {
-  name = "alias/aws/rds"
+# Per-service KMS CMK for RDS.
+# Hardened beyond the original Story 5.1 AC #1 (which pinned aws/rds, the AWS-
+# managed key) — a customer-managed key gives us key-policy control, the ability
+# to revoke by destroying the key, and audit visibility independent of AWS.
+resource "aws_kms_key" "rds" {
+  description             = "${local.name_prefix} RDS encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  tags = {
+    Name = "${local.name_prefix}-rds"
+  }
+}
+
+resource "aws_kms_alias" "rds" {
+  name          = "alias/${local.name_prefix}-rds"
+  target_key_id = aws_kms_key.rds.key_id
 }
 
 resource "aws_db_instance" "main" {
@@ -59,12 +69,19 @@ resource "aws_db_instance" "main" {
   parameter_group_name   = aws_db_parameter_group.postgres16.name
 
   storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
   storage_type      = "gp3"
 
   backup_retention_period = var.backup_retention_period
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
+  copy_tags_to_snapshot   = true
 
+  performance_insights_enabled          = var.environment == "prod"
+  performance_insights_retention_period = var.environment == "prod" ? 7 : null
+  performance_insights_kms_key_id       = var.environment == "prod" ? aws_kms_key.rds.arn : null
+
+  deletion_protection = var.environment == "prod"
   multi_az            = var.environment == "prod"
   publicly_accessible = false
   skip_final_snapshot = var.environment == "dev"
@@ -76,14 +93,11 @@ resource "aws_db_instance" "main" {
   }
 }
 
-# Story 5.1 AC #1: post-apply assertion that the RDS instance is encrypted
-# with the AWS-managed `aws/rds` key. Uses a Terraform `check` block (TF 1.5+)
-# so the compliance claim in architecture.md is code-verifiable without
-# needing to set `kms_key_id` on the resource directly (which would be
-# ForceNew on an existing instance and trigger a destructive replacement).
-check "rds_uses_aws_managed_kms" {
+# Post-apply assertion: RDS is encrypted with our CMK, not an AWS-managed key.
+# Successor to the Story 5.1 AC #1 check (which pinned aws/rds).
+check "rds_uses_customer_managed_kms" {
   assert {
-    condition     = aws_db_instance.main.kms_key_id == data.aws_kms_alias.rds.target_key_arn
-    error_message = "RDS instance ${aws_db_instance.main.identifier} is not encrypted with the aws/rds managed KMS key. AC #1 requires AWS-managed key."
+    condition     = aws_db_instance.main.kms_key_id == aws_kms_key.rds.arn
+    error_message = "RDS instance ${aws_db_instance.main.identifier} is not encrypted with the per-service CMK."
   }
 }

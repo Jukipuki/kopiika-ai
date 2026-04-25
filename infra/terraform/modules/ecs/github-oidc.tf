@@ -1,11 +1,5 @@
-# GitHub OIDC Provider for GitHub Actions
-# This allows GitHub Actions to assume IAM roles without long-lived credentials.
-
-data "aws_iam_openid_connect_provider" "github" {
-  count = var.environment == "prod" ? 1 : 0
-  url   = "https://token.actions.githubusercontent.com"
-}
-
+# GitHub OIDC Provider for GitHub Actions.
+# Allows GitHub Actions to assume IAM roles without long-lived credentials.
 resource "aws_iam_openid_connect_provider" "github" {
   count = var.environment == "prod" ? 1 : 0
   url   = "https://token.actions.githubusercontent.com"
@@ -92,16 +86,41 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     actions = [
       "apprunner:UpdateService",
       "apprunner:DescribeService",
+      "apprunner:ListOperations",
     ]
-    resources = ["arn:aws:apprunner:*:*:service/${var.project_name}-*"]
+    resources = ["arn:aws:apprunner:*:*:service/${var.project_name}-*/*"]
+  }
+
+  # apprunner:ListServices does not support resource-level scoping (AWS
+  # requires "*"). Used by deploy-backend.yml to resolve the service ARN
+  # by name; can be removed if the operator instead stores the resolved
+  # ARN as vars.APP_RUNNER_SERVICE_ARN after first apply.
+  statement {
+    sid       = "AppRunnerListServices"
+    effect    = "Allow"
+    actions   = ["apprunner:ListServices"]
+    resources = ["*"]
   }
 
   statement {
-    sid    = "ECSDeploy"
+    sid    = "ECSDeployScoped"
     effect = "Allow"
     actions = [
       "ecs:UpdateService",
       "ecs:DescribeServices",
+    ]
+    resources = [
+      "arn:aws:ecs:*:*:service/${var.project_name}-*/*",
+    ]
+  }
+
+  # RegisterTaskDefinition + DescribeTaskDefinition can only be * because AWS
+  # does not support resource-level scoping on those actions. Acceptable: the
+  # scoped UpdateService above is the choke point for using a malicious task def.
+  statement {
+    sid    = "ECSTaskDefRegister"
+    effect = "Allow"
+    actions = [
       "ecs:DescribeTaskDefinition",
       "ecs:RegisterTaskDefinition",
     ]
@@ -128,19 +147,16 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
 # -----------------------------------------------------------------------------
 # Story 9.7 / TD-086 — GitHub OIDC role for the cross-provider CI matrix.
 #
-# .github/workflows/ci-backend-provider-matrix.yml runs on both push and
-# pull_request, so the trust policy accepts both main-branch pushes AND PR
-# token subjects. The deploy role above is main-only because it mutates
-# production infra; this role is read-only bedrock:InvokeModel and is
-# deliberately PR-reachable so PRs can exercise the Bedrock column. Harden
-# further via a GitHub environment protection rule if this ever becomes a
-# concern (noted in the story's Dev Notes).
+# Trust scope is the GitHub Environment "bedrock-ci". That environment is
+# configured in GitHub with required reviewers (you) so an arbitrary PR
+# can no longer assume this role and burn Bedrock budget; an approval is
+# required before the workflow can request the OIDC token with the
+# environment claim. See the workflow at
+# .github/workflows/ci-backend-provider-matrix.yml — it must set
+# `environment: bedrock-ci` on any job that assumes this role.
 #
-# count is gated by var.github_bedrock_ci_enabled so dev/staging don't
-# provision it. Prod tfvars sets it to true. Note that the underlying OIDC
-# provider resource at `aws_iam_openid_connect_provider.github` is itself
-# gated to prod, so enabling this flag outside prod will fail to plan — the
-# gate is effectively "prod + opt-in".
+# Defense-in-depth: the AWS Budgets alarm in security-baseline caps Bedrock
+# spend account-wide, so even a misconfigured environment can't run away.
 # -----------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "github_bedrock_ci_assume" {
@@ -162,11 +178,10 @@ data "aws_iam_policy_document" "github_bedrock_ci_assume" {
     }
 
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repo}:ref:refs/heads/main",
-        "repo:${var.github_repo}:pull_request",
+        "repo:${var.github_repo}:environment:bedrock-ci",
       ]
     }
   }

@@ -145,9 +145,9 @@ variable "bedrock_invocation_arns" {
 }
 
 variable "agentcore_runtime_arn" {
-  description = "ARN for the Bedrock AgentCore runtime. Wildcard default is a Phase A placeholder (Story 10.4a ships direct-Bedrock chat per ADR-0004). Phase B story 10.4a-runtime provisions a concrete runtime + flips this to its ARN."
+  description = "ARN for the Bedrock AgentCore runtime. Empty default fail-closes the App Runner AgentCore IAM policy (no wildcard footgun). Phase B story 10.4a-runtime provisions a concrete runtime + sets this in tfvars."
   type        = string
-  default     = "arn:aws:bedrock-agentcore:eu-central-1:*:runtime/*"
+  default     = ""
 }
 
 variable "github_bedrock_ci_enabled" {
@@ -165,6 +165,37 @@ variable "enable_observability_alarms" {
 
 variable "observability_sns_topic_arn" {
   description = "SNS topic ARN for observability alarm actions. Empty = no alarm action wired."
+  type        = string
+  default     = ""
+}
+
+# Security baseline (CloudTrail / GuardDuty / Security Hub / CIS alarms / Budgets)
+variable "security_alarm_email" {
+  description = "Email subscribed to the security-baseline SNS topic (CIS alarms + AWS Budgets). Empty = no email subscription (alarms still visible in console)."
+  type        = string
+  default     = ""
+}
+
+variable "monthly_budget_usd" {
+  description = "AWS Budgets monthly total. 80% actual + 100% forecast trigger notifications."
+  type        = number
+  default     = 100
+}
+
+variable "bedrock_monthly_budget_usd" {
+  description = "AWS Budgets monthly cap on Bedrock spend specifically. Defense-in-depth against the github_bedrock_ci OIDC role being abused."
+  type        = number
+  default     = 30
+}
+
+variable "image_tag" {
+  description = "Bootstrap ECR image tag for App Runner / ECS at first apply. ECR repo is IMMUTABLE so :latest is unavailable; CI deploys point services to :sha-<sha> via update-service / register-task-definition. lifecycle.ignore_changes prevents Terraform from reverting CI updates."
+  type        = string
+  default     = "bootstrap"
+}
+
+variable "api_custom_domain" {
+  description = "Custom domain for the App Runner API (e.g. api.kopiika.coach). Empty = use the default awsapprunner.com URL. DNS records to set in Squarespace are emitted as outputs."
   type        = string
   default     = ""
 }
