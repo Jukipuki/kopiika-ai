@@ -223,7 +223,11 @@ development_status:
   10-4a-agentcore-session-handler-memory-bounds: done
   10-4b-system-prompt-hardening-canaries: done
   10-4c-tool-manifest-read-only: done
-  10-5-chat-streaming-api-sse: in-progress
+  10-5-chat-streaming-api-sse: done
+  # Story 10.5a (2026-04-25): Follow-up to 10.5. Closes TD-108 (disconnect
+  # finalizer for send_turn_stream) and TD-109 short-term (canary scan on
+  # error paths). TD-109 medium-term (rolling-window wire-gate) stays open.
+  10-5a-send-turn-stream-disconnect-finalizer: done
   10-6a-grounding-enforcement-harness: backlog
   10-6b-citation-payload-data-refs: backlog
   10-7-chat-ui: backlog

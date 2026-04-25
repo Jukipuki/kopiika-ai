@@ -539,9 +539,25 @@ class ChatSessionHandler:
     #       end up in chat_messages whether the caller used send_turn or
     #       send_turn_stream; guardrail_action='blocked' rows still land on
     #       the refusal paths.
-    #   (4) a client disconnect does NOT skip persistence — the caller is
-    #       responsible for draining the iterator even on cancel; the API
-    #       layer honors this via the FastAPI StreamingResponse pattern.
+    #   (4) a client disconnect does NOT skip persistence — Steps 4–6 are
+    #       wrapped in an outer try/finally with a _finalized gate. The four
+    #       terminal branches (happy-path, canary-leak, tool-abort, guardrail-
+    #       intervention) each flip _finalized=True before raising; the finally
+    #       runs the late-write path (canary re-scan + assistant row + tool
+    #       rows + last_active_at bump) only when _finalized is False. This
+    #       handles GeneratorExit (client disconnect via agen.aclose()),
+    #       asyncio.CancelledError (server shutdown), and any unanticipated
+    #       exception. The finalizer is best-effort (its own try/except
+    #       Exception → chat.stream.finalizer_failed log) and never masks
+    #       the original exception. See Story 10.5a (TD-108 + TD-109 short-
+    #       term resolution).
+    #   (5) the canary scan ALSO runs from the outer finally on the
+    #       GeneratorExit / ChatGuardrailInterventionError(non-empty
+    #       accumulated_text) / ChatTransientError paths, emitting
+    #       chat.canary.leaked ERROR with finalizer_path=True. This is the
+    #       audit-layer safety net for canaries that slip past the happy-
+    #       path Step 5 scan due to mid-stream short-circuits. The wire-gate
+    #       (rolling-window matcher) remains TD-109 medium-term.
 
     async def send_turn_stream(
         self,
@@ -641,97 +657,173 @@ class ChatSessionHandler:
         accumulated_text = ""
         completed: BackendStreamDone | None = None
         tool_results: list = []
+        _finalized = False
         try:
-            async for backend_event in self._backend.invoke_stream(
-                db_session_id=handle.db_session_id,
-                context_messages=context_messages,
-                user_message=user_message,
-                system_prompt=rendered.text,
-                user_id=handle.user_id,
-                db=db,
-                guardrail_id=guardrail_id,
-                guardrail_version=guardrail_version,
-            ):
-                if isinstance(backend_event, BackendToolHop):
-                    yield ChatToolHopStarted(
-                        tool_name=backend_event.tool_name,
-                        hop_index=backend_event.hop_index,
+            try:
+                async for backend_event in self._backend.invoke_stream(
+                    db_session_id=handle.db_session_id,
+                    context_messages=context_messages,
+                    user_message=user_message,
+                    system_prompt=rendered.text,
+                    user_id=handle.user_id,
+                    db=db,
+                    guardrail_id=guardrail_id,
+                    guardrail_version=guardrail_version,
+                ):
+                    if isinstance(backend_event, BackendToolHop):
+                        yield ChatToolHopStarted(
+                            tool_name=backend_event.tool_name,
+                            hop_index=backend_event.hop_index,
+                        )
+                        yield ChatToolHopCompleted(
+                            tool_name=backend_event.tool_name,
+                            hop_index=backend_event.hop_index,
+                            ok=backend_event.ok,
+                        )
+                        tool_results.append(backend_event.result)
+                    elif isinstance(backend_event, BackendTokenDelta):
+                        accumulated_text += backend_event.text
+                        yield ChatTokenDelta(text=backend_event.text)
+                    elif isinstance(backend_event, BackendStreamDone):
+                        completed = backend_event
+            except (
+                ChatToolLoopExceededError,
+                ChatToolNotAllowedError,
+                ChatToolAuthorizationError,
+            ) as exc:
+                # Persist whatever tool rows executed before the loop aborted,
+                # bump last_active_at, surface the existing per-reason ERROR
+                # log (mirrors send_turn's Step 4.5).
+                partial_calls = getattr(exc, "tool_calls_so_far", ()) or tuple(
+                    tool_results
+                )
+                for tc in partial_calls:
+                    db.add(
+                        ChatMessage(
+                            session_id=handle.db_session_id,
+                            role="tool",
+                            content=_serialize_tool_call(tc),
+                            guardrail_action="none" if tc.ok else "blocked",
+                            redaction_flags={
+                                "filter_source": "tool_dispatcher",
+                                "tool_name": tc.tool_name,
+                                "error_kind": tc.error_kind,
+                            },
+                        )
                     )
-                    yield ChatToolHopCompleted(
-                        tool_name=backend_event.tool_name,
-                        hop_index=backend_event.hop_index,
-                        ok=backend_event.ok,
-                    )
-                    tool_results.append(backend_event.result)
-                elif isinstance(backend_event, BackendTokenDelta):
-                    accumulated_text += backend_event.text
-                    yield ChatTokenDelta(text=backend_event.text)
-                elif isinstance(backend_event, BackendStreamDone):
-                    completed = backend_event
-        except (
-            ChatToolLoopExceededError,
-            ChatToolNotAllowedError,
-            ChatToolAuthorizationError,
-        ) as exc:
-            # Persist whatever tool rows executed before the loop aborted,
-            # bump last_active_at, surface the existing per-reason ERROR
-            # log (mirrors send_turn's Step 4.5).
-            partial_calls = getattr(exc, "tool_calls_so_far", ()) or tuple(
-                tool_results
-            )
-            for tc in partial_calls:
-                db.add(
-                    ChatMessage(
-                        session_id=handle.db_session_id,
-                        role="tool",
-                        content=_serialize_tool_call(tc),
-                        guardrail_action="none" if tc.ok else "blocked",
-                        redaction_flags={
-                            "filter_source": "tool_dispatcher",
-                            "tool_name": tc.tool_name,
-                            "error_kind": tc.error_kind,
+                await db.exec(
+                    sa_update(ChatSession)
+                    .where(ChatSession.id == handle.db_session_id)
+                    .values(last_active_at=_now())
+                )
+                await db.commit()
+                _finalized = True
+                if isinstance(exc, ChatToolLoopExceededError):
+                    logger.error(
+                        "chat.tool.loop_exceeded",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "db_session_id": str(handle.db_session_id),
+                            "hops": exc.hops,
+                            "last_tool_name": exc.last_tool_name,
                         },
                     )
-                )
-            await db.exec(
-                sa_update(ChatSession)
-                .where(ChatSession.id == handle.db_session_id)
-                .values(last_active_at=_now())
-            )
-            await db.commit()
-            if isinstance(exc, ChatToolLoopExceededError):
-                logger.error(
-                    "chat.tool.loop_exceeded",
+                elif isinstance(exc, ChatToolAuthorizationError):
+                    logger.error(
+                        "chat.turn.aborted_authorization",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "db_session_id": str(handle.db_session_id),
+                            "tool_name": exc.tool_name,
+                        },
+                    )
+                else:
+                    logger.error(
+                        "chat.turn.aborted_tool_not_allowed",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "db_session_id": str(handle.db_session_id),
+                            "tool_name": exc.tool_name,
+                        },
+                    )
+                raise
+            except ChatGuardrailInterventionError as exc:
+                # AC #3: with non-empty accumulated_text, defer persistence
+                # to the finalizer (canary re-scan + assistant row); with
+                # empty accumulated_text, this branch owns persistence.
+                if not accumulated_text:
+                    for tc in tool_results:
+                        db.add(
+                            ChatMessage(
+                                session_id=handle.db_session_id,
+                                role="tool",
+                                content=_serialize_tool_call(tc),
+                                guardrail_action="none" if tc.ok else "blocked",
+                                redaction_flags={
+                                    "filter_source": "tool_dispatcher",
+                                    "tool_name": tc.tool_name,
+                                    "error_kind": tc.error_kind,
+                                },
+                            )
+                        )
+                    await db.exec(
+                        sa_update(ChatSession)
+                        .where(ChatSession.id == handle.db_session_id)
+                        .values(last_active_at=_now())
+                    )
+                    await db.commit()
+                    _finalized = True
+                # Re-raise with correlation_id stamped (frozen-exception-safe:
+                # the attribute is a plain instance attribute on Exception).
+                exc.correlation_id = correlation_id
+                logger.info(
+                    "chat.stream.guardrail_intervened",
                     extra={
                         "correlation_id": correlation_id,
                         "db_session_id": str(handle.db_session_id),
-                        "hops": exc.hops,
-                        "last_tool_name": exc.last_tool_name,
+                        "intervention_kind": exc.intervention_kind,
                     },
                 )
-            elif isinstance(exc, ChatToolAuthorizationError):
+                raise
+
+            # Step 5 — canary scan on accumulated final text (NOT per-delta).
+            try:
+                scan_for_canaries(accumulated_text, canaries)
+            except ChatPromptLeakDetectedError as exc:
+                assistant_row = ChatMessage(
+                    session_id=handle.db_session_id,
+                    role="assistant",
+                    content=accumulated_text,
+                    guardrail_action="blocked",
+                    redaction_flags={
+                        "filter_source": "canary_detector",
+                        "canary_slot": exc._matched_position_slot,
+                        "canary_prefix": exc.matched_canary_prefix,
+                    },
+                )
+                db.add(assistant_row)
+                await db.exec(
+                    sa_update(ChatSession)
+                    .where(ChatSession.id == handle.db_session_id)
+                    .values(last_active_at=_now())
+                )
+                await db.commit()
+                _finalized = True
                 logger.error(
-                    "chat.turn.aborted_authorization",
+                    "chat.canary.leaked",
                     extra={
                         "correlation_id": correlation_id,
                         "db_session_id": str(handle.db_session_id),
-                        "tool_name": exc.tool_name,
+                        "canary_slot": exc._matched_position_slot,
+                        "canary_prefix": exc.matched_canary_prefix,
+                        "canary_set_version_id": canaries.version_id,
+                        "output_char_len": len(accumulated_text),
+                        "output_prefix_hash": _prefix_hash(accumulated_text),
                     },
                 )
-            else:
-                logger.error(
-                    "chat.turn.aborted_tool_not_allowed",
-                    extra={
-                        "correlation_id": correlation_id,
-                        "db_session_id": str(handle.db_session_id),
-                        "tool_name": exc.tool_name,
-                    },
-                )
-            raise
-        except ChatGuardrailInterventionError as exc:
-            # Guardrail intervention — no assistant row; persist any partial
-            # tool rows that ran before intervention, stamp correlation_id,
-            # re-raise for the API translator.
+                raise
+
+            # Step 6 — persist tool rows + assistant row atomically.
             for tc in tool_results:
                 db.add(
                     ChatMessage(
@@ -746,39 +838,10 @@ class ChatSessionHandler:
                         },
                     )
                 )
-            await db.exec(
-                sa_update(ChatSession)
-                .where(ChatSession.id == handle.db_session_id)
-                .values(last_active_at=_now())
-            )
-            await db.commit()
-            # Re-raise with correlation_id stamped (frozen-exception-safe:
-            # the attribute is a plain instance attribute on Exception).
-            exc.correlation_id = correlation_id
-            logger.info(
-                "chat.stream.guardrail_intervened",
-                extra={
-                    "correlation_id": correlation_id,
-                    "db_session_id": str(handle.db_session_id),
-                    "intervention_kind": exc.intervention_kind,
-                },
-            )
-            raise
-
-        # Step 5 — canary scan on accumulated final text (NOT per-delta).
-        try:
-            scan_for_canaries(accumulated_text, canaries)
-        except ChatPromptLeakDetectedError as exc:
             assistant_row = ChatMessage(
                 session_id=handle.db_session_id,
                 role="assistant",
                 content=accumulated_text,
-                guardrail_action="blocked",
-                redaction_flags={
-                    "filter_source": "canary_detector",
-                    "canary_slot": exc._matched_position_slot,
-                    "canary_prefix": exc.matched_canary_prefix,
-                },
             )
             db.add(assistant_row)
             await db.exec(
@@ -787,79 +850,127 @@ class ChatSessionHandler:
                 .values(last_active_at=_now())
             )
             await db.commit()
-            logger.error(
-                "chat.canary.leaked",
+            _finalized = True
+
+            tool_call_count = len(tool_results)
+            input_tokens = completed.input_tokens if completed else 0
+            output_tokens = completed.output_tokens if completed else 0
+            token_source = completed.token_source if completed else "model"
+            logger.info(
+                "chat.turn.completed",
                 extra={
                     "correlation_id": correlation_id,
                     "db_session_id": str(handle.db_session_id),
-                    "canary_slot": exc._matched_position_slot,
-                    "canary_prefix": exc.matched_canary_prefix,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "session_turn_count": count_turns(history),
+                    "summarization_applied": summarization_applied,
+                    "token_source": token_source,
+                    "system_prompt_version": CHAT_SYSTEM_PROMPT_VERSION,
+                    "input_validator_version": INPUT_VALIDATOR_VERSION,
                     "canary_set_version_id": canaries.version_id,
-                    "output_char_len": len(accumulated_text),
-                    "output_prefix_hash": _prefix_hash(accumulated_text),
+                    "tool_manifest_version": CHAT_TOOL_MANIFEST_VERSION,
+                    "tool_call_count": tool_call_count,
+                    "tool_hop_count": tool_call_count,
+                    "streaming": True,
                 },
             )
-            raise
-
-        # Step 6 — persist tool rows + assistant row atomically.
-        for tc in tool_results:
-            db.add(
-                ChatMessage(
-                    session_id=handle.db_session_id,
-                    role="tool",
-                    content=_serialize_tool_call(tc),
-                    guardrail_action="none" if tc.ok else "blocked",
-                    redaction_flags={
-                        "filter_source": "tool_dispatcher",
-                        "tool_name": tc.tool_name,
-                        "error_kind": tc.error_kind,
-                    },
-                )
+            yield ChatStreamCompleted(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                session_turn_count=count_turns(history),
+                summarization_applied=summarization_applied,
+                token_source=token_source,
+                tool_call_count=tool_call_count,
             )
-        assistant_row = ChatMessage(
-            session_id=handle.db_session_id,
-            role="assistant",
-            content=accumulated_text,
-        )
-        db.add(assistant_row)
-        await db.exec(
-            sa_update(ChatSession)
-            .where(ChatSession.id == handle.db_session_id)
-            .values(last_active_at=_now())
-        )
-        await db.commit()
+        finally:
+            # Late-write finalizer — best-effort; must not mask the original
+            # cause (so we catch Exception, NOT BaseException — GeneratorExit
+            # / CancelledError / KeyboardInterrupt / SystemExit propagate).
+            if not _finalized:
+                try:
+                    canary_leak_exc: ChatPromptLeakDetectedError | None = None
+                    if accumulated_text:
+                        try:
+                            scan_for_canaries(accumulated_text, canaries)
+                        except ChatPromptLeakDetectedError as exc_canary:
+                            canary_leak_exc = exc_canary
 
-        tool_call_count = len(tool_results)
-        input_tokens = completed.input_tokens if completed else 0
-        output_tokens = completed.output_tokens if completed else 0
-        token_source = completed.token_source if completed else "model"
-        logger.info(
-            "chat.turn.completed",
-            extra={
-                "correlation_id": correlation_id,
-                "db_session_id": str(handle.db_session_id),
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "session_turn_count": count_turns(history),
-                "summarization_applied": summarization_applied,
-                "token_source": token_source,
-                "system_prompt_version": CHAT_SYSTEM_PROMPT_VERSION,
-                "input_validator_version": INPUT_VALIDATOR_VERSION,
-                "canary_set_version_id": canaries.version_id,
-                "tool_manifest_version": CHAT_TOOL_MANIFEST_VERSION,
-                "tool_call_count": tool_call_count,
-                "tool_hop_count": tool_call_count,
-                "streaming": True,
-            },
-        )
-        yield ChatStreamCompleted(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            session_turn_count=count_turns(history),
-            summarization_applied=summarization_applied,
-            token_source=token_source,
-            tool_call_count=tool_call_count,
-        )
+                    # F.3 first, then F.1/F.2 — tool rows precede assistant row
+                    # to match happy-path ordering (Step 6 persists tools then
+                    # assistant), preserving AC #14 invariant 3.
+                    for tc in tool_results:
+                        db.add(
+                            ChatMessage(
+                                session_id=handle.db_session_id,
+                                role="tool",
+                                content=_serialize_tool_call(tc),
+                                guardrail_action="none" if tc.ok else "blocked",
+                                redaction_flags={
+                                    "filter_source": "tool_dispatcher",
+                                    "tool_name": tc.tool_name,
+                                    "error_kind": tc.error_kind,
+                                },
+                            )
+                        )
+
+                    if canary_leak_exc is not None:
+                        db.add(
+                            ChatMessage(
+                                session_id=handle.db_session_id,
+                                role="assistant",
+                                content=accumulated_text,
+                                guardrail_action="blocked",
+                                redaction_flags={
+                                    "filter_source": "canary_detector",
+                                    "canary_slot": canary_leak_exc._matched_position_slot,
+                                    "canary_prefix": canary_leak_exc.matched_canary_prefix,
+                                },
+                            )
+                        )
+                    elif accumulated_text:
+                        db.add(
+                            ChatMessage(
+                                session_id=handle.db_session_id,
+                                role="assistant",
+                                content=accumulated_text,
+                            )
+                        )
+
+                    await db.exec(
+                        sa_update(ChatSession)
+                        .where(ChatSession.id == handle.db_session_id)
+                        .values(last_active_at=_now())
+                    )
+                    await db.commit()
+
+                    if canary_leak_exc is not None:
+                        logger.error(
+                            "chat.canary.leaked",
+                            extra={
+                                "correlation_id": correlation_id,
+                                "db_session_id": str(handle.db_session_id),
+                                "canary_slot": canary_leak_exc._matched_position_slot,
+                                "canary_prefix": canary_leak_exc.matched_canary_prefix,
+                                "canary_set_version_id": canaries.version_id,
+                                "output_char_len": len(accumulated_text),
+                                "output_prefix_hash": _prefix_hash(accumulated_text),
+                                "finalizer_path": True,
+                            },
+                        )
+                    _finalized = True
+                except Exception as exc_finalizer:  # noqa: BLE001
+                    logger.error(
+                        "chat.stream.finalizer_failed",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "db_session_id": str(handle.db_session_id),
+                            "error_class": type(exc_finalizer).__name__,
+                            "error_message": str(exc_finalizer)[:200],
+                            "accumulated_char_len": len(accumulated_text),
+                            "tool_results_count": len(tool_results),
+                        },
+                    )
 
     # ------------------------------------------------------------------
     # Summarization (AC #9)

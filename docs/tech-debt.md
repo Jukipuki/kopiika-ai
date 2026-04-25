@@ -1515,9 +1515,9 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 **Why deferred:** Story 10.9 owns the chat observability + alarms story and will author the metric filter against this exact event name. Tracker entry only; Story 10.9's PR resolves this TD.
 
-**Fix shape:** A CloudWatch Logs metric filter matching `{ $.message = "chat.canary.leaked" }` on the App Runner log group, dimensioned by `$.canary_slot`; a sev-1 alarm on `count > 0` over a 5-minute window routing to the security on-call SNS topic. Runbook entry in Story 10.9 covers rotation + forensic triage.
+**Fix shape:** A CloudWatch Logs metric filter matching `{ $.message = "chat.canary.leaked" }` on the App Runner log group, dimensioned by `$.canary_slot` (and additionally by `$.finalizer_path` so the leak-rate dashboard can split happy-path vs error-path emissions per Story 10.5a AC #2 Step F.1); a sev-1 alarm on `count > 0` over a 5-minute window routing to the security on-call SNS topic. Story 10.9 also owns the metric filter + **sev-2** alarm (`count > 0` over 5 min, business-hours pager) for the new `chat.stream.finalizer_failed` ERROR event introduced by Story 10.5a AC #4 — a post-disconnect persistence failure that breaks the AC #14 invariant 4 contract but is not user-facing. Runbook entry in Story 10.9 covers rotation + forensic triage.
 
-**Surfaced in:** Story 10.4b (2026-04-24) — AC #11 / AC #13. Pins the event-name contract so 10.9's metric filter is a pattern match, not a rewrite.
+**Surfaced in:** Story 10.4b (2026-04-24) — AC #11 / AC #13. Pins the event-name contract so 10.9's metric filter is a pattern match, not a rewrite. Updated by Story 10.5a (2026-04-25) to include `finalizer_path` dimension on `chat.canary.leaked` and the new `chat.stream.finalizer_failed` event in the inventory.
 
 ---
 
@@ -1645,48 +1645,62 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
-### TD-108 — `send_turn_stream` client-disconnect finalizer does not persist partial state [HIGH]
+### TD-109 — Canary scan does not gate partial token stream — wire-gate only [HIGH]
 
-**Where:** [backend/app/agents/chat/session_handler.py:644-862](../backend/app/agents/chat/session_handler.py#L644-L862) — `send_turn_stream`
+**Where:** [backend/app/agents/chat/session_handler.py](../backend/app/agents/chat/session_handler.py) — `send_turn_stream` token-yield loop
 
-**Problem:** AC #14 invariant 4 claims "a client disconnect does NOT skip persistence" — that a turn whose tokens streamed to the client but whose SSE was dropped is indistinguishable in the DB from a turn that completed (same `role='tool'` rows, same assistant row, same `last_active_at`). In reality, when `event_generator` calls `agen.aclose()` on `request.is_disconnected()`, `GeneratorExit` propagates into the `async for backend_event in ...` loop and short-circuits past Step 5 (canary scan) and Step 6 (assistant row + tool-row persist). Accumulated tokens already flushed to the wire end up with NO corresponding DB row. The Story 10.5 review fix added the `await agen.aclose()` call, so the handler now gets notified of disconnect — but the handler does not yet exploit the notification to finalize.
+**Problem:** The canary scan runs on the fully accumulated final text AFTER the `async for backend_event in self._backend.invoke_stream(...)` loop completes. `BackendTokenDelta` events are yielded to the API layer (and from there to the client) BEFORE the scan fires. Even on the happy path, the client has rendered the tokens before the DB block fires: the "refusal frames discard in-flight tokens" UI contract mitigates this per-session, but the raw wire bytes are already transmitted. The audit-layer + alarm gap (canary leaked through error-path short-circuits without firing `chat.canary.leaked`) is closed in Story 10.5a; the wire-gate gap remains.
 
-**Why deferred:** The fix requires wrapping the ~250-line Step-4-through-Step-6 body in an outer `try:/finally:` with a `_finalized` gate flag — bigger refactor than the review's budget allowed. The existing terminal-path branches (tool-abort, canary-leak, guardrail-intervention) already persist their own rows; the late finalizer only needs to run when `_finalized` is False (disconnect / unexpected exit).
-
-**Fix shape:**
-1. Add `_finalized = False` local before the Step-4 try.
-2. Wrap Steps 4–6 in an outer `try: ... finally:` — set `_finalized = True` in each existing terminal branch (end of happy-path Step 6, canary-leak persist branch, tool-abort branch, guardrail-intervention branch).
-3. In the outer `finally`, when `_finalized is False and accumulated_text`, run `scan_for_canaries(accumulated_text, canaries)` and persist the corresponding row (blocked on leak; normal assistant row otherwise) + tool rows + `last_active_at` bump. Best-effort only — swallow exceptions from the finalizer so it can't mask the original `GeneratorExit`.
-
-**Trigger:** Before Story 10.9's alarms go live (the `chat.stream.disconnected` distribution will underreport partial writes).
-
-**Effort:** ~½ day.
-
-**Surfaced in:** Story 10.5 code review (2026-04-25).
-
----
-
-### TD-109 — Canary scan does not gate partial token stream (only gates DB commit) [HIGH]
-
-**Where:** [backend/app/agents/chat/session_handler.py:768-770](../backend/app/agents/chat/session_handler.py#L768) — `send_turn_stream` Step 5
-
-**Problem:** The canary scan runs on the fully accumulated final text AFTER the `async for backend_event in self._backend.invoke_stream(...)` loop completes. `BackendTokenDelta` events are yielded to the API layer (and from there to the client) BEFORE the scan fires. If the model emits a canary mid-stream and then throws a `ChatGuardrailInterventionError` or `ChatTransientError` on the trailing chunk, the scan is skipped entirely — the canary text has been delivered to the wire and no `chat.canary.leaked` event is emitted. Even on the happy path, the client has rendered the tokens before the DB block fires: the "refusal frames discard in-flight tokens" UI contract mitigates this per-session, but the raw wire bytes are already transmitted.
-
-**Why deferred:** True mitigation requires either (a) buffering tokens and flushing only after canary-clean checkpoints (adds perceptible TTFB latency to every turn), or (b) running an incremental canary scan on a rolling window (requires a new incremental matcher — the current `scan_for_canaries` is atomic). Both approaches are bigger than a review fix; the DB-gate + UI-discard combination is defensible for now, but the exfil vector should be tracked.
+**Why deferred:** True wire-level mitigation requires either (a) buffering tokens and flushing only after canary-clean checkpoints (adds perceptible TTFB latency to every turn), or (b) running an incremental canary scan on a rolling window (requires a new incremental matcher — the current `scan_for_canaries` is atomic). Both approaches are bigger than a review fix; the DB-gate + UI-discard combination is defensible for now, but the exfil vector should be tracked.
 
 **Fix shape:**
-- Short-term: in the outer `finally` (see TD-108), always scan `accumulated_text` even on error paths and emit `chat.canary.leaked` ERROR so Story 10.9's alarm fires.
+- ~~Short-term: in the outer `finally` (see TD-108), always scan `accumulated_text` even on error paths and emit `chat.canary.leaked` ERROR so Story 10.9's alarm fires.~~ ✅ shipped in Story 10.5a (2026-04-25), see AC #2 Step F.1 + AC #5 (ii).
 - Medium-term: introduce a rolling-window canary matcher that scans each new delta + a trailing overlap equal to `max(canary_length)-1` chars; on match, stop yielding, persist blocked row, raise `ChatPromptLeakDetectedError`. This gates the wire, not just the DB.
 
 **Trigger:** Any `chat.canary.leaked` event in prod, OR Story 10.8a red-team corpus exercising mid-stream canary exfil.
 
-**Effort:** Short-term ~2h; medium-term ~1 day.
+**Effort:** ~1 day.
 
 **Surfaced in:** Story 10.5 code review (2026-04-25).
 
 ---
 
+### TD-110 — Real-socket E2E test for chat-stream client disconnect [MEDIUM]
+
+**Where:** [backend/tests/api/test_chat_routes.py](../backend/tests/api/test_chat_routes.py) — proposed test (xiv)
+
+**Problem:** Story 10.5a AC #6 mandated that the API-layer integration test (xiv) be strengthened with two DB-state assertions verifying that a mid-stream client disconnect causes the finalizer to persist `accumulated_text` as an `assistant` row and bump `last_active_at`. The test could not be written in-process: httpx's `ASGITransport` does not propagate client-disconnect signals into FastAPI's `request.is_disconnected()` poll reliably (a `client.stream(...)` early-break leaves the flag false; the stream runs to completion). The handler-unit tests at `test_send_turn_stream.py::test_disconnect_*` (i)/(ii)/(vii) cover the finalizer's DB-state contract directly, but the API → handler → finalizer wire-up under a real socket disconnect remains unpinned end-to-end.
+
+**Why deferred:** Real-socket disconnect simulation requires a uvicorn subprocess + raw TCP client (or an httpx replacement that flips `is_disconnected` on transport close). Both are heavier than the in-process pattern Story 10.5 uses for every other AC, and Story 10.5a's review-fix budget did not allow the test-infra refactor.
+
+**Fix shape:**
+1. Add a `tests/api/_helpers/uvicorn_subprocess.py` fixture that boots the FastAPI app on a free port + tears it down via `asyncio.subprocess`.
+2. Author test (xiv) in `test_chat_routes.py` using a raw `asyncio.open_connection` socket: send the chat request, read the first SSE chunks, then `writer.close()` mid-stream.
+3. Assert (a) `chat.stream.disconnected` log fires, (b) exactly one `assistant` row exists with `content` == concatenation of received deltas, (c) `chat_sessions.last_active_at` bumped.
+
+**Trigger:** Any production incident where AC #14 invariant 4 fails (assistant-row missing after disconnect), OR Story 10.7 / Story 10.9 stabilization work that adds uvicorn-subprocess fixtures for other reasons.
+
+**Effort:** ~½ day (fixture + test).
+
+**Surfaced in:** Story 10.5a code review (2026-04-25) — splits AC #6 deferral out of the story file into the central register.
+
+---
+
 ## Resolved
+
+### TD-108 — `send_turn_stream` client-disconnect finalizer does not persist partial state [RESOLVED 2026-04-25 — Story 10.5a]
+
+**Resolved by:** Story 10.5a (`_bmad-output/implementation-artifacts/10-5a-send-turn-stream-disconnect-finalizer.md`).
+
+`ChatSessionHandler.send_turn_stream` now wraps Steps 4–6 in an outer `try/finally` with a `_finalized` local. The four terminal branches each flip `_finalized = True` after `await db.commit()` and before raising:
+- happy-path Step 6 (after the assistant-row + `last_active_at` commit)
+- `ChatPromptLeakDetectedError` branch (after the blocked-row commit)
+- `(ChatToolLoopExceededError, ChatToolNotAllowedError, ChatToolAuthorizationError)` branch
+- `ChatGuardrailInterventionError` branch — conditional on empty `accumulated_text`; with prior streamed text the branch raises **without** flipping `_finalized` so the finalizer takes ownership of tool-row + assistant-row + bump.
+
+The outer `finally` runs F.1 (canary re-scan with `finalizer_path=True` on `chat.canary.leaked`) → F.2 (assistant-row persist on no-canary path) → F.3 (tool-row persist) → F.4 (`last_active_at` bump + commit). Best-effort: a finalizer-internal exception is logged as `chat.stream.finalizer_failed` but never re-raised. Test pins: `test_send_turn_stream.py::test_disconnect_mid_stream_persists_assistant_row` (i), `..._with_canary_in_accumulated_text_emits_blocked_row` (ii), `..._intervention_with_prior_accumulated_text_finalizer_persists` (iii), `..._intervention_with_empty_accumulated_text_existing_branch_wins` (iv), `..._transient_error_after_partial_deltas_finalizer_persists` (v), `..._happy_path_finalizer_no_op` (vi), `..._finalizer_db_failure_logs_finalizer_failed` (vii), `..._canary_leak_happy_path_emits_leaked_log_once` (viii).
+
+
 
 ### TD-081 — AWS CLI v2 binary does not expose `bedrock-agentcore` subcommand [RESOLVED 2026-04-24 — AWS CLI v2.34.35 ships the binding]
 
