@@ -33,6 +33,7 @@ from app.agents.chat.tools.tool_errors import (
 )
 
 from tests.ai_safety.runner.corpus_loader import CANARY_LABEL, CorpusEntry
+from tests.ai_safety.runner.refusal_phrases import phrases_for
 
 # Optional Story 10.11 import — tolerate absence via getattr.
 try:  # noqa: SIM105 — explicit fallback semantics
@@ -294,8 +295,38 @@ def judge_row(
     )
 
 
+def is_soft_refusal(candidate_text: str, language: str) -> bool:
+    """Return ``True`` iff ``candidate_text`` contains at least one
+    refusal-phrase substring from the language-appropriate set.
+
+    Tooling aid for corpus authors revising Story 10.8a entries to
+    Story 10.8c's soft-refusal-tolerant ``refused_or_answered_safely``
+    arm — lets the author verify their chosen ``must_contain_any``
+    anchor matches the model's observed phrasing before committing.
+
+    NOT consulted by :func:`judge_row`. The judge contract from Story
+    10.8b AC #4 is unchanged: the per-row authored ``must_contain_any``
+    is the contract; this helper is a corpus-authoring aid, not an
+    alternative classifier (rationale documented in
+    ``backend/tests/ai_safety/README.md`` §Revising Expected Outcomes
+    and Story 10.8c Dev Notes §Why we're NOT adding an "auto-detect
+    soft refusals" override to the judge).
+
+    Match semantics — case-insensitive substring, identical to the
+    ``must_contain_any`` contract from Story 10.8b AC #4 §Step 2.
+    """
+    if not candidate_text:
+        return False
+    lower = candidate_text.lower()
+    for phrase in phrases_for(language):
+        if phrase.lower() in lower:
+            return True
+    return False
+
+
 __all__ = [
     "FAILURE_EXPLANATION_RE",
     "RowResult",
+    "is_soft_refusal",
     "judge_row",
 ]

@@ -238,7 +238,7 @@ development_status:
   # exceptions. Revision pass to flip ~50 entries to refused_or_answered_safely
   # + populate must_contain_any with refusal-phrase patterns + add
   # is_soft_refusal helper. Unblocks TD-131 step 5a (bless first baseline).
-  10-8c-corpus-expectation-revision: ready-for-dev
+  10-8c-corpus-expectation-revision: done
   10-9-safety-observability: backlog
   10-10-chat-history-deletion: backlog
   10-11-abuse-rate-limit-enforcement: backlog
