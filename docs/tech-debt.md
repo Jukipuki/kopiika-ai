@@ -1887,21 +1887,57 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
-### TD-124 — Localization of `CategoryCitation.label` and `ProfileFieldCitation.label` [LOW]
+### TD-124 — Localization of `CategoryCitation.label` and `ProfileFieldCitation.label` [RESOLVED 2026-04-26 — Story 10.7]
 
-**Where:** [backend/app/agents/chat/citations.py](../backend/app/agents/chat/citations.py) (`_category_label`, `_profile_label`) — emits canonical English chip labels.
+**Resolved by:** Story 10.7 (`_bmad-output/implementation-artifacts/10-7-chat-ui.md`). FE chat surface now localizes both label families via `chat.citations.category.<code>` and `chat.citations.profile_field.<field>` keys in `frontend/messages/{en,uk}.json`, with month-year ICU interpolation for monetary profile-field labels (UA: "Травень 2026", EN: "May 2026"). Implementation lives in [`frontend/src/features/chat/lib/citation-label.ts`](../frontend/src/features/chat/lib/citation-label.ts); test pins in [`citation-label.test.ts`](../frontend/src/features/chat/__tests__/citation-label.test.ts). Server-emitted `label` is preserved as the fallback when an i18n key is missing — no behaviour change for unknown category codes / profile fields.
 
-**Problem:** Labels are emitted in English ("Groceries", "Monthly expenses (Apr 2026)"). UA-locale users in the chat UI need translated chip text.
+---
 
-**Why deferred:** Doing the i18n inside `citations.py` would couple the assembler to the i18n stack (currently in frontend only); doing it on the FE keeps the assembler pure.
+### TD-126 — Chat session-summarization UI affordance [LOW]
 
-**Fix shape:** Add a UA copy-map in the FE chat-citations consumer (Story 10.7); the assembler's `label` becomes a render hint / fallback rather than the displayed string.
+**Where:** [frontend/src/features/chat/](../frontend/src/features/chat/) — Story 10.3b chose Option A (silent backend summarization with no FE indicator).
 
-**Effort:** ~½ day, owned by Story 10.7.
+**Problem:** Long chats trigger backend summarization (`ChatSessionHandler.send_turn` summarization-applied path) but the user never sees a "Earlier messages summarized" row. If a user references something the model has summarized away, the absence of a marker makes the loss invisible.
 
-**Trigger:** Story 10.7 implementation.
+**Why deferred:** 10.3b explicitly chose silent summarization for first-ship simplicity. The on-wire `chat-complete.summarizationApplied` boolean is already there to drive the UI when this story opens.
 
-**Surfaced in:** Story 10.6b (2026-04-26).
+**Fix shape:** Render a system-meta row at the boundary where `summarizationApplied` flips true on a turn (≈ ½ day; one new component + one i18n string + one test).
+
+**Trigger:** > 5% of users in a survey want it OR a support escalation cites confusion.
+
+**Surfaced in:** Story 10.7 (2026-04-26).
+
+---
+
+### TD-127 — Chat citation chip i18n for additional category codes [LOW]
+
+**Where:** [frontend/messages/{en,uk}.json `chat.citations.category.*`](../frontend/messages/en.json); paired with [`backend/app/agents/categorization/mcc_mapping.py VALID_CATEGORIES`](../backend/app/agents/categorization/mcc_mapping.py).
+
+**Problem:** Story 10.7 ships UA/EN labels for the categories present in the production taxonomy at the time of authoring (2026-04-26). New categories added by future Epic 11 stories (or any taxonomy expansion) need their `chat.citations.category.<code>` entries; the FE falls back to the server-emitted English label gracefully when a key is missing, but UA users see English chip text.
+
+**Why deferred:** Per-category translation is a copy-team task; bulking the i18n with hypothetical future categories now is wasted churn until they actually ship.
+
+**Fix shape:** When a new `VALID_CATEGORIES` entry lands, add the paired `chat.citations.category.<code>` entry in en.json + uk.json. The forbidden-terms lint (i18n.test.ts) does not gate missing keys — extend the lint if drift becomes recurring.
+
+**Trigger:** A new `VALID_CATEGORIES` entry lands without paired i18n keys (visual regression in chip rendering or copy-team request).
+
+**Surfaced in:** Story 10.7 (2026-04-26).
+
+---
+
+### TD-128 — Chat empty/onboarding state copy uplift [LOW]
+
+**Where:** [frontend/src/features/chat/components/ConversationPane.tsx](../frontend/src/features/chat/components/ConversationPane.tsx) — empty-state branch renders `chat.empty.first_message_hint`.
+
+**Problem:** The empty state is a single hint string ("Ask a question about your spending, income, or goals."). A more elaborate onboarding (suggested prompts, sample questions, EN/UA discoverability copy, "what can I ask?" link) would help first-week activation.
+
+**Why deferred:** Copy-team work is best done after first-week telemetry on what users actually try. Pre-empting that with imagined prompt suggestions risks anchoring users on the wrong questions.
+
+**Fix shape:** Add a `chat.empty.suggestions[]` array of prompt cards; clicking one populates the composer. ~½ day.
+
+**Trigger:** Post-launch + 1 week of telemetry (which prompts succeed; where users churn out).
+
+**Surfaced in:** Story 10.7 (2026-04-26).
 
 ---
 
@@ -1924,6 +1960,34 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 **Trigger:** Story 10.7 chip rendering exposes the duplication to operator/user feedback; or the next chat-corpus ingestion change opens the door cheaply.
 
 **Surfaced in:** Story 10.6b code review (2026-04-26).
+
+---
+
+### TD-129 — `ConsentRevokedEmpty` hardcodes `/${locale}/settings` instead of accepting a `privacyHref` prop [LOW]
+
+**Where:** [frontend/src/features/chat/components/ConsentRevokedEmpty.tsx:8](../frontend/src/features/chat/components/ConsentRevokedEmpty.tsx#L8); compare to [frontend/src/features/chat/components/ChatScreen.tsx](../frontend/src/features/chat/components/ChatScreen.tsx) which already plumbs `privacyHref` from the route.
+
+**Problem:** The settings deep link is duplicated. `ChatScreen` receives `privacyHref` from `chat/page.tsx` and passes it into `ConsentFirstUseDialog`, but `ConsentRevokedEmpty` rebuilds the URL itself via `useLocale()`. If the privacy/settings route ever moves, two places must change.
+
+**Why deferred:** Cosmetic consistency; both paths currently resolve to the same URL.
+
+**Fix shape:** Add `privacyHref: string` prop to `ConsentRevokedEmpty`; thread it from `ChatScreen` (which already has it). Drop the `useLocale()` import.
+
+**Surfaced in:** Story 10.7 code review (2026-04-26).
+
+---
+
+### TD-130 — `ConsentFirstUseDialog` Accept path swallows grant errors with no user feedback [LOW]
+
+**Where:** [frontend/src/features/chat/components/ChatScreen.tsx](../frontend/src/features/chat/components/ChatScreen.tsx) — `onAccept={() => void consent.grant().catch(() => undefined)}`.
+
+**Problem:** If the consent POST fails (network blip, 5xx), the dialog stays open with no toast, no inline error, no retry affordance. The user clicks Accept, nothing visible happens, and they have no signal whether to click again.
+
+**Why deferred:** Low-frequency error path; the rest of the consent UX is correct on the happy path.
+
+**Fix shape:** Replace the `.catch(() => undefined)` with a Sonner `toast.error(t("consent.first_use.grant_error"))` (add the i18n key to en.json + uk.json). Keep the dialog open so the user can retry.
+
+**Surfaced in:** Story 10.7 code review (2026-04-26).
 
 ---
 

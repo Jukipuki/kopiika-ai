@@ -11,7 +11,7 @@ import SessionExpiredDialog from "@/features/auth/components/SessionExpiredDialo
 import LocaleSwitcher from "@/components/layout/LocaleSwitcher";
 import AppVersionBadge from "@/components/AppVersionBadge";
 import { Link } from "@/i18n/navigation";
-import { Settings, Plus, History, BookOpen, User } from "lucide-react";
+import { Settings, Plus, History, BookOpen, User, MessageCircle } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -73,6 +73,13 @@ export default function DashboardLayout({
                     aria-label={t("feed")}
                   >
                     <BookOpen className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    href="/chat"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/20 px-2.5 py-1.5 text-sm text-foreground/70 hover:bg-foreground/5 hover:text-foreground transition-colors"
+                    aria-label={t("chat")}
+                  >
+                    <MessageCircle className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/history"

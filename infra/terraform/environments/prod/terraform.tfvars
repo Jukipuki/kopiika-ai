@@ -78,3 +78,12 @@ image_tag = "bootstrap"
 # `terraform output api_acm_validation_records` and `api_app_runner_dns_records`
 # and paste both sets into Squarespace DNS. See docs/runbooks/domain-setup.md.
 api_custom_domain = "api.kopiika.coach"
+
+# Origins allowed to make browser API + S3 calls. Add each Vercel deployment
+# URL the frontend lives under (vercel.app default + the custom apex once
+# attached). localhost stays for dev.
+frontend_origins = [
+  "https://kopiika.coach",
+  "https://kopiika.vercel.app",
+  "http://localhost:3000",
+]

@@ -3,11 +3,16 @@ output "endpoint" {
 }
 
 output "connection_url" {
-  # Celery + redis-py require ssl_cert_reqs as a URL parameter on rediss://
-  # connections (raises ValueError otherwise: "A rediss:// URL must have
-  # parameter ssl_cert_reqs ..."). CERT_REQUIRED validates the AWS-managed
-  # ElastiCache certificate chain — the secure choice.
-  value     = "rediss://:${random_password.redis_auth.result}@${aws_elasticache_replication_group.main.primary_endpoint_address}:${aws_elasticache_replication_group.main.port}?ssl_cert_reqs=CERT_REQUIRED"
+  # ssl_cert_reqs URL param is required by both clients but they disagree
+  # on accepted values:
+  #   - redis-py sync (Celery via kombu) — accepts both CERT_REQUIRED and
+  #     `required`
+  #   - redis-py asyncio (FastAPI sessions/SSE) — accepts ONLY lowercase
+  #     `required` / `optional` / `none`. Anything else raises
+  #     "Invalid SSL Certificate Requirements Flag" at connect time.
+  # Use the lowercase form so both work. `required` validates the AWS-
+  # managed ElastiCache certificate chain — the secure choice.
+  value     = "rediss://:${random_password.redis_auth.result}@${aws_elasticache_replication_group.main.primary_endpoint_address}:${aws_elasticache_replication_group.main.port}?ssl_cert_reqs=required"
   sensitive = true
 }
 

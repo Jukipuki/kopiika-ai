@@ -99,7 +99,8 @@
     "logOut": "Log out",
     "logOutSuccess": "You've been logged out successfully",
     "upload": "Upload statement",
-    "feed": "Teaching Feed"
+    "feed": "Teaching Feed",
+    "chat": "Chat"
   },
   "history": {
     "title": "Upload History",
@@ -133,6 +134,7 @@
       "profile": "Your financial profile took an unexpected nap — let's wake it up!",
       "upload": "The upload gremlins struck again — let's give it another shot!",
       "settings": "Settings got a bit tangled — try again and we'll sort it out!",
+      "chat": "Chat hit a snag — try again in a moment.",
       "retry": "Try again"
     }
   },
@@ -456,6 +458,152 @@
       "continue": "Continue",
       "submitting": "Saving…",
       "logOut": "Log out"
+    }
+  },
+  "chat": {
+    "page_title": "Chat",
+    "loading": "Loading…",
+    "a11y": {
+      "user_at": "You, at {time}",
+      "assistant_at": "Assistant, at {time}",
+      "conversation_label": "Conversation",
+      "session_list_label": "Chat sessions"
+    },
+    "empty": {
+      "no_session_selected": "Pick a chat or start a new one.",
+      "first_message_hint": "Ask a question about your spending, income, or goals."
+    },
+    "composer": {
+      "label": "Message",
+      "placeholder": "Ask about your finances…",
+      "send": "Send",
+      "send_aria": "Send message",
+      "send_disabled_hint": "Wait for the response to finish before sending another message",
+      "cooldown_hint": "Wait until cooldown ends",
+      "char_counter": "{count}/{max}",
+      "error_too_long": "Your message is too long. Please shorten it and try again.",
+      "error_generic": "Something went wrong. Please try again."
+    },
+    "session": {
+      "new": "New chat",
+      "untitled": "New conversation",
+      "active_indicator": "Active",
+      "empty_list": "No chats yet.",
+      "create_error": "Couldn't start a new chat. Try again."
+    },
+    "streaming": {
+      "thinking_default": "Working on it…",
+      "thinking_get_transactions": "Reading your transactions…",
+      "thinking_get_profile": "Searching your profile…",
+      "thinking_get_teaching_feed": "Looking at your teaching feed…",
+      "thinking_search_financial_corpus": "Searching financial guidance…",
+      "connection_lost": "Connection lost.",
+      "retry": "Retry",
+      "scroll_to_bottom": "New messages"
+    },
+    "refusal": {
+      "guardrail_blocked": { "copy": "I can't help with that. Try asking a different way." },
+      "ungrounded": { "copy": "I can only answer from your data. Try narrowing the question." },
+      "rate_limited": { "copy": "You're sending messages quickly. Take a short break and try again." },
+      "prompt_leak_detected": { "copy": "That message couldn't be processed. Please rephrase." },
+      "tool_blocked": { "copy": "I can't access what's needed to answer that right now." },
+      "transient_error": { "copy": "Something went wrong. Try again in a moment." },
+      "try_again": "Try again",
+      "copy_fallback_hint": "Press Ctrl/Cmd+C to copy",
+      "copy_reference": {
+        "label": "Reference: {id}",
+        "copy_label": "Copy",
+        "copied_label": "Copied"
+      }
+    },
+    "consent": {
+      "first_use": {
+        "title": "Enable chat",
+        "body": "Chat needs your permission to read your transactions, profile, and learning history to answer your questions.\n\nThis is broader than the existing AI processing consent.",
+        "privacy_link": "Privacy details",
+        "accept": "Accept and start chatting",
+        "decline": "Not now",
+        "gated_hint": "Chat needs your consent to start."
+      },
+      "version_bump": {
+        "title": "Chat permissions updated",
+        "body": "Our chat data handling has been updated. Review and accept to keep chatting.",
+        "accept": "Accept",
+        "decline": "Not now"
+      },
+      "revoked": {
+        "title": "Chat is disabled",
+        "body": "Chat is disabled until you re-enable chat data processing.",
+        "settings_link": "Go to Privacy settings →"
+      }
+    },
+    "delete": {
+      "session": {
+        "kebab_label": "Chat actions",
+        "menu_label": "Delete",
+        "confirm_title": "Delete this chat?",
+        "confirm_body": "This conversation will be removed. This action can't be undone.",
+        "confirm_cta": "Delete",
+        "cancel": "Cancel",
+        "toast": "Chat deleted",
+        "undo": "Undo",
+        "error": "Couldn't delete the chat."
+      },
+      "all": {
+        "link": "Delete all chats",
+        "confirm_title": "Delete every chat?",
+        "confirm_body": "Every conversation will be permanently removed.",
+        "confirm_input_label": "Type {match} to confirm",
+        "confirm_input_match": "delete",
+        "confirm_cta": "Delete all",
+        "cancel": "Cancel",
+        "coming_soon": "Bulk delete is coming soon"
+      }
+    },
+    "ratelimit": {
+      "cooldown": "Try again in {time}",
+      "cooldown_done": "You can try again now.",
+      "daily_cap": "You've reached today's chat limit. You can continue after {time} (local time).",
+      "concurrent_sessions_title": "Too many chats open",
+      "concurrent_sessions_body": "You have 10 active chats. Close one to start a new session."
+    },
+    "citations": {
+      "row_label": "Sources for the previous answer",
+      "detail_title": "Source detail",
+      "close": "Close",
+      "similarity": "Similarity: {pct}%",
+      "field_date": "Date",
+      "field_description": "Description",
+      "field_amount": "Amount",
+      "field_category": "Category",
+      "field_id": "Transaction ID",
+      "field_name": "Name",
+      "field_code": "Code",
+      "field_value": "Value",
+      "field_as_of": "As of",
+      "kind_transaction": "Transaction",
+      "kind_category": "Category",
+      "kind_profile_field": "Profile",
+      "kind_rag_doc": "Document",
+      "category": {
+        "groceries": "Groceries",
+        "dining": "Dining out",
+        "transport": "Transport",
+        "utilities": "Utilities",
+        "entertainment": "Entertainment",
+        "shopping": "Shopping",
+        "health": "Health",
+        "education": "Education",
+        "salary": "Salary",
+        "transfer": "Transfer",
+        "other": "Other"
+      },
+      "profile_field": {
+        "monthly_income_kopiykas": "Monthly income ({month})",
+        "monthly_expenses_kopiykas": "Monthly expenses ({month})",
+        "savings_ratio": "Savings ratio ({month})",
+        "health_score": "Financial health score ({month})"
+      }
     }
   }
 }

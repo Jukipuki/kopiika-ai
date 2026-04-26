@@ -18,7 +18,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from app.agents.chat.citations import Citation, citation_to_json_dict
+from app.agents.chat.citations import citation_to_json_dict
 
 
 @dataclass(frozen=True)

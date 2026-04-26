@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-type FeatureArea = "feed" | "profile" | "upload" | "settings" | "review-queue";
+type FeatureArea = "feed" | "profile" | "upload" | "settings" | "review-queue" | "chat";
 
 function ErrorFallback(
   props: { feature: FeatureArea },

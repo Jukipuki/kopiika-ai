@@ -199,3 +199,9 @@ variable "api_custom_domain" {
   type        = string
   default     = ""
 }
+
+variable "frontend_origins" {
+  description = "Origins allowed by the FastAPI CORS middleware AND by the S3 uploads bucket CORS rule. Must include every URL from which a browser will make API/upload requests (Vercel preview URLs, custom domain, localhost for dev)."
+  type        = list(string)
+  default     = ["http://localhost:3000"]
+}

@@ -48,6 +48,12 @@ cd frontend && npm test -- --run
 
 Backend venv lives at `backend/.venv` (not repo root).
 
+**Backend lint is a CI gate.** After any backend change, run `ruff check` (and `ruff check --fix` for autofixable issues) alongside the tests — CI runs ruff and will fail the PR otherwise. Do not commit backend code without a clean ruff pass.
+
+```bash
+cd backend && source .venv/bin/activate && ruff check
+```
+
 ---
 
 ## Project Structure

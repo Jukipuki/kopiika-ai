@@ -52,8 +52,9 @@ module "cognito" {
 module "s3" {
   source = "./modules/s3"
 
-  project_name = var.project_name
-  environment  = var.environment
+  project_name         = var.project_name
+  environment          = var.environment
+  cors_allowed_origins = var.frontend_origins
 }
 
 # --- SES ---
@@ -195,6 +196,8 @@ module "app_runner" {
   image_tag             = var.image_tag
   custom_domain         = var.api_custom_domain
   ses_send_policy_arn   = module.ses.ses_send_policy_arn
+  cors_origins          = var.frontend_origins
+  cognito_user_pool_arn = module.cognito.user_pool_arn
 
   kms_key_arns = [
     module.secrets.kms_key_arn,

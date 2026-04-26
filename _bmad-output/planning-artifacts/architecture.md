@@ -1334,6 +1334,7 @@ Frontend (Vercel)  ←→  FastAPI API (App Runner)  ←→  PostgreSQL (RDS)
 | **User Feedback — Layer 1 (FR47-FR49)** | `features/teaching-feed/components/CardFeedbackBar.tsx`, `ReportIssueForm.tsx`, `hooks/use-card-feedback.ts` | `api/v1/feedback.py`, `services/feedback_service.py`, `models/feedback.py` (card_feedback table) |
 | **User Feedback — Layer 2 (FR50-FR51)** | `features/teaching-feed/components/FollowUpPanel.tsx` | `api/v1/feedback.py` (PATCH reason chip) |
 | **User Feedback — Layer 3 (FR52-FR55)** | `features/teaching-feed/components/MilestoneFeedbackCard.tsx` | `api/v1/feedback.py`, `services/feedback_service.py`, `models/feedback.py` (feedback_responses table) |
+| **Conversational Chat (FR68 citations + refusals)** | `features/chat/` (Story 10.7) | `api/v1/chat.py`, `agents/chat/`, `agents/chat/citation_assembler.py` |
 
 **Cross-Cutting Concerns → Location:**
 
@@ -1779,6 +1780,7 @@ New component alongside the existing batch agents (see [backend/app/agents/](../
 - Session handler behind a stable 4-method API (`create_session`, `send_turn`, `terminate_session`, `terminate_all_user_sessions`); runtime backend is phased per ADR-0004 (Phase A direct Bedrock, Phase B AgentCore Runtime). Stateful multi-turn behavior is DB-backed; per-user session isolation is enforced by `chat_sessions.user_id` FK + per-row authorization on every `chat_messages` read.
 - Tool manifest (read-only allowlist): user transactions, user profile, teaching-feed history, RAG corpus
 - Citation contract: structured per-turn data refs assembled from tool outputs (Story 10.6b — see [docs/chat-sse-contract.md](../../docs/chat-sse-contract.md) §chat-citations); chip-row UX in Story 10.7.
+- Frontend chat surface: `frontend/src/features/chat/` (Story 10.7). Consumes the SSE protocol authored in 10.5/10.5a and the citation contract authored in 10.6b; UX is the spec authored in 10.3a/b. No backend coupling beyond the documented contracts.
 - Memory policy: per *Memory & Session Bounds* above; retention aligned with `chat_processing` consent
 - Guardrails attachment: input + output, with grounding threshold configured
 - Rate-limit envelope: per *Rate Limits* above

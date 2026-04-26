@@ -79,6 +79,33 @@ resource "aws_iam_role_policy" "apprunner_kms" {
   policy = data.aws_iam_policy_document.apprunner_kms[0].json
 }
 
+# Cognito Admin APIs — login, logout, account deletion. Non-admin APIs
+# (sign_up, confirm_sign_up, forgot_password, confirm_forgot_password,
+# resend_confirmation_code) authenticate via client_id + client_secret
+# and don't need IAM. Backend calls live in
+# backend/app/services/cognito_service.py.
+data "aws_iam_policy_document" "apprunner_cognito" {
+  count = var.cognito_user_pool_arn != "" ? 1 : 0
+
+  statement {
+    sid    = "CognitoAdminAuth"
+    effect = "Allow"
+    actions = [
+      "cognito-idp:AdminInitiateAuth",
+      "cognito-idp:AdminUserGlobalSignOut",
+      "cognito-idp:AdminDeleteUser",
+    ]
+    resources = [var.cognito_user_pool_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "apprunner_cognito" {
+  count  = var.cognito_user_pool_arn != "" ? 1 : 0
+  name   = "cognito-admin"
+  role   = aws_iam_role.apprunner_instance.id
+  policy = data.aws_iam_policy_document.apprunner_cognito[0].json
+}
+
 # SES send policy attachment. Empty arn (when ses_sender_email is unset)
 # fail-closes: no attachment, so direct ses:SendEmail from FastAPI is denied.
 resource "aws_iam_role_policy_attachment" "apprunner_ses" {
@@ -193,6 +220,11 @@ resource "aws_apprunner_service" "api" {
           ENVIRONMENT        = var.environment
           ENV                = var.environment
           AWS_SECRETS_PREFIX = "${var.project_name}/${var.environment}"
+          # Pydantic Settings parses list[str] env vars as JSON. Without
+          # this, FastAPI's CORS middleware falls back to the default
+          # ["http://localhost:3000"] and rejects browser preflights from
+          # the live frontend.
+          CORS_ORIGINS = jsonencode(var.cors_origins)
         }
         runtime_environment_secrets = local.app_env_secrets
       }

@@ -88,3 +88,15 @@ variable "ses_send_policy_arn" {
   type        = string
   default     = ""
 }
+
+variable "cors_origins" {
+  description = "List of origins FastAPI's CORS middleware allows. Must include the live frontend URL(s); browser preflights from origins not in this list are rejected."
+  type        = list(string)
+  default     = ["http://localhost:3000"]
+}
+
+variable "cognito_user_pool_arn" {
+  description = "ARN of the Cognito user pool the App Runner backend authenticates against. Required for AdminInitiateAuth/AdminUserGlobalSignOut/AdminDeleteUser. Empty = skip the policy entirely (admin auth flows will fail)."
+  type        = string
+  default     = ""
+}
