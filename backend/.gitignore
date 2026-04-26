@@ -19,3 +19,8 @@ tests/agents/providers/runs/
 # committed baseline + .gitkeep marker; all timestamped reports are local.
 tests/fixtures/chat_grounding/runs/*.json
 !tests/fixtures/chat_grounding/runs/baseline-2026-04.json
+
+# Safety harness run-reports (Story 10.8b) — per-run JSONs are local; the
+# committed baseline + .gitkeep marker stay tracked.
+tests/ai_safety/runs/*.json
+!tests/ai_safety/runs/.gitkeep

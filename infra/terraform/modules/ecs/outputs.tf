@@ -22,3 +22,11 @@ output "github_bedrock_ci_role_arn" {
   description = "ARN of the GitHub OIDC Bedrock CI role (null if not enabled)."
   value       = try(aws_iam_role.github_bedrock_ci[0].arn, null)
 }
+
+# Story 10.8b / TD-131 — ARN of the GitHub OIDC safety-runner role.
+# After terraform apply, set GitHub repo `vars.AWS_IAM_ROLE_ARN_SAFETY_TEST`
+# to this value so .github/workflows/ci-backend-safety.yml can assume it.
+output "github_safety_test_role_arn" {
+  description = "ARN of the GitHub OIDC safety-runner role (null if not enabled)."
+  value       = try(aws_iam_role.github_safety_test[0].arn, null)
+}

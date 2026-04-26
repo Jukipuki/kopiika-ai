@@ -1,0 +1,105 @@
+name: CI Backend Safety (Red-Team Runner)
+
+# Story 10.8b: AI safety red-team runner. Merge-blocking PR gate per
+# architecture.md §Safety Test Harness — CI Gate (L1749-L1759). Runs only on
+# PRs that touch agent code, prompts, tools, or Guardrails config — frontend
+# / unrelated backend PRs do not pay the Bedrock cost.
+#
+# Branch protection: after this workflow lands, add `red-team-runner /
+# red-team-runner` to `Settings → Branches → main → Require status checks`
+# so the gate is actually merge-blocking.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/agents/chat/**"
+      - "backend/app/api/v1/chat.py"
+      - "backend/app/api/v1/chat_sessions.py"
+      - "backend/tests/ai_safety/**"
+      - "infra/terraform/**guardrail*"
+      - "infra/terraform/modules/bedrock-guardrail/**"
+      - ".github/workflows/ci-backend-safety.yml"
+  pull_request:
+    paths:
+      - "backend/app/agents/chat/**"
+      - "backend/app/api/v1/chat.py"
+      - "backend/app/api/v1/chat_sessions.py"
+      - "backend/tests/ai_safety/**"
+      - "infra/terraform/**guardrail*"
+      - "infra/terraform/modules/bedrock-guardrail/**"
+      - ".github/workflows/ci-backend-safety.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  red-team-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The safety-test OIDC role's trust policy locks the `sub` claim to
+    # `repo:<repo>:environment:bedrock-ci` (see modules/ecs/github-oidc.tf
+    # — github_safety_test_assume). This environment must therefore be set
+    # on the job, and configured in GitHub repo settings → Environments →
+    # bedrock-ci with required reviewers as the defense-in-depth gate on
+    # PR-reachable Bedrock spend (mirrors ci-backend-provider-matrix.yml).
+    environment: bedrock-ci
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kopiika
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/kopiika
+      LLM_PROVIDER: bedrock
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      # Staging Guardrail (NOT prod) — synthetic adversarial traffic must not
+      # pollute the prod block-rate alarms (per architecture.md §Observability).
+      BEDROCK_GUARDRAIL_ARN: ${{ vars.BEDROCK_GUARDRAIL_ARN_SAFETY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_IAM_ROLE_ARN_SAFETY_TEST }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Apply Alembic migrations
+        run: uv run alembic upgrade head
+
+      - name: Run safety harness
+        run: uv run pytest tests/ai_safety/ -v -m eval -s
+
+      - name: Upload run reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: red-team-runner-reports
+          path: backend/tests/ai_safety/runs/*.json
+          retention-days: 90

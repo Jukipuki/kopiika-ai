@@ -15,6 +15,86 @@ Each entry should answer: what's wrong, where, why it was deferred, and what fix
 
 ## Open
 
+### TD-133 — Frontend lint debt: ~20 React 19 / Next 16 strict-rule violations [MEDIUM]
+
+**Where:** [frontend/eslint.config.mjs](../frontend/eslint.config.mjs) (suppression), code spread across:
+
+- `frontend/src/lib/query/query-provider.tsx` — `react-hooks/refs` (4 sites)
+- `frontend/src/features/profile/components/{CategoryBreakdown,HealthScoreRing,HealthScoreTrend}.tsx` — `react-hooks/static-components` + `react-hooks/set-state-in-effect`
+- `frontend/src/features/teaching-feed/components/{CardFeedbackBar,CardStackNavigator,FeedContainer}.tsx` — `react-hooks/refs` + `react-hooks/set-state-in-effect`
+- `frontend/src/features/teaching-feed/hooks/use-feed-sse.ts`, `frontend/src/features/upload/hooks/use-job-status.ts` — variable used before declaration in hook bodies
+- A handful of test files — `react/display-name` on inline wrapper components, `@typescript-eslint/no-explicit-any` on boundary mocks
+
+**Problem:** When CI ran for the first time in a while (most pushes had been backend-only), ESLint surfaced ~20 errors from the React 19 / Next 16 strict ruleset. The rules flag real concurrent-rendering correctness issues — accessing `ref.current` during render, calling `setState` synchronously inside `useEffect`, mutating values after render completes. The code works in production *today* because React 18-style rendering is forgiving, but breaks under Strict Mode double-renders or React 19's concurrent features.
+
+**Why deferred:** Each violation needs a real refactor (move ref-access to handlers/effects, restructure setState chains into reducers or refs, hoist forward-declared identifiers). Not a quick fix. Demoted to warnings in `eslint.config.mjs` so CI Frontend stays green while the cleanup is tracked.
+
+**Fix shape:** Address per-file in dedicated PRs. After each, restore the rule to `"error"` in eslint.config.mjs (delete the corresponding override entry). When all overrides are gone, the entry is empty and can be removed entirely. Use `node_modules/next/dist/docs/` as the reference for the new patterns (per `frontend/AGENTS.md`).
+
+Order suggested (highest-leverage first):
+
+1. `query-provider.tsx` — central, blocks `react-hooks/refs` re-promotion
+2. `CardFeedbackBar.tsx` / `CardStackNavigator.tsx` / `FeedContainer.tsx` — chat experience touches
+3. Profile components (`HealthScoreRing` + friends) — visible in dashboard
+4. Hooks (`use-feed-sse`, `use-job-status`) — declaration-order fixes are mechanical
+5. Test files — `display-name` is one-line + `as any` cleanup
+
+**Surfaced in:** Phase F prod cut-over wrap-up (2026-04-26)
+
+---
+
+### TD-132 — Terraform-then-manual update-service drops CI-deployed images [MEDIUM]
+
+**Where:** [infra/terraform/modules/ecs/main.tf](../infra/terraform/modules/ecs/main.tf) — `aws_ecs_task_definition.worker` / `aws_ecs_task_definition.beat`, paired with the `lifecycle.ignore_changes = [task_definition]` on the matching services.
+
+**Problem:** The services have `ignore_changes = [task_definition]` (intentional — so CI's `register-task-definition` + `update-service` flow isn't reverted by terraform). But the *task-def resources themselves* are not gated. When `terraform apply` changes worker config (env vars, secrets, IAM), it creates a new task-def revision still pointing at `:bootstrap` (or whatever `var.image_tag` is). Operators then `aws ecs update-service --task-definition <new-revision>` to roll the config — which **silently overwrites the CI-deployed `:worker-sha-<sha>` reference**. Net effect after the operational dance: services run on a fresh task-def revision but with the bootstrap image, not the latest CI image. Symptom that surfaced this: worker logs reported `APP_VERSION=0.0.0+unknown` even after a successful CI deploy, because the version-baked image had been clobbered.
+
+**Why deferred:** Workaround is mechanical: re-trigger the deploy workflow after any terraform-driven worker/beat config change. Solo project, infrequent infra changes — acceptable while we build a feel for the pattern.
+
+**Fix shape:** Two viable approaches.
+
+1. **Workflow-only deploys.** Stop using `aws ecs update-service --task-definition` from the laptop or terraform. After `terraform apply` adds new env/secrets/IAM, re-run the deploy workflow. The deploy workflow's `aws-actions/amazon-ecs-render-task-definition` reads the live task-def family (which now has the new config from terraform) and renders a new revision *with the CI image*, then updates the service. This keeps the CI image and the new config in the same revision. Document this rule in `release.md` so it survives operator turnover.
+
+2. **Pin `image_tag` to the deployed sha.** Make `var.image_tag` track the actual deployed sha (update via `prod.tfvars` after each release). Then terraform-created revisions reference the real image, and a post-apply manual update-service is safe. Heavier — couples tfvars to deploys, requires a discipline of "bump image_tag every release."
+
+(1) is the conventional pattern (terraform owns config, CI owns image). (2) is closer to GitOps but adds friction.
+
+**Surfaced in:** Phase F prod cut-over follow-up (2026-04-26) — discovered when worker logs showed `0.0.0+unknown` after multiple terraform apply / manual update-service cycles had clobbered the CI deploy.
+
+---
+
+### TD-131 — Safety runner staging Guardrail ARN + IAM role + first baseline [HIGH]
+
+**Where:** [.github/workflows/ci-backend-safety.yml](../.github/workflows/ci-backend-safety.yml), [backend/tests/ai_safety/baselines/](../backend/tests/ai_safety/baselines/).
+
+**Problem:** Story 10.8b's CI workflow expects two repo-level vars
+(`BEDROCK_GUARDRAIL_ARN_SAFETY`, `AWS_IAM_ROLE_ARN_SAFETY_TEST`) and a
+committed `baselines/baseline.json`. Without them, the workflow either fails
+on missing creds or skips at the pre-flight Bedrock check; the merge gate is
+not yet protective.
+
+**Why deferred:** The Story 10.8b implementation PR ships the runner + the
+workflow but cannot itself bless a baseline — that requires a developer with
+AWS access to run the runner against the staging Guardrail. The first live
+run (2026-04-26) surfaced that the chat agent does soft refusals via the
+system-prompt layer-3 self-policing rather than typed-exception layers
+(L4-L6); the corpus's `expected.outcome` blocks need a re-classification
+pass before bless can produce ≥ 95 %. That pass is owned by **Story 10.8c
+— Red-Team Corpus Expectation Revision** (ready-for-dev as of 2026-04-26).
+
+**Status (2026-04-26):**
+- ✅ Step 1 (staging Guardrail ARN): provisioned via Story 10.8b PR's Terraform — `arn:aws:bedrock:eu-central-1:573562677570:guardrail/psxzlwm4lobf`. Lives in the prod env (separate variant in the same `bedrock-guardrail` module; `for_each` refactor with state-preserving `moved` blocks).
+- ✅ Step 2 (safety-test IAM role): provisioned via Story 10.8b PR's Terraform — `arn:aws:iam::573562677570:role/kopiika-prod-github-safety-test`. OIDC trust scoped to the `bedrock-ci` GitHub Environment (reuses the existing required-reviewer gate).
+- ⏳ Step 3 (GitHub repo vars): operator action — set `BEDROCK_GUARDRAIL_ARN_SAFETY` and `AWS_IAM_ROLE_ARN_SAFETY_TEST` on the `bedrock-ci` GitHub Environment (NOT repo-wide — env-scoped so the required-reviewer approval gates resolution).
+- ⏳ Step 4 (bless first baseline): **blocked on Story 10.8c**. The Story 10.8b first run scored 10.6 % (chat agent self-polices via prose; corpus expected typed exceptions). Bless invariant refuses < 95 %. Story 10.8c revises corpus expectations, then runs bless flow as its Task 10.
+- ⏳ Step 5 (branch protection): operator action after Story 10.8c bless lands — add `red-team-runner / red-team-runner` to `Settings → Branches → main → Require status checks`. Until enabled, the workflow runs on PRs but does not block merge.
+
+**Fix shape (remaining):** Story 10.8c implementation + the two operator actions (vars + branch protection). After 10.8c lands and a green workflow run is confirmed on its PR, this TD closes.
+
+**Surfaced in:** Story 10.8b implementation (2026-04-26). Updated after Story 10.8b's first live Bedrock run (2026-04-26).
+
+---
+
 ### TD-111 — Terraform state bucket uses SSE-S3, not KMS CMK [LOW]
 
 **Where:** [docs/runbooks/state-bucket.md](runbooks/state-bucket.md), bucket `kopiika-terraform-state` (eu-central-1).

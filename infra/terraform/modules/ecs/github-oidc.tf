@@ -241,3 +241,107 @@ resource "aws_iam_role_policy" "github_bedrock_ci" {
   role   = aws_iam_role.github_bedrock_ci[0].id
   policy = data.aws_iam_policy_document.github_bedrock_ci[0].json
 }
+
+# -----------------------------------------------------------------------------
+# Story 10.8b / TD-131 — GitHub OIDC role for the safety harness CI gate.
+#
+# Trust scope is the existing GitHub Environment "bedrock-ci" so the
+# required-reviewer approval gate is reused (no second environment to
+# configure). The role grants:
+#   - bedrock:InvokeModel + InvokeModelWithResponseStream against the
+#     standard Bedrock inference profiles + foundation models the chat
+#     agent uses (mirrors github_bedrock_ci);
+#   - bedrock:ApplyGuardrail against the SAFETY guardrail ARNs only
+#     (separate from the prod guardrail so synthetic adversarial traffic
+#     does not inflate prod block-rate alarms);
+#   - secretsmanager:GetSecretValue on the chat_canaries secret only,
+#     so the runner can resolve <CANARY_*> placeholders against the
+#     production canary set at run-time.
+#
+# Defense-in-depth: the AWS Budgets alarm in security-baseline caps Bedrock
+# spend account-wide; the per-PR runner adds ~$0.50–$1.00 of inference at
+# Haiku tier so the gate stays well below the cap.
+# -----------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "github_safety_test_assume" {
+  count = var.github_bedrock_ci_enabled ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values = [
+        "repo:${var.github_repo}:environment:bedrock-ci",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_safety_test" {
+  count              = var.github_bedrock_ci_enabled ? 1 : 0
+  name               = "${local.name_prefix}-github-safety-test"
+  assume_role_policy = data.aws_iam_policy_document.github_safety_test_assume[0].json
+}
+
+data "aws_iam_policy_document" "github_safety_test" {
+  count = var.github_bedrock_ci_enabled ? 1 : 0
+
+  statement {
+    sid    = "SafetyHarnessInvoke"
+    effect = "Allow"
+    actions = [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+    ]
+    resources = [
+      "arn:aws:bedrock:eu-central-1:*:inference-profile/eu.*",
+      "arn:aws:bedrock:eu-north-1::foundation-model/anthropic.*",
+      "arn:aws:bedrock:eu-north-1::foundation-model/amazon.nova-*",
+    ]
+  }
+
+  # Apply the SAFETY guardrail only — prod ARN deliberately excluded so the
+  # runner can never accidentally inflate prod block-rate metrics.
+  dynamic "statement" {
+    for_each = length(var.safety_guardrail_arns) > 0 ? [1] : []
+    content {
+      sid       = "SafetyHarnessApplyGuardrail"
+      effect    = "Allow"
+      actions   = ["bedrock:ApplyGuardrail"]
+      resources = var.safety_guardrail_arns
+    }
+  }
+
+  # Read-only access to the chat_canaries secret so the runner resolves the
+  # <CANARY_*> placeholders against the live canary set.
+  dynamic "statement" {
+    for_each = var.chat_canaries_secret_arn != "" ? [1] : []
+    content {
+      sid       = "SafetyHarnessReadCanaries"
+      effect    = "Allow"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [var.chat_canaries_secret_arn]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "github_safety_test" {
+  count  = var.github_bedrock_ci_enabled ? 1 : 0
+  name   = "safety-harness"
+  role   = aws_iam_role.github_safety_test[0].id
+  policy = data.aws_iam_policy_document.github_safety_test[0].json
+}

@@ -127,4 +127,105 @@ Identify the last-known-good sha, then run **Deploy Backend** with that sha. Sam
 - App Runner logs: CloudWatch → log group `/aws/apprunner/kopiika-prod-api/*`
 - ECS service events: `aws ecs describe-services --cluster kopiika-prod-cluster --services kopiika-prod-{worker,beat}` → tail `events`
 - ECS task logs: CloudWatch → `/ecs/kopiika-prod-{worker,beat}`
-- WAF blocks: CloudWatch metrics → namespace `AWS/WAFV2` → `kopiika-prod-api-waf`
+- WAF blocks: CloudWatch metrics → namespace `AWS/WAFV2` → `kopiika-prod-api-waf`. For sampled blocked requests, use `aws wafv2 get-sampled-requests --rule-metric-name kopiika-prod-waf-common ...`
+
+## One-shot ops via ECS run-task
+
+Some operations need to run **inside the VPC** (RDS in private subnets) but aren't part of the normal request path. Pattern: spawn a one-off Fargate task using the worker's task-def (which has the right env vars + IAM + network), override the command to whatever you need, task exits when done.
+
+The two parameters that change per AWS account / re-apply: subnet IDs and the ECS SG. Pull them once and reuse.
+
+```bash
+export AWS_PROFILE=personal
+export AWS_REGION=eu-central-1
+
+# One-time: capture network config (or pin in shell rc)
+PRIVATE_SUBNETS=$(aws ec2 describe-subnets --region $AWS_REGION \
+  --filters "Name=tag:Name,Values=kopiika-prod-private-*" \
+  --query 'Subnets[*].SubnetId' --output text | tr '\t' ',')
+ECS_SG=$(aws ec2 describe-security-groups --region $AWS_REGION \
+  --filters "Name=group-name,Values=kopiika-prod-sg-ecs-*" \
+  --query 'SecurityGroups[0].GroupId' --output text)
+NETWORK="awsvpcConfiguration={subnets=[$PRIVATE_SUBNETS],securityGroups=[$ECS_SG],assignPublicIp=DISABLED}"
+```
+
+### RAG corpus re-seed
+
+Trigger after: changes under `backend/data/rag-corpus/`, embedding-model swap, `document_embeddings` schema migration. Idempotent (the seed script upserts via `ON CONFLICT DO UPDATE`).
+
+```bash
+TASK_ARN=$(aws ecs run-task --region $AWS_REGION \
+  --cluster kopiika-prod-cluster --task-definition kopiika-prod-worker \
+  --launch-type FARGATE \
+  --network-configuration "$NETWORK" \
+  --overrides '{"containerOverrides":[{"name":"worker","command":["python","-m","app.rag.seed"]}]}' \
+  --query 'tasks[0].taskArn' --output text)
+TASK_ID=${TASK_ARN##*/}
+echo "Seed task: $TASK_ID"
+
+# Wait for completion (~60-90s for ~50 markdown files)
+aws ecs wait tasks-stopped --region $AWS_REGION \
+  --cluster kopiika-prod-cluster --tasks "$TASK_ID"
+
+# Verify exit code 0 and tail the final summary
+aws ecs describe-tasks --region $AWS_REGION \
+  --cluster kopiika-prod-cluster --tasks "$TASK_ID" \
+  --query 'tasks[0].{ExitCode:containers[0].exitCode,StoppedReason:stoppedReason}'
+aws logs tail /ecs/kopiika-prod-worker --region $AWS_REGION --since 5m \
+  | grep -E "Seed complete|chunks for" | tail -10
+```
+
+Expected final log line: `Seed complete: <N> files processed, <M> total chunks upserted`.
+
+### Interactive shell into a running worker (ECS Exec)
+
+For ad-hoc DB queries, debugging session state, etc. The worker service has `enable_execute_command = true`; beat does not (single-purpose scheduler, no debug surface needed).
+
+**One-time laptop setup:** install the AWS Session Manager plugin.
+
+```bash
+# macOS
+brew install --cask session-manager-plugin
+
+# Linux — see https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html
+```
+
+**Connect:**
+
+```bash
+TASK_ID=$(AWS_PROFILE=personal aws ecs list-tasks --region eu-central-1 \
+  --cluster kopiika-prod-cluster --service-name kopiika-prod-worker \
+  --query 'taskArns[0]' --output text | awk -F/ '{print $NF}')
+
+AWS_PROFILE=personal aws ecs execute-command --region eu-central-1 \
+  --cluster kopiika-prod-cluster --task "$TASK_ID" \
+  --container worker --interactive --command "/bin/bash"
+```
+
+Inside the container, all secret-injected env vars are present:
+
+```bash
+$ psql "$DATABASE_URL"
+psql=> SELECT count(*) FROM users;
+psql=> \dt
+psql=> \q
+
+$ python -c "from app.core.config import settings; print(settings.LLM_PROVIDER)"
+```
+
+**Audit:** every `execute-command` call records a CloudTrail event with the principal (assumed-role/your-user-session). The session itself is also logged via the SSM session log if you ever turn that on.
+
+**Don't:**
+- Don't `exit` and re-connect repeatedly — connections take ~5s to spin up. Stay in the shell.
+- Don't run schema migrations from the shell — use the deploy workflow / run-task pattern so they're traceable.
+- Don't run anything destructive (`DELETE FROM users` etc.) without an explicit go-ahead from yourself the next morning.
+
+### Other run-task uses
+
+Same pattern works for any one-shot DB-touching script. Replace the `command` array:
+
+- `["alembic", "upgrade", "head"]` — manual migration outside the deploy flow
+- `["python", "-m", "app.scripts.<script_name>"]` — any custom maintenance script
+- `["psql", "$DATABASE_URL", "-c", "SELECT ..."]` — quick prod DB query without standing up a bastion (don't paste sensitive output anywhere)
+
+The task definition's `secrets` field injects `DATABASE_URL`, `REDIS_URL`, etc. into the override-command's environment, so you can use them directly. KMS + Secrets Manager perms are already on the task role.

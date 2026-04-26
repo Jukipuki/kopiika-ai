@@ -82,6 +82,20 @@ variable "github_bedrock_ci_enabled" {
   default     = false
 }
 
+# Story 10.8b / TD-131 — safety-runner OIDC role. Reuses the bedrock-ci
+# enable flag (gated on the same GitHub Environment).
+variable "safety_guardrail_arns" {
+  description = "Bedrock Guardrail ARNs (unversioned + versioned) the safety-runner OIDC role may ApplyGuardrail against. Story 10.8b — separate from the prod Guardrail so synthetic adversarial traffic does not pollute prod alarms."
+  type        = list(string)
+  default     = []
+}
+
+variable "chat_canaries_secret_arn" {
+  description = "ARN of the chat_canaries Secrets Manager secret. Granted to the safety-runner OIDC role for canary placeholder resolution at run time."
+  type        = string
+  default     = ""
+}
+
 # Story 11.9 — observability toggles.
 variable "enable_observability_alarms" {
   description = "Create CloudWatch alarms for categorization/parser signals. Disabled in dev by default to avoid noise on a single-developer workload."

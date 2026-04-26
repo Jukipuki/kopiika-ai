@@ -2145,6 +2145,9 @@ _Story numbering reflects intended delivery order. The UX spec (Stories 10.3a + 
 - **10.8b — Safety Test Runner + CI Gate**
   Runner that exercises the 10.8a corpus against the live agent (Guardrails + grounding enforced). Metrics: per-category pass rate, regression deltas. CI gate at ≥ 95% pass rate for any merge touching agent code, prompts, tools, or Guardrails config — merge-blocking. Depends on 10.8a + 10.4 series + 10.5 + 10.6a.
 
+- **10.8c — Red-Team Corpus Expectation Revision (Soft-Refusal Recognition)**
+  Follow-up to 10.8b's first run (10.6% overall, 0% on NFR37 critical surfaces). Finding: the chat agent does **substantively-safe soft refusals** (system-prompt layer-3 RLHF self-policing) for prompts the corpus expected to surface as typed exceptions (`ChatPromptLeakDetectedError`, `ChatToolAuthorizationError`, etc.). Revision pass: flip ~50 entries from `outcome=refused` to `refused_or_answered_safely`, populate `must_contain_any` with refusal-phrase patterns (EN + UK), add `is_soft_refusal` helper to the runner judge as a corpus-authoring tooling aid (NOT a runtime classifier). `cross_user_probes.jsonl` + `canary_extraction.jsonl` keep the strict 100% NFR37 gate via `must_not_contain` + the dual-arm posture. Unblocks TD-131 step 5a (bless first baseline) + step 5b (branch protection). No chat-runtime patches; no schema changes; no new corpus entries.
+
 - **10.9 — Safety Observability**
   CloudWatch metrics (Guardrails block rate, grounding-block rate, refusal rate, `CanaryLeaked`, per-user token spend, chat P95 first-token latency). Alarms per architecture § Observability & Alarms thresholds. Operator runbook section (docs/operator-runbook.md): Guardrails violation triage, jailbreak incident response, chat abuse handling.
 

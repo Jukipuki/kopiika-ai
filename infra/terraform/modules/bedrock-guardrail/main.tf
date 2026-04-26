@@ -1,16 +1,49 @@
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
+
+  # Story 10.2 provisions the prod ("chat") variant. Story 10.8b adds a
+  # second ("safety") variant with identical config so synthetic adversarial
+  # traffic from the safety harness does not pollute the prod block-rate
+  # alarm dimension. Only the "chat" variant gets a CloudWatch alarm.
+  guardrail_variants = {
+    chat = {
+      suffix       = "chat"
+      description  = "Epic 10 chat safety guardrail (Story 10.2)."
+      enable_alarm = true
+    }
+    safety = {
+      suffix       = "chat-safety"
+      description  = "Story 10.8b safety-runner guardrail. Same config as the prod chat guardrail; alarm-free so synthetic adversarial traffic does not page on-call (architecture.md §Observability & Alarms)."
+      enable_alarm = false
+    }
+  }
 }
 
-# Story 10.2 — AWS Bedrock Guardrail for Epic 10 chat.
+# State migration — `aws_bedrock_guardrail.this` was a single resource
+# before Story 10.8b; the for_each refactor preserves the prod state under
+# the "chat" key.
+moved {
+  from = aws_bedrock_guardrail.this
+  to   = aws_bedrock_guardrail.this["chat"]
+}
+
+moved {
+  from = aws_bedrock_guardrail_version.this
+  to   = aws_bedrock_guardrail_version.this["chat"]
+}
+
+# Story 10.2 + Story 10.8b — AWS Bedrock Guardrails for Epic 10 chat.
 #
-# One guardrail + one published version + one page-level block-rate alarm.
-# Consumers (Story 10.5 streaming, 10.6a grounding harness, 10.8b safety CI
-# gate) attach via `bedrock:ApplyGuardrail` against the ARNs emitted by this
+# Two variants (prod chat + safety harness) sharing config; the prod variant
+# also gets a published version + a page-level block-rate alarm. Consumers
+# (Story 10.5 streaming, 10.6a grounding harness, 10.8b safety CI gate)
+# attach via `bedrock:ApplyGuardrail` against the ARNs emitted by this
 # module. The warn-level alarm is deliberately deferred to Story 10.9.
 resource "aws_bedrock_guardrail" "this" {
-  name        = "${local.name_prefix}-chat"
-  description = "Epic 10 chat safety guardrail (Story 10.2)."
+  for_each = local.guardrail_variants
+
+  name        = "${local.name_prefix}-${each.value.suffix}"
+  description = each.value.description
 
   # Neutral UA + EN refusal — no filter-rationale leakage. Paired with the
   # coarse `reason` in the chat refusal envelope at architecture.md L1800-L1809.
@@ -173,7 +206,7 @@ resource "aws_bedrock_guardrail" "this" {
   # `env`, `feature`, `epic` flow from the provider's default_tags (env is
   # set at provider level) — only Name is locally specific.
   tags = {
-    Name    = "${local.name_prefix}-chat-guardrail"
+    Name    = "${local.name_prefix}-${each.value.suffix}-guardrail"
     feature = "chat"
     epic    = "10"
   }
@@ -185,11 +218,17 @@ resource "aws_bedrock_guardrail" "this" {
 # consumers referencing `guardrail_version_arn` don't silently freeze at the
 # initial Story 10.2 configuration.
 resource "aws_bedrock_guardrail_version" "this" {
-  guardrail_arn = aws_bedrock_guardrail.this.guardrail_arn
-  description   = "Story 10.2 initial version"
+  for_each = local.guardrail_variants
+
+  guardrail_arn = aws_bedrock_guardrail.this[each.key].guardrail_arn
+  # NOTE: description is intentionally identical to the pre-Story-10.8b
+  # value. Changing this on aws_bedrock_guardrail_version forces replacement
+  # (immutable resource) — that would bump the published prod version and
+  # break Story 10.5 consumers pinned to the versioned ARN.
+  description = "Story 10.2 initial version"
 
   lifecycle {
-    replace_triggered_by = [aws_bedrock_guardrail.this]
+    replace_triggered_by = [aws_bedrock_guardrail.this[each.key]]
   }
 }
 
@@ -201,7 +240,12 @@ resource "aws_bedrock_guardrail_version" "this" {
 # verify on first apply; if zero data points emit for several hours after
 # prod traffic, the name may have shifted in a provider/service release).
 resource "aws_cloudwatch_metric_alarm" "block_rate_anomaly" {
-  alarm_name          = "${local.name_prefix}-chat-guardrail-block-rate-anomaly"
+  # Only the prod chat variant gets the page-level alarm. The safety variant
+  # is dimensioned out so synthetic adversarial traffic from the 10.8b runner
+  # cannot move the prod block-rate metric.
+  for_each = { for k, v in local.guardrail_variants : k => v if v.enable_alarm }
+
+  alarm_name          = "${local.name_prefix}-${each.value.suffix}-guardrail-block-rate-anomaly"
   alarm_description   = "Page when Bedrock Guardrail intervention rate ≥ 15% sustained over 5m × 3 periods. Covers both block and redaction paths; warn-level alarm is Story 10.9."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = 0.15
@@ -216,8 +260,8 @@ resource "aws_cloudwatch_metric_alarm" "block_rate_anomaly" {
       period      = 300
       stat        = "Sum"
       dimensions = {
-        GuardrailId      = aws_bedrock_guardrail.this.guardrail_id
-        GuardrailVersion = aws_bedrock_guardrail_version.this.version
+        GuardrailId      = aws_bedrock_guardrail.this[each.key].guardrail_id
+        GuardrailVersion = aws_bedrock_guardrail_version.this[each.key].version
       }
     }
   }
@@ -230,8 +274,8 @@ resource "aws_cloudwatch_metric_alarm" "block_rate_anomaly" {
       period      = 300
       stat        = "Sum"
       dimensions = {
-        GuardrailId      = aws_bedrock_guardrail.this.guardrail_id
-        GuardrailVersion = aws_bedrock_guardrail_version.this.version
+        GuardrailId      = aws_bedrock_guardrail.this[each.key].guardrail_id
+        GuardrailVersion = aws_bedrock_guardrail_version.this[each.key].version
       }
     }
   }
@@ -248,8 +292,15 @@ resource "aws_cloudwatch_metric_alarm" "block_rate_anomaly" {
   alarm_actions = var.observability_sns_topic_arn == "" ? [] : [var.observability_sns_topic_arn]
 
   tags = {
-    Name    = "${local.name_prefix}-chat-guardrail-block-rate-anomaly"
+    Name    = "${local.name_prefix}-${each.value.suffix}-guardrail-block-rate-anomaly"
     feature = "chat"
     epic    = "10"
   }
+}
+
+# State migration — the alarm was previously a singleton; preserve state
+# under the "chat" key after the for_each refactor.
+moved {
+  from = aws_cloudwatch_metric_alarm.block_rate_anomaly
+  to   = aws_cloudwatch_metric_alarm.block_rate_anomaly["chat"]
 }

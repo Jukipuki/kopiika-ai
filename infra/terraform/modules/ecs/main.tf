@@ -225,6 +225,29 @@ resource "aws_iam_role_policy" "ecs_task_bedrock_invoke" {
   policy = data.aws_iam_policy_document.ecs_task_bedrock[0].json
 }
 
+# ECS Exec uses SSM Session Manager to open a shell into a running task
+# without needing a bastion or VPN. Required perms are resource-less per
+# AWS docs.
+data "aws_iam_policy_document" "ecs_task_exec" {
+  statement {
+    sid    = "AllowSSMExec"
+    effect = "Allow"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_exec" {
+  name   = "ecs-exec"
+  role   = aws_iam_role.ecs_task.id
+  policy = data.aws_iam_policy_document.ecs_task_exec.json
+}
+
 # Task Definition
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${local.name_prefix}-worker"
@@ -271,6 +294,12 @@ resource "aws_ecs_service" "worker" {
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
+
+  # Allow `aws ecs execute-command` to open a shell into running tasks
+  # for prod debugging (psql, ad-hoc Python, etc.). Beat is intentionally
+  # left without exec — it's a single-purpose scheduler with no need for
+  # ad-hoc debugging.
+  enable_execute_command = true
 
   network_configuration {
     subnets          = var.private_subnet_ids

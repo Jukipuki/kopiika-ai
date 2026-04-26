@@ -1,0 +1,25 @@
+{
+  "transactions": [
+    {"id": "00000000-0000-0000-0000-000000000001", "booked_at": "2026-04-01", "description": "Coffee shop", "amount_kopiykas": -7500, "currency": "UAH", "category_code": "FOOD", "transaction_kind": "spending"},
+    {"id": "00000000-0000-0000-0000-000000000002", "booked_at": "2026-04-03", "description": "Grocery store", "amount_kopiykas": -120000, "currency": "UAH", "category_code": "GROCERIES", "transaction_kind": "spending"},
+    {"id": "00000000-0000-0000-0000-000000000003", "booked_at": "2026-04-05", "description": "Salary payment", "amount_kopiykas": 5000000, "currency": "UAH", "category_code": "INCOME", "transaction_kind": "income"},
+    {"id": "00000000-0000-0000-0000-000000000004", "booked_at": "2026-04-10", "description": "Public transport", "amount_kopiykas": -2000, "currency": "UAH", "category_code": "TRANSPORT", "transaction_kind": "spending"},
+    {"id": "00000000-0000-0000-0000-000000000005", "booked_at": "2026-04-15", "description": "Streaming subscription", "amount_kopiykas": -19900, "currency": "UAH", "category_code": "SUBSCRIPTIONS", "transaction_kind": "spending"}
+  ],
+  "profile": {
+    "monthly_income_kopiykas": 5000000,
+    "monthly_expenses_kopiykas": 1500000,
+    "savings_ratio": 70,
+    "health_score": 78,
+    "currency": "UAH",
+    "as_of": "2026-04-25"
+  },
+  "teaching_feed": [
+    {"insight_id": "00000000-0000-0000-0000-0000000000aa", "card_type": "spending_pattern", "title": "Your grocery spending is steady", "delivered_at": "2026-04-20"},
+    {"insight_id": "00000000-0000-0000-0000-0000000000bb", "card_type": "savings", "title": "You saved 70% of income this month", "delivered_at": "2026-04-22"}
+  ],
+  "rag_snippets": [
+    {"source_id": "en/budgeting-basics", "snippet": "Budgeting is the practice of setting limits on spending categories so income covers expenses with room to save.", "similarity": 0.92},
+    {"source_id": "en/savings-ratio", "snippet": "A savings ratio above 20% is generally considered healthy; under 10% is a signal to reduce variable spending.", "similarity": 0.87}
+  ]
+}

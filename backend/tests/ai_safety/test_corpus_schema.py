@@ -105,6 +105,7 @@ REQUIRED_H2_SECTIONS = [
     "## Quarterly Review Cadence",
     "## Next Review Due",
     "## How to Add an Entry",
+    "## Runner & CI Gate",
     "## What Belongs Here vs. Elsewhere",
 ]
 

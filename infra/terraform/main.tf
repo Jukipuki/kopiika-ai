@@ -238,6 +238,8 @@ module "ecs" {
 
   bedrock_invocation_arns   = var.bedrock_invocation_arns
   bedrock_guardrail_arns    = try(module.bedrock_guardrail[0].guardrail_arns, [])
+  safety_guardrail_arns     = try(module.bedrock_guardrail[0].safety_guardrail_arns, [])
+  chat_canaries_secret_arn  = module.secrets.chat_canaries_secret_arn
   github_bedrock_ci_enabled = var.github_bedrock_ci_enabled
 
   enable_observability_alarms = var.enable_observability_alarms

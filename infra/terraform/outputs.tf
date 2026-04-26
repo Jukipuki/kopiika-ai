@@ -50,6 +50,25 @@ output "github_bedrock_ci_role_arn" {
   value       = module.ecs.github_bedrock_ci_role_arn
 }
 
+# Story 10.8b / TD-131 — safety-runner CI role + Guardrail ARN. After
+# `terraform apply`, paste the role ARN into repo `vars.AWS_IAM_ROLE_ARN_SAFETY_TEST`
+# and the safety guardrail ARN into `vars.BEDROCK_GUARDRAIL_ARN_SAFETY`, then
+# `bless` the first baseline locally per docs/tech-debt.md TD-131.
+output "github_safety_test_role_arn" {
+  description = "ARN of the GitHub OIDC safety-runner role (TD-131). Paste into repo var AWS_IAM_ROLE_ARN_SAFETY_TEST."
+  value       = module.ecs.github_safety_test_role_arn
+}
+
+output "safety_guardrail_arn" {
+  description = "Unversioned ARN of the safety-runner Bedrock Guardrail (Story 10.8b). Paste into repo var BEDROCK_GUARDRAIL_ARN_SAFETY."
+  value       = try(module.bedrock_guardrail[0].safety_guardrail_arn, null)
+}
+
+output "safety_guardrail_version_arn" {
+  description = "Versioned ARN of the safety-runner Bedrock Guardrail. Use this if you want to pin a published version (the runner currently uses the unversioned/DRAFT ARN)."
+  value       = try(module.bedrock_guardrail[0].safety_guardrail_version_arn, null)
+}
+
 # --- Custom domain DNS records (paste into Squarespace) ---
 output "api_custom_domain" {
   description = "Configured API custom domain (empty if not set)."
