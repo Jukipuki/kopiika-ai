@@ -106,3 +106,18 @@ variable "s3_uploads_bucket_arn" {
   type        = string
   default     = ""
 }
+
+# Story 10.9 — Chat safety observability (metric filters + alarms on the
+# App Runner application log group). Mirrors the variable shape used by
+# Story 11.9's ECS module.
+variable "enable_observability_alarms" {
+  description = "Create the Story 10.9 chat-safety CloudWatch alarms. Metric filters are unconditional (free); alarms gate behind this flag so dev environments don't page on synthetic load."
+  type        = bool
+  default     = false
+}
+
+variable "observability_sns_topic_arn" {
+  description = "SNS topic ARN for chat-safety alarm actions. Empty = alarms remain console-visible only (no SNS fan-out)."
+  type        = string
+  default     = ""
+}

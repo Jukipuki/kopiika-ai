@@ -529,20 +529,25 @@ class ChatSessionHandler:
         citations, citations_truncated = assemble_citations_with_meta(
             result.tool_calls
         )
-        if citations:
-            _log_citations_attached(
-                citations=citations,
-                correlation_id=correlation_id,
-                db_session_id=handle.db_session_id,
-                truncated=citations_truncated,
-            )
+        # Story 10.9 H3 fix: emit unconditionally (with citation_count=0 when
+        # tools didn't fire) so the P95-zero regression alarm has a signal.
+        _log_citations_attached(
+            citations=citations,
+            correlation_id=correlation_id,
+            db_session_id=handle.db_session_id,
+            truncated=citations_truncated,
+        )
+        _user_id_hash = _hash_user_id(handle.user_id)
         logger.info(
             "chat.turn.completed",
             extra={
                 "correlation_id": correlation_id,
                 "db_session_id": str(handle.db_session_id),
+                "user_id_hash": _user_id_hash,
+                "user_bucket": _user_id_hash[0],
                 "input_tokens": result.input_tokens,
                 "output_tokens": result.output_tokens,
+                "total_tokens_used": result.input_tokens + result.output_tokens,
                 "session_turn_count": count_turns(history),
                 "summarization_applied": summarization_applied,
                 "token_source": result.token_source,
@@ -902,21 +907,27 @@ class ChatSessionHandler:
             citations, citations_truncated = assemble_citations_with_meta(
                 tuple(tool_results)
             )
+            # Story 10.9 H3 fix: emit unconditionally so the P95-zero
+            # regression alarm has a signal; SSE event still gates on non-empty.
+            _log_citations_attached(
+                citations=citations,
+                correlation_id=correlation_id,
+                db_session_id=handle.db_session_id,
+                truncated=citations_truncated,
+            )
             if citations:
-                _log_citations_attached(
-                    citations=citations,
-                    correlation_id=correlation_id,
-                    db_session_id=handle.db_session_id,
-                    truncated=citations_truncated,
-                )
                 yield ChatCitationsAttached(citations=citations)
+            _user_id_hash = _hash_user_id(handle.user_id)
             logger.info(
                 "chat.turn.completed",
                 extra={
                     "correlation_id": correlation_id,
                     "db_session_id": str(handle.db_session_id),
+                    "user_id_hash": _user_id_hash,
+                    "user_bucket": _user_id_hash[0],
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
+                    "total_tokens_used": input_tokens + output_tokens,
                     "session_turn_count": count_turns(history),
                     "summarization_applied": summarization_applied,
                     "token_source": token_source,

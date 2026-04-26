@@ -304,3 +304,65 @@ moved {
   from = aws_cloudwatch_metric_alarm.block_rate_anomaly
   to   = aws_cloudwatch_metric_alarm.block_rate_anomaly["chat"]
 }
+
+# Story 10.9 AC #9 — Warn-level companion to block_rate_anomaly. Same math
+# expression (intervened / invoked); threshold 5% sustained over 15m
+# (3 × 5m periods). The page-level alarm above is intentionally untouched
+# so 10.2's contract pins are preserved. Suffix `-block-rate-warn`
+# disambiguates from the existing `-guardrail-block-rate-anomaly` page
+# alarm in the AWS console.
+resource "aws_cloudwatch_metric_alarm" "block_rate_warn" {
+  for_each = { for k, v in local.guardrail_variants : k => v if v.enable_alarm }
+
+  alarm_name          = "${local.name_prefix}-${each.value.suffix}-block-rate-warn"
+  alarm_description   = "warn — Bedrock Guardrail intervention rate ≥ 5% sustained over 15m (3 × 5m periods). Companion to the page-level block_rate_anomaly alarm. Story 10.9 AC #3 row 1 / AC #9."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 0.05
+  evaluation_periods  = 3
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id = "intervened"
+    metric {
+      metric_name = "InvocationsIntervened"
+      namespace   = "AWS/Bedrock"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        GuardrailId      = aws_bedrock_guardrail.this[each.key].guardrail_id
+        GuardrailVersion = aws_bedrock_guardrail_version.this[each.key].version
+      }
+    }
+  }
+
+  metric_query {
+    id = "invoked"
+    metric {
+      metric_name = "Invocations"
+      namespace   = "AWS/Bedrock"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        GuardrailId      = aws_bedrock_guardrail.this[each.key].guardrail_id
+        GuardrailVersion = aws_bedrock_guardrail_version.this[each.key].version
+      }
+    }
+  }
+
+  metric_query {
+    id          = "ratio"
+    expression  = "IF(invoked > 0, intervened / invoked, 0)"
+    label       = "Intervention rate"
+    return_data = true
+  }
+
+  alarm_actions = var.observability_sns_topic_arn == "" ? [] : [var.observability_sns_topic_arn]
+
+  tags = {
+    Name     = "${local.name_prefix}-${each.value.suffix}-block-rate-warn"
+    Story    = "10.9"
+    Severity = "warn"
+    feature  = "chat"
+    epic     = "10"
+  }
+}

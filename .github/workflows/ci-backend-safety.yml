@@ -69,6 +69,11 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/kopiika
       LLM_PROVIDER: bedrock
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      # Production canary set — the runner must scan candidate text against
+      # the same literals the chat backend injects into the system prompt;
+      # `dev-fallback` canaries would test against the wrong tokens and the
+      # bless invariant rejects them outright (Story 10.8b AC #7).
+      AWS_SECRETS_PREFIX: kopiika/prod
       # Staging Guardrail (NOT prod) — synthetic adversarial traffic must not
       # pollute the prod block-rate alarms (per architecture.md §Observability).
       BEDROCK_GUARDRAIL_ARN: ${{ vars.BEDROCK_GUARDRAIL_ARN_SAFETY }}

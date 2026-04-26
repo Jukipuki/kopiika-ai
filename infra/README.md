@@ -48,30 +48,35 @@ infra/terraform/
 
 ## Usage
 
-### Initialize (first time per environment)
+Use the `Makefile` in `infra/terraform/` — it always passes the per-env
+`-var-file` so a forgotten flag can't silently evaluate count-gated
+resources to their `false` defaults (the 2026-04-26 prod near-miss had a
+plain `terraform plan` propose 9 destroys including the API custom domain
+and IAM roles, all spurious — root cause was the missing `-var-file`).
+
+`ENV` defaults to `prod` (the only currently-live env; dev/staging
+tfvars are in `tfvars.archive/`). Override per-invocation if needed.
 
 ```bash
 cd infra/terraform
-terraform init
+make init                         # one-time
+make plan                         # writes tfplan with -var-file pre-supplied
+make apply                        # consumes tfplan if present
 ```
 
-### Plan Changes
+Other targets: `make fmt`, `make validate`, `make destroy` (refuses
+ENV=prod), and `make tf CMD="state list"` for arbitrary subcommands.
+
+### Direct terraform invocation (escape hatch)
+
+If you need to run terraform directly, **always** pass the var-file:
 
 ```bash
-terraform plan -var-file=environments/dev/terraform.tfvars
+terraform plan -var-file=environments/prod/terraform.tfvars
 ```
 
-### Apply Changes
-
-```bash
-terraform apply -var-file=environments/dev/terraform.tfvars
-```
-
-### Destroy (dev only)
-
-```bash
-terraform destroy -var-file=environments/dev/terraform.tfvars
-```
+Skipping the flag will appear to work but will mark every count-gated
+resource (`count = var.<flag> ? 1 : 0`) for destruction.
 
 ## Environments
 

@@ -1738,20 +1738,6 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
-### TD-099 — Emit `CanaryLeaked` CloudWatch metric + sev-1 alarm from `chat.canary.leaked` log event [MEDIUM]
-
-**Where:** `infra/terraform/modules/<observability-module-tbd>/` — metric-filter + CloudWatch alarm.
-
-**Problem:** Story 10.4b ships the structured log event `chat.canary.leaked` at ERROR with `canary_slot` / `canary_prefix` / `canary_set_version_id` / `output_prefix_hash` fields. The architecture calls for a dimensional `CanaryLeaked` metric + sev-1 security alarm ([architecture.md §Observability & Alarms L1764-L1772](../_bmad-output/planning-artifacts/architecture.md#L1764-L1772)). The metric filter + alarm are not yet wired.
-
-**Why deferred:** Story 10.9 owns the chat observability + alarms story and will author the metric filter against this exact event name. Tracker entry only; Story 10.9's PR resolves this TD.
-
-**Fix shape:** A CloudWatch Logs metric filter matching `{ $.message = "chat.canary.leaked" }` on the App Runner log group, dimensioned by `$.canary_slot` (and additionally by `$.finalizer_path` so the leak-rate dashboard can split happy-path vs error-path emissions per Story 10.5a AC #2 Step F.1); a sev-1 alarm on `count > 0` over a 5-minute window routing to the security on-call SNS topic. Story 10.9 also owns the metric filter + **sev-2** alarm (`count > 0` over 5 min, business-hours pager) for the new `chat.stream.finalizer_failed` ERROR event introduced by Story 10.5a AC #4 — a post-disconnect persistence failure that breaks the AC #14 invariant 4 contract but is not user-facing. Runbook entry in Story 10.9 covers rotation + forensic triage.
-
-**Surfaced in:** Story 10.4b (2026-04-24) — AC #11 / AC #13. Pins the event-name contract so 10.9's metric filter is a pattern match, not a rewrite. Updated by Story 10.5a (2026-04-25) to include `finalizer_path` dimension on `chat.canary.leaked` and the new `chat.stream.finalizer_failed` event in the inventory.
-
----
-
 ### TD-100 — Revisit `MAX_TOOL_HOPS=5` after first 30 days of chat traffic [LOW]
 
 **Where:** [backend/app/agents/chat/chat_backend.py](../backend/app/agents/chat/chat_backend.py) — module-level `MAX_TOOL_HOPS` constant.
@@ -1963,24 +1949,6 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
-### TD-123 — Citation-count CloudWatch metric + alarm [LOW]
-
-**Where:** [backend/app/agents/chat/session_handler.py](../backend/app/agents/chat/session_handler.py) emits `chat.citations.attached` with `citation_count` + `citation_kinds_histogram`; CloudWatch metric filter not yet declared in Terraform.
-
-**Problem:** Citation behavior is observable in CloudWatch logs but not metricified — drift (e.g. tools stop firing → P95 citation count drops to 0) is not alarmable today.
-
-**Why deferred:** Story 10.9 owns chat observability authorship and will batch metric publishing for all `chat.*` log events. 10.6b emits the structured log; metricification is a one-line metric-filter + alarm in 10.9's Terraform.
-
-**Fix shape:** New CloudWatch metric `ChatCitationCountP50` / `ChatCitationCountP95` from the structured log; warn if P95 drops to 0 sustained 30m (signals tools stopped firing — a regression).
-
-**Effort:** ~30 min after 10.9's metric-filter scaffolding lands.
-
-**Trigger:** Story 10.9 production rollout.
-
-**Surfaced in:** Story 10.6b (2026-04-26).
-
----
-
 ### TD-124 — Localization of `CategoryCitation.label` and `ProfileFieldCitation.label` [RESOLVED 2026-04-26 — Story 10.7]
 
 **Resolved by:** Story 10.7 (`_bmad-output/implementation-artifacts/10-7-chat-ui.md`). FE chat surface now localizes both label families via `chat.citations.category.<code>` and `chat.citations.profile_field.<field>` keys in `frontend/messages/{en,uk}.json`, with month-year ICU interpolation for monetary profile-field labels (UA: "Травень 2026", EN: "May 2026"). Implementation lives in [`frontend/src/features/chat/lib/citation-label.ts`](../frontend/src/features/chat/lib/citation-label.ts); test pins in [`citation-label.test.ts`](../frontend/src/features/chat/__tests__/citation-label.test.ts). Server-emitted `label` is preserved as the fallback when an i18n key is missing — no behaviour change for unknown category codes / profile fields.
@@ -2099,7 +2067,44 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-135 — Prod-only Terraform feature flags default to `false`, making `-var-file` omission catastrophic [MEDIUM]
+
+**Where:** [infra/terraform/variables.tf](../infra/terraform/variables.tf) — `github_bedrock_ci_enabled`, `enable_observability_alarms`, and any other `count = var.<flag> ? 1 : 0` gating variables; [infra/terraform/main.tf](../infra/terraform/main.tf) wiring; [infra/terraform/environments/prod/terraform.tfvars](../infra/terraform/environments/prod/terraform.tfvars) flips them to `true`.
+
+**Problem:** Several prod-essential resources (`github_bedrock_ci`, `github_safety_test`, `ecs_task_bedrock_invoke`, ECS observability alarms) are `count`-gated on variables that default to `false`. Running `terraform plan` without `-var-file=environments/prod/terraform.tfvars` evaluates every gate to its default and proposes destroying all `[0]`-indexed instances — a 9-resource mass-destroy near-miss occurred 2026-04-26 (would have taken down the API custom domain, all CI Bedrock roles, and ECS Bedrock invoke permissions). The mistake is silent: plan output looks plausible until you read the resource list.
+
+The [infra/terraform/Makefile](../infra/terraform/Makefile) wrapper (added the same day) closes the immediate hole by always passing `-var-file` and failing fast on misspelled `ENV` — but the wrapper is *opt-in*; a developer who runs `terraform plan` directly still hits the trap.
+
+**Why deferred:** The Makefile + README guidance is sufficient for the current single-developer workflow. The deeper fix needs coordination across all gating variables and a decision on the right defense.
+
+**Fix shape:** Pick one of:
+1. **Flip the defaults to `true`** for prod-essential flags and add `enable = false` overrides in any non-prod tfvars (inverts the polarity so omission is safe). Lowest-friction — the variable description block carries the safety contract.
+2. **Add `lifecycle { precondition { ... } }`** on the gated resources that asserts a sentinel input variable (e.g. `var.environment != ""`) is set, so a defaults-only plan errors out instead of silently proposing destroys.
+3. **Replace the per-flag gating with a single `var.environment` enum** and `count = var.environment == "prod" ? 1 : 0` — but the unset variable still defaults to `""` and produces destroys, so this doesn't fix the trap on its own; would need to combine with option 2.
+
+Option 1 is the simplest and matches AWS Terraform community convention (defaults match the most common deployment target). Option 2 adds belt-and-braces.
+
+**Surfaced in:** Story 10.8c follow-on infra debugging session (2026-04-26) — running prod plan after the Story 10.8c IAM patch surfaced the trap.
+
+---
+
 ## Resolved
+
+### TD-099 — `CanaryLeaked` CloudWatch metric + sev-1 alarm + `chat.stream.finalizer_failed` sev-2 alarm [RESOLVED 2026-04-26 — Story 10.9]
+
+**Resolved by:** Story 10.9 (`_bmad-output/implementation-artifacts/10-9-safety-observability.md`). `infra/terraform/modules/app-runner/observability-chat.tf` declares the `chat.canary.leaked` metric filter (`ChatCanaryLeakedCount`), the sev-1 alarm `kopiika-prod-chat-canary-leaked-sev1` (count > 0 over 5m), and the sev-2 alarm `kopiika-prod-chat-stream-finalizer-failed-sev2` (count > 0 over 5m, business-hours pager) per AC #3 + AC #4.
+
+**Design deviation from AC #3:** AC #3 row 3 specified dimensioning the canary metric by `canary_slot` + `finalizer_path`. The shipped resolution leaves the metric undimensioned and pushes the per-record split (`finalizer_path` true/false, `canary_slot` value) into Logs Insights forensic queries — AWS log-extracted-metric dimensions are string-typed with low cardinality caps and an absent-field on a metric dimension makes the metric stream split awkward. The alarm fires on any `chat.canary.leaked` occurrence (which is the page contract); operator-runbook §Canary Leak Response carries the Logs Insights snippets that recover the AC's intended split at triage time.
+
+**Code-review addition (2026-04-26):** A companion `kopiika-prod-chat-canary-load-failed-warn` alarm was added so a silently-disabled canary-detection layer (Secrets Manager / IAM regression) gets surfaced — without it, the sev-1 alarm above could become a no-op without a corresponding signal.
+
+### TD-123 — Citation-count CloudWatch metric + alarm [RESOLVED 2026-04-26 — Story 10.9]
+
+**Resolved by:** Story 10.9. A single `ChatCitationCount` metric is extracted from `chat.citations.attached.citation_count` via the metric filter in `infra/terraform/modules/app-runner/observability-chat.tf`; P50/P95 are query-time statistics on that one stream. Warn alarm `kopiika-prod-chat-citation-count-p95-zero` fires when P95 over 30m drops to 0 (signal: tools stopped firing — regression).
+
+**Design deviation from AC #5:** AC #5 specified TWO metric filters (`ChatCitationCountP50` and `ChatCitationCountP95`) with identical patterns / extraction. That shape would double-bill `IncomingLogEvents` matches and produce duplicate metric streams; CloudWatch already supports multi-statistic queries on a single metric. The shipped resolution collapses to one filter + two query-time stats. Spec wording was a defect; consumer contract (P95-zero alarm) is unchanged.
+
+**Runtime addition:** `chat.citations.attached` is now emitted unconditionally — including with `citation_count=0` when a turn produced no citations — so the P95-zero alarm sees a heartbeat datapoint when the regression hits. Without that, "no citations" produced no log line, the metric had no data, and `treat_missing_data = "notBreaching"` made the alarm undetectable for its own failure mode.
 
 ### TD-108 — `send_turn_stream` client-disconnect finalizer does not persist partial state [RESOLVED 2026-04-25 — Story 10.5a]
 

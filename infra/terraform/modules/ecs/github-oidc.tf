@@ -307,10 +307,15 @@ data "aws_iam_policy_document" "github_safety_test" {
       "bedrock:InvokeModel",
       "bedrock:InvokeModelWithResponseStream",
     ]
+    # Foundation-model ARNs use the eu-* region wildcard for the same reason
+    # the prod ECS role does (see TD-131 LOW in docs/tech-debt.md): the EU
+    # cross-region inference profile fans out across multiple regions
+    # (observed eu-west-3 in 2026-04 prod cut-over) and AWS adds capacity
+    # over time. Wildcards stay scoped to specific model name prefixes.
     resources = [
       "arn:aws:bedrock:eu-central-1:*:inference-profile/eu.*",
-      "arn:aws:bedrock:eu-north-1::foundation-model/anthropic.*",
-      "arn:aws:bedrock:eu-north-1::foundation-model/amazon.nova-*",
+      "arn:aws:bedrock:eu-*::foundation-model/anthropic.*",
+      "arn:aws:bedrock:eu-*::foundation-model/amazon.nova-*",
     ]
   }
 
@@ -335,6 +340,21 @@ data "aws_iam_policy_document" "github_safety_test" {
       effect    = "Allow"
       actions   = ["secretsmanager:GetSecretValue"]
       resources = [var.chat_canaries_secret_arn]
+    }
+  }
+
+  # Decrypt the per-env Secrets Manager CMK that wraps chat_canaries (and all
+  # other Secrets Manager material — single-key design, see
+  # modules/secrets/main.tf). Without this, GetSecretValue returns
+  # KMSAccessDeniedException. DescribeKey omitted: the runner does not
+  # introspect the key, only consumes secrets it wraps.
+  dynamic "statement" {
+    for_each = length(var.kms_key_arns) > 0 ? [1] : []
+    content {
+      sid       = "SafetyHarnessDecryptSecretsCMK"
+      effect    = "Allow"
+      actions   = ["kms:Decrypt"]
+      resources = var.kms_key_arns
     }
   }
 }

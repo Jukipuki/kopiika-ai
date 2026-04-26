@@ -848,9 +848,13 @@ async def test_send_turn_attaches_no_citations_when_no_tools(
         with caplog.at_level("INFO"):
             response = await handler.send_turn(db, handle, "hi")
     assert response.citations == ()
-    assert not any(
-        r.message == "chat.citations.attached" for r in caplog.records
-    )
+    # Story 10.9 H3 fix: event fires unconditionally with citation_count=0
+    # so the P95-zero regression alarm sees a heartbeat datapoint.
+    citation_records = [
+        r for r in caplog.records if r.message == "chat.citations.attached"
+    ]
+    assert len(citation_records) == 1
+    assert citation_records[0].citation_count == 0
 
 
 # ---- send_turn_stream variants -------------------------------------------

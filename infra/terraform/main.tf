@@ -200,6 +200,9 @@ module "app_runner" {
   cognito_user_pool_arn = module.cognito.user_pool_arn
   s3_uploads_bucket_arn = module.s3.bucket_arn
 
+  enable_observability_alarms = var.enable_observability_alarms
+  observability_sns_topic_arn = var.observability_sns_topic_arn
+
   kms_key_arns = [
     module.secrets.kms_key_arn,
     module.s3.kms_key_arn,

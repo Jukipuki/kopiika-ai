@@ -403,6 +403,304 @@ FROM flagged_topic_clusters
 WHERE cluster_id = :category;
 ```
 
+## Chat Safety Operations (Story 10.9)
+
+Story 10.9 metricifies the `chat.*` structured-log events emitted by the
+Epic 10 chat agent (Stories 10.4b – 10.7) into the `Kopiika/Chat`
+CloudWatch namespace, plus alarms covering the architecture's observability
+table at `_bmad-output/planning-artifacts/architecture.md` §Observability
+& Alarms (L1761-L1774). All chat events stream through the App Runner
+**application** log group:
+
+```
+${LOG_GROUP_NAME} = /aws/apprunner/kopiika-prod-api/<service-id>/application
+```
+
+The `<service-id>` is the trailing hex segment of the App Runner service
+ARN. Read it once via `aws apprunner describe-service` and substitute
+literally into the snippets below before pasting into Logs Insights.
+
+### Metric Inventory
+
+| Metric (Kopiika/Chat) | Source event | Alarm name(s) | Severity |
+|---|---|---|---|
+| `ChatStreamOpenedCount` | `chat.stream.opened` | (denominator only) | — |
+| `ChatStreamFirstTokenLatencyMs` | `chat.stream.first_token` (`ttfb_ms`) | `kopiika-prod-chat-first-token-p95-warn`, `kopiika-prod-chat-first-token-p95-page` | warn / page |
+| `ChatStreamCompletedCount` | `chat.stream.completed` | — | — |
+| `ChatStreamRefusedCount` | `chat.stream.refused` (any reason) | `kopiika-prod-chat-refusal-rate-warn` | warn |
+| `ChatStreamRefusedUngroundedCount` | `chat.stream.refused` (`reason=ungrounded`) | `kopiika-prod-chat-grounding-block-rate-warn`, `kopiika-prod-chat-grounding-block-rate-page` | warn / page |
+| `ChatStreamGuardrailIntervenedCount` | `chat.stream.guardrail_intervened` | (Bedrock-Guardrail block-rate alarm pair, see below) | — |
+| `ChatStreamGuardrailDetachedCount` | `chat.stream.guardrail_detached` | — | — |
+| `ChatStreamFinalizerFailedCount` | `chat.stream.finalizer_failed` | `kopiika-prod-chat-stream-finalizer-failed-sev2` | sev-2 |
+| `ChatStreamDisconnectedCount` | `chat.stream.disconnected` | — | — |
+| `ChatStreamConsentDriftCount` | `chat.stream.consent_drift` | — | — |
+| `ChatInputBlockedCount` | `chat.input.blocked` | — (used in jailbreak triage) | — |
+| `ChatCanaryLeakedCount` | `chat.canary.leaked` (any `finalizer_path`) | `kopiika-prod-chat-canary-leaked-sev1` | sev-1 |
+| `ChatCanaryLoadFailedCount` | `chat.canary.load_failed` | `kopiika-prod-chat-canary-load-failed-warn` | warn |
+| `ChatToolLoopExceededCount` | `chat.tool.loop_exceeded` | — (used in abuse triage) | — |
+| `ChatToolAuthorizationFailedCount` | `chat.tool.authorization_failed` | — | — |
+| `ChatTurnCompletedCount` | `chat.turn.completed` | — | — |
+| `ChatTurnTotalTokensUsed` (dim `UserBucket`) | `chat.turn.completed` (`total_tokens_used`, `user_bucket`) | `kopiika-prod-chat-token-spend-anomaly-warn-{0..f}`, `kopiika-prod-chat-token-spend-anomaly-page-{0..f}` (16 buckets each) | warn / page |
+| `ChatCitationCount` | `chat.citations.attached` (`citation_count`; emitted unconditionally with 0 when tools didn't fire) | `kopiika-prod-chat-citation-count-p95-zero` (P95 stat at query time) | warn |
+| `ChatSummarizationTriggeredCount` | `chat.summarization.triggered` | — | — |
+| `ChatSummarizationFailedCount` | `chat.summarization.failed` | (TD-095 — post-30d audit) | — |
+| `AWS/Bedrock` `InvocationsIntervened` / `Invocations` | Bedrock Guardrails | `kopiika-prod-chat-block-rate-warn`, `kopiika-prod-chat-guardrail-block-rate-anomaly` | warn / page |
+
+The `UserBucket` dimension on `ChatTurnTotalTokensUsed` is the first hex
+character of `user_id_hash` (16 buckets total) and is emitted as the
+precomputed `user_bucket` field on `chat.turn.completed` (CloudWatch
+JSON metric filters cannot slice strings). Anomaly attribution is
+per-bucket, not per-user; the warn/page alarms are fanned out as 16
+resources each (one per bucket) — CloudWatch does not aggregate across
+dimensions, so a non-dimensioned alarm would see an empty stream. If
+higher resolution is needed, file a follow-up TD widening the bucket
+field once active-user count grows.
+
+### Guardrails Violation Triage
+
+Triggered by `kopiika-prod-chat-block-rate-warn` (Bedrock) or by an
+elevated `kopiika-prod-chat-grounding-block-rate-warn`.
+
+1. Open the warn alarm in CloudWatch and click through to the Logs
+   Insights link below to identify the dominant `reason` value:
+
+   ```
+   fields @timestamp, reason, exception_class, correlation_id
+   | filter message = "chat.stream.refused"
+   | stats count() by reason
+   | sort count desc
+   ```
+
+2. Sample 3–5 representative `chat.stream.refused` records to inspect
+   the prompt patterns:
+
+   ```
+   fields @timestamp, correlation_id, reason, exception_class, db_session_id
+   | filter message = "chat.stream.refused"
+   | sort @timestamp desc
+   | limit 5
+   ```
+
+3. Decide:
+   - **Transient noise** (single dominant `reason`, count returning to
+     baseline within one alarm period): note in the on-call log, return
+     to monitoring.
+   - **Policy tightening** (sustained shift in `reason` mix): file a
+     Story 10.2 follow-up TD to retune Bedrock Guardrail thresholds.
+   - **Active jailbreak campaign** (rising `chat.input.blocked` rate
+     alongside `chat.stream.refused`): escalate to **Jailbreak Incident
+     Response** below.
+
+### Jailbreak Incident Response
+
+1. Confirm the suspicion — `chat.input.blocked` rate is elevated
+   alongside `chat.stream.refused`:
+
+   ```
+   fields @timestamp, message
+   | filter message in ["chat.input.blocked", "chat.stream.refused"]
+   | stats count() by message, bin(5m)
+   ```
+
+2. Pull the affected user-hash set:
+
+   ```
+   fields user_id_hash
+   | filter message = "chat.input.blocked"
+   | stats count() as hits by user_id_hash
+   | sort hits desc
+   | limit 50
+   ```
+
+3. Cross-reference the matched regex family with
+   [`backend/app/agents/chat/jailbreak_patterns.yaml`](../backend/app/agents/chat/jailbreak_patterns.yaml).
+4. Decide on user-level abuse action via Story 10.11's rate-limit +
+   soft-block envelope (60 msgs/hr, 10 concurrent sessions, daily token
+   cap).
+5. If a **novel** jailbreak pattern (no matching regex), file a Story
+   10.4b follow-up TD AND add a 10.8a corpus quarterly-review entry so
+   the next red-team baseline catches it.
+
+### Canary Leak Response (sev-1)
+
+Triggered by `kopiika-prod-chat-canary-leaked-sev1` — count > 0 over 5m.
+Treat as a security incident.
+
+1. **Page chain**: SNS topic → security on-call (24/7).
+2. **Immediate action**: rotate the leaked canary slot per the
+   **Canary Rotation Runbook** below. Do this BEFORE any forensic work —
+   the slot's value is now in the model's training surface.
+3. **Forensic — pull the offending event + recent canary-leak history**:
+
+   ```
+   fields @timestamp, correlation_id, db_session_id, canary_slot, finalizer_path, output_char_len
+   | filter message = "chat.canary.leaked"
+   | sort @timestamp desc
+   | limit 50
+   ```
+
+4. **Path classification** — check `finalizer_path`:
+   - `finalizer_path` absent / false → happy-path leak (model emitted
+     the canary in the streaming response). RCA target: the prompt that
+     elicited it.
+   - `finalizer_path = true` → post-disconnect persistence-time leak
+     (different RCA per Story 10.5a AC #2 Step F.1). RCA target: the
+     accumulated text path; check whether the leak survived disconnect.
+5. If the leak originated from a **tool payload** (cross-reference
+   `chat.tool.result` records around the same `correlation_id`),
+   evaluate whether the widen-canary-scan path in
+   [TD-101](../docs/tech-debt.md#TD-101) needs to be promoted.
+
+### Canary Rotation Runbook
+
+Manual-rotation steps. The chat backend hydrates canary slots
+process-locally from the `kopiika-ai/<env>/chat-canaries` Secrets
+Manager secret, schema:
+
+```json
+{
+  "slots": [
+    { "id": "<slot>", "value": "<token>", "version_id": "<uuid>" }
+  ]
+}
+```
+
+Steps:
+
+1. Generate replacement canary value(s). For routine rotation do all
+   slots; for an active leak rotate **at minimum** the leaked slot ID
+   plus one neighbour. The token must be high-entropy and contain no
+   English-word fragments.
+2. Update the secret in place — bump `version_id` (UUID v4) at the same
+   time so the canary loader detects the change:
+
+   ```bash
+   aws secretsmanager update-secret \
+     --region eu-central-1 \
+     --secret-id kopiika-ai/prod/chat-canaries \
+     --secret-string '{"slots":[{"id":"a","value":"<new-token>","version_id":"<new-uuid>"}, ...]}'
+   ```
+
+3. Trigger an App Runner restart so the new secret hydrates (the canary
+   loader is process-local — running pods continue to use the cached
+   prior value until restart):
+
+   ```bash
+   aws apprunner start-deployment \
+     --region eu-central-1 \
+     --service-arn <kopiika-prod-api service ARN>
+   ```
+
+4. Verify uptake — `ChatCanaryLoadFailedCount` must remain 0 for the
+   next 5 minutes. Failures here indicate a malformed secret or
+   missing IAM grant; roll back via the previous Secrets Manager
+   version (`aws secretsmanager restore-secret --secret-id ...
+   --version-id <prior version>`) before chat traffic resumes.
+
+NOTE: the canary value MUST be set in prod before chat traffic is
+served. The dev-fallback canary baked into
+[`backend/app/agents/chat/canaries.py`](../backend/app/agents/chat/canaries.py)
+is for local development only.
+
+### Chat Abuse Handling
+
+1. Check the suspect user's recent `chat.tool.loop_exceeded` count and
+   per-user-bucket token-spend band:
+
+   ```
+   fields @timestamp, db_session_id, user_id_hash
+   | filter message = "chat.tool.loop_exceeded"
+   | stats count() as hits by user_id_hash
+   | sort hits desc
+   ```
+
+2. Cross-reference with Story 10.11's rate-limit envelope (60 msgs/hr,
+   10 concurrent sessions, daily token cap) — the soft-block path is
+   automatic and will already be quietly enforcing.
+3. Decide between automatic soft-block (10.11 already handles it
+   transparently) or manual account-level action via the user-admin
+   tooling in `backend/scripts/`.
+
+### CloudWatch Logs Insights Snippets
+
+Set `${LOG_GROUP_NAME}` to the App Runner application log group at the
+top of your Insights query session, then paste the snippets below
+verbatim.
+
+**(a) Refusal reasons distribution over the last 1h**:
+
+```
+fields @timestamp, reason
+| filter message = "chat.stream.refused"
+| stats count() by reason
+| sort count desc
+```
+
+Supports: `kopiika-prod-chat-refusal-rate-warn`,
+`kopiika-prod-chat-grounding-block-rate-warn`.
+
+**(b) Per-user-bucket top 20 token-spend over the last 24h**:
+
+```
+fields user_id_hash, total_tokens_used
+| filter message = "chat.turn.completed"
+| stats sum(total_tokens_used) as spend by user_id_hash
+| sort spend desc
+| limit 20
+```
+
+Supports: `kopiika-prod-chat-token-spend-anomaly-warn`,
+`kopiika-prod-chat-token-spend-anomaly-page`.
+
+**(c) Canary-leak forensic for a specific `correlation_id`**:
+
+```
+fields @timestamp, message, correlation_id, canary_slot, finalizer_path, output_char_len, output_prefix_hash
+| filter correlation_id = "<paste correlation id here>"
+| filter message in ["chat.canary.leaked", "chat.stream.refused", "chat.turn.completed", "chat.tool.result"]
+| sort @timestamp asc
+```
+
+Supports: `kopiika-prod-chat-canary-leaked-sev1`.
+
+**(d) Finalizer-failed event chain for a specific session**:
+
+```
+fields @timestamp, message, correlation_id, error_class, error_message, accumulated_char_len
+| filter db_session_id = "<paste db session id here>"
+| filter message like /chat\.stream\./
+| sort @timestamp asc
+```
+
+Supports: `kopiika-prod-chat-stream-finalizer-failed-sev2`.
+
+**(e) Citation-count P50/P95 over the last 7d**:
+
+```
+fields @timestamp, citation_count, truncated, contract_version
+| filter message = "chat.citations.attached"
+| stats pct(citation_count, 50) as p50, pct(citation_count, 95) as p95, count() as turns by bin(1d)
+```
+
+Supports: `kopiika-prod-chat-citation-count-p95-zero`.
+
+### Pre-Merge Smoke Test
+
+Each metric filter pattern is verified before merge by running
+`infra/terraform/modules/app-runner/test_chat_metric_filters.sh` against
+representative log lines captured from the dev environment. Run with
+`AWS_PROFILE=personal` (account 573562677570, eu-central-1):
+
+```bash
+AWS_PROFILE=personal \
+  bash infra/terraform/modules/app-runner/test_chat_metric_filters.sh
+```
+
+Each block prints the matched events; an empty match list for any
+filter is a regression — investigate before merging.
+
+---
+
 ## Overriding a detected bank format mapping (Story 11.7)
 
 The AI-assisted schema-detection pipeline caches one row per distinct statement

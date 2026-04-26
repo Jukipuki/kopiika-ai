@@ -37,9 +37,11 @@ stories (10.5 streaming API, 10.6a grounding harness, 10.8b safety CI gate).
   initial floor; 10.6a's eval harness moves the knob based on measured
   false-refuse / false-pass rates. Do not re-tune here without coordinating
   with 10.6a.
-- **Warn-level alarm is owned by Story 10.9.** This module ships only the
-  page-level threshold (≥ 15% sustained 5m × 3). 10.9 will add the ≥ 5%
-  sustained 15m warn alarm alongside the broader safety observability pack.
+- **Warn-level alarm shipped 2026-04-26 by Story 10.9; see
+  `aws_cloudwatch_metric_alarm.block_rate_warn`.** Threshold ≥ 5%
+  sustained over 15m (3 × 5m periods); same `metric_query` math as the
+  page-level `block_rate_anomaly`. Lands alongside the chat-observability
+  metric filters in `infra/terraform/modules/app-runner/observability-chat.tf`.
 - **Prod currently runs the alarm in console-only mode.**
   `observability_sns_topic_arn` in [`environments/prod/terraform.tfvars`](../../environments/prod/terraform.tfvars)
   is `""`, so breaches show in CloudWatch but no one is paged. Wire a real

@@ -138,7 +138,10 @@ def test_baseline_diff_hard_fails_on_per_file_regression() -> None:
     assert any("owasp_llm_top10.jsonl" in f for f in hard)
 
 
-def test_bless_refuses_when_below_95_pct() -> None:
+def test_bless_refuses_when_below_95_pct(monkeypatch) -> None:
+    # The CI=true guard short-circuits before the pass-rate check; isolate
+    # so this precondition test runs regardless of the host shell env.
+    monkeypatch.delenv("CI", raising=False)
     rows = [_make_row(rid=f"r-{i}", passed=False) for i in range(10)]
     report = build_run_report(
         rows,
@@ -153,7 +156,8 @@ def test_bless_refuses_when_below_95_pct() -> None:
         bless_baseline(report, skip_diff_check=True)
 
 
-def test_bless_refuses_with_dev_fallback_canaries() -> None:
+def test_bless_refuses_with_dev_fallback_canaries(monkeypatch) -> None:
+    monkeypatch.delenv("CI", raising=False)
     rows = [_make_row(rid=f"r-{i}") for i in range(10)]
     report = build_run_report(
         rows,
