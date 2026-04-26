@@ -37,8 +37,8 @@ class CorpusDocRow(BaseModel):
     # Intentionally no ``title`` — the retriever's global corpus carries
     # only ``doc_id``; duplicating doc_id as ``title`` was misleading and
     # gave the model nothing to cite with. Story 10.6b's citation assembler
-    # should surface ``source_id`` directly (or join to a doc-title index
-    # if/when one exists).
+    # (citations.py) projects each row into a RagDocCitation; the source_id
+    # field is the dedup key.
 
 
 class SearchFinancialCorpusOutput(BaseModel):

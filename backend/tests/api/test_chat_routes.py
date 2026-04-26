@@ -505,3 +505,168 @@ async def test_delete_session_cross_user_returns_404(client_and_handler):
     _set_auth(sub)
     resp = await client.delete(f"/api/v1/chat/sessions/{other_sid}")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------
+# Story 10.6b — chat-citations SSE frame
+# ---------------------------------------------------------------------
+
+
+def _citation_set():
+    from datetime import date
+
+    from app.agents.chat.citations import (
+        CategoryCitation,
+        ProfileFieldCitation,
+        RagDocCitation,
+        TransactionCitation,
+    )
+
+    return (
+        TransactionCitation(
+            id=uuid.uuid4(),
+            booked_at=date(2026, 3, 14),
+            description="Coffee Shop",
+            amount_kopiykas=-8500,
+            currency="UAH",
+            category_code="groceries",
+            label="Coffee Shop · 2026-03-14",
+        ),
+        CategoryCitation(code="groceries", label="Groceries"),
+        ProfileFieldCitation(
+            field="monthly_expenses_kopiykas",
+            value=4_530_000,
+            currency="UAH",
+            as_of=date(2026, 4, 1),
+            label="Monthly expenses (Apr 2026)",
+        ),
+        RagDocCitation(
+            source_id="en/emergency-fund",
+            title="en/emergency-fund",
+            snippet="An emergency fund covers …",
+            similarity=0.83,
+            label="en/emergency-fund",
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_route_emits_chat_citations_frame(
+    client_and_handler, monkeypatch
+):
+    from app.agents.chat.stream_events import ChatCitationsAttached
+
+    client, fake, engine = client_and_handler
+    sub = f"sub-{uuid.uuid4()}"
+    uid = await _seed_user(engine, sub)
+    sid = await _seed_chat_session(engine, uid)
+    await _stub_verify(sub, monkeypatch)
+
+    citations = _citation_set()
+    fake.set_stream(
+        events=[
+            ChatStreamStarted(correlation_id="c", session_id=sid),
+            ChatTokenDelta(text="Hello"),
+            ChatCitationsAttached(citations=citations),
+            ChatStreamCompleted(
+                input_tokens=1,
+                output_tokens=1,
+                session_turn_count=1,
+                summarization_applied=False,
+                token_source="model",
+                tool_call_count=1,
+            ),
+        ]
+    )
+    async with client.stream(
+        "POST",
+        f"/api/v1/chat/sessions/{sid}/turns/stream?token=tok",
+        json={"message": "hi"},
+    ) as resp:
+        body = await _read_sse_body(resp)
+    frames = _parse_frames(body)
+    names = [f[0] for f in frames if f[0] != "heartbeat"]
+    assert names.count("chat-citations") == 1
+    last_token_idx = max(i for i, f in enumerate(frames) if f[0] == "chat-token")
+    cit_idx = next(i for i, f in enumerate(frames) if f[0] == "chat-citations")
+    complete_idx = next(i for i, f in enumerate(frames) if f[0] == "chat-complete")
+    assert last_token_idx < cit_idx < complete_idx
+
+
+@pytest.mark.asyncio
+async def test_chat_route_no_chat_citations_frame_when_empty(
+    client_and_handler, monkeypatch
+):
+    client, fake, engine = client_and_handler
+    sub = f"sub-{uuid.uuid4()}"
+    uid = await _seed_user(engine, sub)
+    sid = await _seed_chat_session(engine, uid)
+    await _stub_verify(sub, monkeypatch)
+
+    fake.set_stream(
+        events=[
+            ChatStreamStarted(correlation_id="c", session_id=sid),
+            ChatTokenDelta(text="Hello"),
+            ChatStreamCompleted(
+                input_tokens=1,
+                output_tokens=1,
+                session_turn_count=1,
+                summarization_applied=False,
+                token_source="model",
+                tool_call_count=0,
+            ),
+        ]
+    )
+    async with client.stream(
+        "POST",
+        f"/api/v1/chat/sessions/{sid}/turns/stream?token=tok",
+        json={"message": "hi"},
+    ) as resp:
+        body = await _read_sse_body(resp)
+    frames = _parse_frames(body)
+    assert not any(f[0] == "chat-citations" for f in frames)
+
+
+@pytest.mark.asyncio
+async def test_chat_route_chat_citations_payload_is_camel_case(
+    client_and_handler, monkeypatch
+):
+    from app.agents.chat.stream_events import ChatCitationsAttached
+
+    client, fake, engine = client_and_handler
+    sub = f"sub-{uuid.uuid4()}"
+    uid = await _seed_user(engine, sub)
+    sid = await _seed_chat_session(engine, uid)
+    await _stub_verify(sub, monkeypatch)
+
+    citations = _citation_set()
+    fake.set_stream(
+        events=[
+            ChatStreamStarted(correlation_id="c", session_id=sid),
+            ChatTokenDelta(text="x"),
+            ChatCitationsAttached(citations=citations),
+            ChatStreamCompleted(
+                input_tokens=1,
+                output_tokens=1,
+                session_turn_count=1,
+                summarization_applied=False,
+                token_source="model",
+                tool_call_count=1,
+            ),
+        ]
+    )
+    async with client.stream(
+        "POST",
+        f"/api/v1/chat/sessions/{sid}/turns/stream?token=tok",
+        json={"message": "hi"},
+    ) as resp:
+        body = await _read_sse_body(resp)
+    frames = _parse_frames(body)
+    cit_payload = next(f[1] for f in frames if f[0] == "chat-citations")
+    serialized = json.dumps(cit_payload)
+    # camelCase keys present.
+    for key in ("bookedAt", "amountKopiykas", "categoryCode", "sourceId", "asOf"):
+        assert key in serialized, f"missing camelCase key: {key}"
+    # snake_case variants must not appear.
+    for snake in ("booked_at", "amount_kopiykas", "category_code", "source_id", "as_of"):
+        assert snake not in serialized, f"snake_case key leaked: {snake}"

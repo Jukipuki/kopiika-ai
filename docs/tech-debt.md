@@ -1851,6 +1851,82 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-122 — Inline citation markers (`[^N]`) for sentence-to-citation alignment [LOW]
+
+**Where:** [backend/app/agents/chat/citations.py](../backend/app/agents/chat/citations.py) + [backend/app/agents/chat/system_prompt.py](../backend/app/agents/chat/system_prompt.py).
+
+**Problem:** Story 10.6b ships a flat per-turn citation list; the model does not mark which sentence cited which row. Sentence-level alignment is a UX uplift (operator/user feedback may show "which sentence cited which chip?" is useful), but the flat list satisfies FR68 today.
+
+**Why deferred:** Sentence-level alignment requires (a) a system-prompt amendment instructing the model to emit `[^N]` markers, (b) prompt-engineering iteration validated against Story 10.6a's grounding harness baseline (a behaviour change that invalidates the baseline measurement), (c) a UI affordance (10.7) for hover/tap-to-highlight. The flat list ships today; markers are a UX uplift, not a correctness gap.
+
+**Fix shape:** Extend `system_prompt.py` with a marker-emission instruction; add a regex-based marker-extractor to `citations.py`; re-baseline the chat-grounding harness (Story 10.6a) under the new prompt.
+
+**Effort:** ~1–2 days (mostly prompt iteration + harness re-baseline).
+
+**Trigger:** Story 10.7 completes citation-chip rendering and operator/user feedback indicates the flat list is insufficient.
+
+**Surfaced in:** Story 10.6b (2026-04-26).
+
+---
+
+### TD-123 — Citation-count CloudWatch metric + alarm [LOW]
+
+**Where:** [backend/app/agents/chat/session_handler.py](../backend/app/agents/chat/session_handler.py) emits `chat.citations.attached` with `citation_count` + `citation_kinds_histogram`; CloudWatch metric filter not yet declared in Terraform.
+
+**Problem:** Citation behavior is observable in CloudWatch logs but not metricified — drift (e.g. tools stop firing → P95 citation count drops to 0) is not alarmable today.
+
+**Why deferred:** Story 10.9 owns chat observability authorship and will batch metric publishing for all `chat.*` log events. 10.6b emits the structured log; metricification is a one-line metric-filter + alarm in 10.9's Terraform.
+
+**Fix shape:** New CloudWatch metric `ChatCitationCountP50` / `ChatCitationCountP95` from the structured log; warn if P95 drops to 0 sustained 30m (signals tools stopped firing — a regression).
+
+**Effort:** ~30 min after 10.9's metric-filter scaffolding lands.
+
+**Trigger:** Story 10.9 production rollout.
+
+**Surfaced in:** Story 10.6b (2026-04-26).
+
+---
+
+### TD-124 — Localization of `CategoryCitation.label` and `ProfileFieldCitation.label` [LOW]
+
+**Where:** [backend/app/agents/chat/citations.py](../backend/app/agents/chat/citations.py) (`_category_label`, `_profile_label`) — emits canonical English chip labels.
+
+**Problem:** Labels are emitted in English ("Groceries", "Monthly expenses (Apr 2026)"). UA-locale users in the chat UI need translated chip text.
+
+**Why deferred:** Doing the i18n inside `citations.py` would couple the assembler to the i18n stack (currently in frontend only); doing it on the FE keeps the assembler pure.
+
+**Fix shape:** Add a UA copy-map in the FE chat-citations consumer (Story 10.7); the assembler's `label` becomes a render hint / fallback rather than the displayed string.
+
+**Effort:** ~½ day, owned by Story 10.7.
+
+**Trigger:** Story 10.7 implementation.
+
+**Surfaced in:** Story 10.6b (2026-04-26).
+
+---
+
+### TD-125 — `RagDocCitation.title` degrades to `source_id` until `CorpusDocRow` carries a title [LOW]
+
+**Where:** [backend/app/agents/chat/tools/rag_corpus_tool.py:33-41](../backend/app/agents/chat/tools/rag_corpus_tool.py#L33-L41) (`CorpusDocRow`); [backend/app/agents/chat/citations.py:260-274](../backend/app/agents/chat/citations.py#L260-L274) (assembler).
+
+**Problem:** `RagDocCitation.title` is declared as a distinct human-friendly field in the AC #1 contract and the [docs/chat-sse-contract.md §chat-citations](chat-sse-contract.md) sample (e.g. `"Emergency Fund Basics"`), but `CorpusDocRow` exposes only `source_id`, `snippet`, `similarity` — there is no title in the retriever's output. The assembler currently emits `title = source_id`, so the chip's "title" duplicates its dedup key and the documented contract sample is aspirational. `RagDocCitation.label` is also `title` so the chip-visible string ends up being the doc id (e.g. `"en/emergency-fund"`).
+
+**Why deferred:** Story 10.6b's Scope Boundaries explicitly forbid changing 10.4c tool-output schemas — adding a `title` field requires (a) a corpus-side title index (the ingestion pipeline writes only `doc_id`/`content`/`embedding`), (b) a `CorpusDocRow` schema change and re-test of `search_financial_corpus`, (c) backfill of doc titles for the existing corpus rows. None of that fits in 10.6b's "wire-contract closure" charter.
+
+**Fix shape:**
+1. Extend the corpus-ingestion artefact to capture/derive a per-doc title (e.g. first H1 of the markdown source, or a frontmatter `title` field).
+2. Add `title: str` to `CorpusDocRow` and re-emit from `search_financial_corpus_handler`.
+3. Set `RagDocCitation.title = row.title` and `RagDocCitation.label = row.title`; keep `source_id` as the dedup key.
+4. Update [docs/chat-sse-contract.md §chat-citations](chat-sse-contract.md) sample to show distinct `title` and `sourceId` again.
+
+**Effort:** ~1 day (corpus pipeline + schema bump + backfill).
+
+**Trigger:** Story 10.7 chip rendering exposes the duplication to operator/user feedback; or the next chat-corpus ingestion change opens the door cheaply.
+
+**Surfaced in:** Story 10.6b code review (2026-04-26).
+
+---
+
 ## Resolved
 
 ### TD-108 — `send_turn_stream` client-disconnect finalizer does not persist partial state [RESOLVED 2026-04-25 — Story 10.5a]

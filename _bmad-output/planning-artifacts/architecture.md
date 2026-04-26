@@ -1778,6 +1778,7 @@ New component alongside the existing batch agents (see [backend/app/agents/](../
 
 - Session handler behind a stable 4-method API (`create_session`, `send_turn`, `terminate_session`, `terminate_all_user_sessions`); runtime backend is phased per ADR-0004 (Phase A direct Bedrock, Phase B AgentCore Runtime). Stateful multi-turn behavior is DB-backed; per-user session isolation is enforced by `chat_sessions.user_id` FK + per-row authorization on every `chat_messages` read.
 - Tool manifest (read-only allowlist): user transactions, user profile, teaching-feed history, RAG corpus
+- Citation contract: structured per-turn data refs assembled from tool outputs (Story 10.6b — see [docs/chat-sse-contract.md](../../docs/chat-sse-contract.md) §chat-citations); chip-row UX in Story 10.7.
 - Memory policy: per *Memory & Session Bounds* above; retention aligned with `chat_processing` consent
 - Guardrails attachment: input + output, with grounding threshold configured
 - Rate-limit envelope: per *Rate Limits* above
@@ -1813,6 +1814,8 @@ Chat uses server-sent events (SSE) for token streaming, consistent with the exis
 ```
 
 `correlation_id` surfaces in the frontend refusal UX so support can triage an incident without the user knowing the internal rationale. `reason` is intentionally coarse — no leakage of specific filter matches.
+
+On the happy path, an optional terminal-adjacent `chat-citations` frame carries the typed citation payload (Story 10.6b); the chip strip is suppressed on all `chat-refused` paths.
 
 ### Related Artifacts
 

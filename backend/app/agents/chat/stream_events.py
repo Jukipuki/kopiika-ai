@@ -6,11 +6,10 @@ session_handler.py). Consumer: the FastAPI SSE generator in
 them into the kebab-case SSE frames documented in
 ``docs/chat-sse-contract.md``.
 
-# SCOPE: five frozen dataclasses shaped by AC #3.
+# SCOPE: six frozen dataclasses shaped by AC #3 (Stories 10.5 + 10.6b).
 # Non-goals (sibling/downstream, do NOT add here):
 #   - SSE wire-framing (event: / data: lines)        → api/v1/chat.py (AC #5)
 #   - CHAT_REFUSED envelope translation              → api/v1/chat.py (AC #4)
-#   - Citation payloads                               → Story 10.6b
 #   - JSON schema versioning                          → docs/chat-sse-contract.md
 """
 
@@ -18,6 +17,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+
+from app.agents.chat.citations import Citation, citation_to_json_dict
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,15 @@ class ChatTokenDelta:
 
 
 @dataclass(frozen=True)
+class ChatCitationsAttached:
+    """Emitted on the happy path AFTER the final ChatTokenDelta and BEFORE
+    ChatStreamCompleted. Empty tuple = no citations on this turn (the API
+    layer skips emitting a chat-citations frame in that case)."""
+
+    citations: tuple  # tuple[Citation, ...]
+
+
+@dataclass(frozen=True)
 class ChatStreamCompleted:
     """Terminal event on a successful turn. Carries the same metrics the
     non-streaming ``ChatTurnResponse`` carries — the API layer maps these
@@ -75,11 +85,15 @@ class ChatStreamCompleted:
     tool_call_count: int
 
 
+# Inline citation markers ([^N]) → TD-122 follow-up.
+
+
 ChatStreamEvent = (
     ChatStreamStarted
     | ChatToolHopStarted
     | ChatToolHopCompleted
     | ChatTokenDelta
+    | ChatCitationsAttached
     | ChatStreamCompleted
 )
 
@@ -112,6 +126,11 @@ def event_to_json_dict(event: ChatStreamEvent) -> dict:
         }
     if isinstance(event, ChatTokenDelta):
         return {"kind": "token_delta", "text": event.text}
+    if isinstance(event, ChatCitationsAttached):
+        return {
+            "kind": "citations_attached",
+            "citations": [citation_to_json_dict(c) for c in event.citations],
+        }
     if isinstance(event, ChatStreamCompleted):
         return {
             "kind": "completed",
@@ -126,6 +145,7 @@ def event_to_json_dict(event: ChatStreamEvent) -> dict:
 
 
 __all__ = [
+    "ChatCitationsAttached",
     "ChatStreamCompleted",
     "ChatStreamEvent",
     "ChatStreamStarted",

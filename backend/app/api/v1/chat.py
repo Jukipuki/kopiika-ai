@@ -21,7 +21,7 @@
 #
 # Non-goals (sibling/downstream, do NOT add here — they ship in later stories):
 #   - Rate-limit enforcement (60/hr, 10 concurrent)       → Story 10.11
-#   - Citation payload in SSE frames                      → Story 10.6b
+#   - Citation payload in SSE frames                      → Story 10.6b (DONE — see docs/chat-sse-contract.md §chat-citations).
 #   - Contextual-grounding threshold tuning               → Story 10.6a (DONE — see docs/decisions/chat-grounding-threshold-2026-04.md)
 #   - Chat UI / Vercel AI SDK wiring                      → Story 10.7
 #   - Chat history listing / bulk-delete endpoints        → Story 10.10
@@ -50,6 +50,7 @@ from sqlalchemy import update as sa_update
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.agents.chat.canary_detector import ChatPromptLeakDetectedError
+from app.agents.chat.citations import citation_to_json_dict
 from app.agents.chat.chat_backend import (
     ChatConfigurationError,
     ChatGuardrailInterventionError,
@@ -67,6 +68,7 @@ from app.agents.chat.session_handler import (
     get_chat_session_handler,
 )
 from app.agents.chat.stream_events import (
+    ChatCitationsAttached,
     ChatStreamCompleted,
     ChatStreamStarted,
     ChatTokenDelta,
@@ -386,6 +388,20 @@ def _sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+def _camelify_keys(value: Any) -> Any:
+    """Recursive snake_case → camelCase converter for nested dict/list payloads.
+
+    Used by the ``chat-citations`` SSE arm so the wire payload matches the
+    repo's camelCase convention without each citation model having to declare
+    its own alias generator. Values pass through unchanged.
+    """
+    if isinstance(value, dict):
+        return {to_camel(str(k)): _camelify_keys(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_camelify_keys(v) for v in value]
+    return value
+
+
 @router.post("/sessions/{session_id}/turns/stream")
 async def stream_chat_turn(
     session_id: uuid.UUID,
@@ -555,6 +571,17 @@ async def stream_chat_turn(
                     continue
                 if isinstance(event, ChatToolHopCompleted):
                     # Collapsed — not surfaced to the client (AC #5).
+                    continue
+                if isinstance(event, ChatCitationsAttached):
+                    yield _sse_event(
+                        "chat-citations",
+                        {
+                            "citations": [
+                                _camelify_keys(citation_to_json_dict(c))
+                                for c in event.citations
+                            ],
+                        },
+                    )
                     continue
                 if isinstance(event, ChatTokenDelta):
                     if not first_token_logged:

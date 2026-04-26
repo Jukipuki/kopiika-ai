@@ -7,7 +7,16 @@ import uuid
 
 import pytest
 
+from datetime import date
+
+from app.agents.chat.citations import (
+    CategoryCitation,
+    ProfileFieldCitation,
+    RagDocCitation,
+    TransactionCitation,
+)
 from app.agents.chat.stream_events import (
+    ChatCitationsAttached,
     ChatStreamCompleted,
     ChatStreamStarted,
     ChatTokenDelta,
@@ -59,6 +68,40 @@ def test_event_to_json_dict_round_trip_each_variant():
         # Must JSON-serialize (api layer logs / tests depend on this).
         json.dumps(d)
         assert "kind" in d
+
+
+def test_citations_attached_round_trip_each_kind():
+    citations = (
+        TransactionCitation(
+            id=uuid.uuid4(),
+            booked_at=date(2026, 3, 14),
+            description="Coffee",
+            amount_kopiykas=-100,
+            currency="UAH",
+            category_code="groceries",
+            label="Coffee · 2026-03-14",
+        ),
+        CategoryCitation(code="groceries", label="Groceries"),
+        ProfileFieldCitation(
+            field="monthly_expenses_kopiykas",
+            value=4_530_000,
+            currency="UAH",
+            as_of=date(2026, 4, 1),
+            label="Monthly expenses (Apr 2026)",
+        ),
+        RagDocCitation(
+            source_id="en/x",
+            title="en/x",
+            snippet="a",
+            similarity=0.5,
+            label="en/x",
+        ),
+    )
+    event = ChatCitationsAttached(citations=citations)
+    d = event_to_json_dict(event)
+    assert d["kind"] == "citations_attached"
+    assert len(d["citations"]) == 4
+    json.dumps(d)  # serializable without an encoder hook (uuids/dates → str)
 
 
 def test_unknown_event_raises():

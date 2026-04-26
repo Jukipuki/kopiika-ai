@@ -1645,7 +1645,7 @@ Only these four message types are in scope for 10.3a. "Refused", "blocked", "rat
 
 ### Citation Chip Row
 
-Layout only. The chip **content contract** and the detail-panel content are owned by Story 10.6b (citation payload) and Story 10.3b (surface copy + correlation-ID), respectively.
+Layout only. The chip **content contract** and the detail-panel content are owned by Story 10.6b (citation payload — see [docs/chat-sse-contract.md §chat-citations](../../docs/chat-sse-contract.md#chat-citations)) and Story 10.3b (surface copy + correlation-ID), respectively.
 
 - Render chips in a single-line horizontally-scrollable strip **directly below** the assistant bubble, flush with the bubble's left edge, `gap: 8 px`.
 - Each chip is a compact pill: `height: 24–28 px`, `padding: 4 px 10 px`, rounded corners. Label examples: `Transaction · 2026-03-14`, `Category · Groceries`, `Profile · Savings Ratio`, `Corpus · <source id>`. Long labels truncate with an ellipsis at the right.

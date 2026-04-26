@@ -779,3 +779,225 @@ async def test_send_turn_authorization_error_emits_event(
                 await handler.send_turn(db, handle, "get me someone else's data")
 
     assert any(r.message == "chat.turn.aborted_authorization" for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Story 10.6b — citation assembly on send_turn / send_turn_stream
+# ---------------------------------------------------------------------------
+
+
+def _tx_payload(
+    *,
+    tx_id: uuid.UUID | None = None,
+    category_code: str | None = "groceries",
+) -> dict:
+    return {
+        "rows": [
+            {
+                "id": str(tx_id or uuid.uuid4()),
+                "booked_at": "2026-03-14",
+                "description": "Coffee Shop",
+                "amount_kopiykas": -8500,
+                "currency": "UAH",
+                "category_code": category_code,
+                "transaction_kind": "spending",
+            }
+        ],
+        "row_count": 1,
+        "truncated": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_send_turn_attaches_citations_when_tools_called(
+    fk_engine, consented_user, handler, fake_backend, caplog
+):
+    tc = _tool_result(tool_name="get_transactions", payload=_tx_payload())
+    fake_backend.invoke.return_value = ChatInvocationResult(
+        text="ok",
+        input_tokens=1,
+        output_tokens=1,
+        token_source="model",
+        tool_calls=(tc,),
+    )
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with caplog.at_level("INFO"):
+            response = await handler.send_turn(db, handle, "hi")
+    assert response.citations
+    kinds = sorted({c.kind for c in response.citations})
+    assert "transaction" in kinds
+    assert any(
+        r.message == "chat.citations.attached" for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_turn_attaches_no_citations_when_no_tools(
+    fk_engine, consented_user, handler, fake_backend, caplog
+):
+    fake_backend.invoke.return_value = ChatInvocationResult(
+        text="ok",
+        input_tokens=1,
+        output_tokens=1,
+        token_source="model",
+        tool_calls=(),
+    )
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with caplog.at_level("INFO"):
+            response = await handler.send_turn(db, handle, "hi")
+    assert response.citations == ()
+    assert not any(
+        r.message == "chat.citations.attached" for r in caplog.records
+    )
+
+
+# ---- send_turn_stream variants -------------------------------------------
+
+
+from app.agents.chat.chat_backend import (  # noqa: E402
+    BackendStreamDone,
+    BackendTokenDelta,
+    BackendToolHop,
+    ChatBackend,
+    ChatGuardrailInterventionError,
+)
+from app.agents.chat.stream_events import (  # noqa: E402
+    ChatCitationsAttached,
+    ChatStreamCompleted,
+    ChatTokenDelta,
+)
+
+
+class _StreamBackend(ChatBackend):
+    def __init__(self, events_or_exc):
+        self._events_or_exc = events_or_exc
+        self.create_remote_session = AsyncMock(side_effect=lambda i: f"ac-{i}")
+        self.terminate_remote_session = AsyncMock(return_value=None)
+        self.invoke = AsyncMock()
+
+    async def create_remote_session(self, db_session_id):  # type: ignore[override]
+        raise NotImplementedError
+
+    async def invoke(self, **_kwargs):  # type: ignore[override]
+        raise NotImplementedError
+
+    async def terminate_remote_session(self, _id):  # type: ignore[override]
+        raise NotImplementedError
+
+    async def invoke_stream(self, **_kwargs):  # type: ignore[override]
+        if isinstance(self._events_or_exc, Exception):
+            raise self._events_or_exc
+        for ev in self._events_or_exc:
+            if isinstance(ev, Exception):
+                raise ev
+            yield ev
+
+
+async def _collect(agen):
+    out = []
+    async for e in agen:
+        out.append(e)
+    return out
+
+
+@pytest.mark.asyncio
+async def test_send_turn_stream_yields_citations_event(fk_engine, consented_user):
+    tc = _tool_result(tool_name="get_transactions", payload=_tx_payload())
+    events = [
+        BackendToolHop(tool_name="get_transactions", hop_index=1, ok=True, result=tc),
+        BackendTokenDelta(text="ok"),
+        BackendStreamDone(
+            input_tokens=1, output_tokens=1, token_source="model", tool_calls=(tc,)
+        ),
+    ]
+    handler = ChatSessionHandler(_StreamBackend(events))
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        emitted = await _collect(
+            handler.send_turn_stream(db, handle, "hi", correlation_id="c-cite")
+        )
+    types = [type(e).__name__ for e in emitted]
+    assert "ChatCitationsAttached" in types
+    cit_idx = types.index("ChatCitationsAttached")
+    last_token_idx = max(
+        i for i, e in enumerate(emitted) if isinstance(e, ChatTokenDelta)
+    )
+    completed_idx = next(
+        i for i, e in enumerate(emitted) if isinstance(e, ChatStreamCompleted)
+    )
+    assert last_token_idx < cit_idx < completed_idx
+    cit_event = emitted[cit_idx]
+    assert isinstance(cit_event, ChatCitationsAttached)
+    assert cit_event.citations  # non-empty
+
+
+@pytest.mark.asyncio
+async def test_send_turn_stream_no_citations_event_when_empty(
+    fk_engine, consented_user
+):
+    events = [
+        BackendTokenDelta(text="ok"),
+        BackendStreamDone(
+            input_tokens=1, output_tokens=1, token_source="model", tool_calls=()
+        ),
+    ]
+    handler = ChatSessionHandler(_StreamBackend(events))
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        emitted = await _collect(
+            handler.send_turn_stream(db, handle, "hi", correlation_id="c-empty")
+        )
+    assert not any(isinstance(e, ChatCitationsAttached) for e in emitted)
+
+
+@pytest.mark.asyncio
+async def test_canary_leak_path_emits_no_citations(
+    fk_engine, consented_user, monkeypatch
+):
+    from app.agents.chat.canary_detector import ChatPromptLeakDetectedError
+    from app.agents.chat import session_handler as sh_mod
+
+    def _raise(*_a, **_kw):
+        raise ChatPromptLeakDetectedError("FOO12345", matched_position_slot="a")
+
+    monkeypatch.setattr(sh_mod, "scan_for_canaries", _raise)
+    tc = _tool_result(tool_name="get_transactions", payload=_tx_payload())
+    events = [
+        BackendToolHop(tool_name="get_transactions", hop_index=1, ok=True, result=tc),
+        BackendTokenDelta(text="canary leaked text"),
+        BackendStreamDone(
+            input_tokens=1, output_tokens=1, token_source="model", tool_calls=(tc,)
+        ),
+    ]
+    handler = ChatSessionHandler(_StreamBackend(events))
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with pytest.raises(ChatPromptLeakDetectedError):
+            await _collect(
+                handler.send_turn_stream(db, handle, "hi", correlation_id="c-leak")
+            )
+
+
+@pytest.mark.asyncio
+async def test_grounding_intervention_emits_no_citations(
+    fk_engine, consented_user
+):
+    tc = _tool_result(tool_name="get_transactions", payload=_tx_payload())
+    events = [
+        BackendToolHop(tool_name="get_transactions", hop_index=1, ok=True, result=tc),
+        BackendTokenDelta(text="partial"),
+        ChatGuardrailInterventionError(intervention_kind="grounding"),
+    ]
+    handler = ChatSessionHandler(_StreamBackend(events))
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        agen = handler.send_turn_stream(
+            db, handle, "hi", correlation_id="c-ground"
+        )
+        emitted: list = []
+        with pytest.raises(ChatGuardrailInterventionError):
+            async for ev in agen:
+                emitted.append(ev)
+        assert not any(isinstance(e, ChatCitationsAttached) for e in emitted)

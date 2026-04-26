@@ -33,7 +33,8 @@ quality. A future cost-optimization pass must keep this split.
 
 # 10.4b landed: system prompt + input validator + canary scan ship here.
 # 10.4c landed: tool manifest + dispatcher + tool-loop in DirectBedrockBackend + role='tool' persistence.
-# Downstream: 10.6a tunes grounding at Guardrail attach time; 10.6b reads role='tool' rows for citation assembly.
+# Downstream: 10.6a tunes grounding at Guardrail attach time.
+# 10.6b assembles citations from role='tool' rows (DONE); Story 10.10 replays them on history fetch.
 # ADR: docs/adr/0004-chat-runtime-phasing.md (Phase A vs B split — handler API stable across phases).
 """
 
@@ -43,7 +44,7 @@ import hashlib
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import update as sa_update
@@ -67,7 +68,12 @@ from app.agents.chat.chat_backend import (
     ChatSessionTerminationFailed,
     build_backend,
 )
+from app.agents.chat.citations import (
+    CITATION_CONTRACT_VERSION,
+    assemble_citations_with_meta,
+)
 from app.agents.chat.stream_events import (
+    ChatCitationsAttached,
     ChatStreamCompleted,
     ChatStreamEvent,
     ChatStreamStarted,
@@ -113,8 +119,8 @@ def _now() -> datetime:
 def _serialize_tool_call(tc: object) -> str:
     """Serialize a ``ToolResult`` for persistence as ``ChatMessage.content``.
 
-    The resulting JSON string is what Story 10.6b's citation assembler
-    deserializes when building per-message citations.
+    Story 10.6b's citation assembler (citations.py) deserializes this on
+    history replay (Story 10.10's read path).
     """
     import json as _json
 
@@ -127,6 +133,31 @@ def _serialize_tool_call(tc: object) -> str:
             "elapsed_ms": getattr(tc, "elapsed_ms", None),
         },
         default=str,
+    )
+
+
+def _log_citations_attached(
+    *,
+    citations: tuple,
+    correlation_id: str,
+    db_session_id: uuid.UUID,
+    truncated: bool = False,
+) -> None:
+    """Emit ``chat.citations.attached`` INFO log per Story 10.6b AC #4 / #5."""
+    histogram: dict[str, int] = {}
+    for c in citations:
+        kind = getattr(c, "kind", "unknown")
+        histogram[kind] = histogram.get(kind, 0) + 1
+    logger.info(
+        "chat.citations.attached",
+        extra={
+            "correlation_id": correlation_id,
+            "db_session_id": str(db_session_id),
+            "citation_count": len(citations),
+            "citation_kinds_histogram": histogram,
+            "truncated": truncated,
+            "contract_version": CITATION_CONTRACT_VERSION,
+        },
     )
 
 
@@ -160,6 +191,7 @@ class ChatTurnResponse:
     session_turn_count: int
     summarization_applied: bool
     token_source: str  # "model" | "tiktoken"
+    citations: tuple = field(default_factory=tuple)  # tuple[Citation, ...]
 
 
 class ChatSessionHandler:
@@ -458,7 +490,7 @@ class ChatSessionHandler:
         # Step 6 — persist tool rows + assistant turn atomically.
         # Tool rows come BEFORE the assistant row (by insertion order and
         # by created_at because the assistant row is added last in the txn).
-        # Story 10.6b's citation assembler reads these rows later.
+        # Story 10.10's history-replay path re-uses citations.assemble_citations on these rows.
         for tc in result.tool_calls:
             db.add(
                 ChatMessage(
@@ -494,6 +526,16 @@ class ChatSessionHandler:
         # report tool_call_count for both, and let Story 10.9 split if needed.
         tool_call_count = len(result.tool_calls)
         tool_hop_count = tool_call_count
+        citations, citations_truncated = assemble_citations_with_meta(
+            result.tool_calls
+        )
+        if citations:
+            _log_citations_attached(
+                citations=citations,
+                correlation_id=correlation_id,
+                db_session_id=handle.db_session_id,
+                truncated=citations_truncated,
+            )
         logger.info(
             "chat.turn.completed",
             extra={
@@ -519,6 +561,7 @@ class ChatSessionHandler:
             session_turn_count=count_turns(history),
             summarization_applied=summarization_applied,
             token_source=result.token_source,
+            citations=citations,
         )
 
     # ------------------------------------------------------------------
@@ -856,6 +899,17 @@ class ChatSessionHandler:
             input_tokens = completed.input_tokens if completed else 0
             output_tokens = completed.output_tokens if completed else 0
             token_source = completed.token_source if completed else "model"
+            citations, citations_truncated = assemble_citations_with_meta(
+                tuple(tool_results)
+            )
+            if citations:
+                _log_citations_attached(
+                    citations=citations,
+                    correlation_id=correlation_id,
+                    db_session_id=handle.db_session_id,
+                    truncated=citations_truncated,
+                )
+                yield ChatCitationsAttached(citations=citations)
             logger.info(
                 "chat.turn.completed",
                 extra={

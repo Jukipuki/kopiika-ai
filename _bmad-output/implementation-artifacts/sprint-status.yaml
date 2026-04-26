@@ -229,7 +229,7 @@ development_status:
   # error paths). TD-109 medium-term (rolling-window wire-gate) stays open.
   10-5a-send-turn-stream-disconnect-finalizer: done
   10-6a-grounding-enforcement-harness: done
-  10-6b-citation-payload-data-refs: backlog
+  10-6b-citation-payload-data-refs: done
   10-7-chat-ui: ready-for-dev
   10-8a-red-team-corpus-authoring: backlog
   10-8b-safety-test-runner-ci-gate: backlog

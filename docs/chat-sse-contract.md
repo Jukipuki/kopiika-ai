@@ -36,6 +36,7 @@ The happy-path sequence is **always**:
 chat-open
   → zero-or-more: chat-thinking
   → one-or-more:  chat-token
+  → at-most-one:  chat-citations
   → chat-complete (terminal)
 ```
 
@@ -62,6 +63,63 @@ Fires for each token delta of the FINAL (plain-text) model iteration. Empty-stri
 ```json
 {"delta": "Your "}
 ```
+
+### `chat-citations`
+
+Optional frame, fires at most once per turn after the final `chat-token`
+and before `chat-complete`. Suppressed on all `chat-refused` paths and on
+turns where no tools fired (the model answered from chat history alone).
+Carries the structured citation payload that backs the chip row in the
+chat UI (Story 10.7 consumer).
+
+```json
+{
+  "citations": [
+    {"kind": "transaction", "id": "<uuid>", "bookedAt": "2026-03-14",
+     "description": "Coffee Shop", "amountKopiykas": -8500,
+     "currency": "UAH", "categoryCode": "groceries",
+     "label": "Coffee Shop · 2026-03-14"},
+    {"kind": "category", "code": "groceries", "label": "Groceries"},
+    {"kind": "profile_field", "field": "monthly_expenses_kopiykas",
+     "value": 4530000, "currency": "UAH", "asOf": "2026-04-01",
+     "label": "Monthly expenses (Apr 2026)"},
+    {"kind": "rag_doc", "sourceId": "en/emergency-fund",
+     "title": "en/emergency-fund", "snippet": "An emergency …",
+     "similarity": 0.83, "label": "en/emergency-fund"}
+  ]
+}
+```
+
+Note on `rag_doc.title` / `rag_doc.label`: the corpus retriever
+(`CorpusDocRow`) does not currently carry a human-friendly title, so the
+assembler emits `title = label = source_id`. Tracked under
+[`TD-125`](tech-debt.md#td-125--ragdoccitationtitle-degrades-to-source_id-until-corpusdocrow-carries-a-title-low);
+the wire field stays `title: str` so adopting a real title later is
+non-breaking.
+
+Cap: at most **20 citations** per turn (server-side truncation, logged
+at WARN if hit). Order: tool-call invocation order, then row order
+within each tool, with first-occurrence dedup. Contract version pinned
+in `CITATION_CONTRACT_VERSION` (currently `10.6b-v1`); bumps require a
+new story.
+
+#### Projection map (source of truth — Story 10.6b AC #2)
+
+| Source tool | Source field path | Citation kind | Per-row citations produced |
+|---|---|---|---|
+| `get_transactions` | `payload.rows[*]` | `TransactionCitation` (one per row) + at most one `CategoryCitation` per **distinct** `category_code` across all rows | one TX citation per row; categories deduped across the whole turn |
+| `get_profile` | `payload.summary.{monthly_income_kopiykas, monthly_expenses_kopiykas, savings_ratio, health_score}` | `ProfileFieldCitation` (one per *non-None* field) | up to 4 per profile call; only non-None fields cite |
+| `get_profile` | `payload.category_breakdown[*].category_code` | `CategoryCitation` (deduped against transaction-derived categories) | one per breakdown row, deduped |
+| `get_teaching_feed` | — | (none) | dropped; teaching-feed cards are not citable evidence in chat |
+| `search_financial_corpus` | `payload.rows[*]` | `RagDocCitation` (one per row) | one per row; deduped by `source_id` across the turn |
+
+Dedup keys (first-occurrence wins):
+- `TransactionCitation`: `("transaction", id)`
+- `CategoryCitation`: `("category", code)`
+- `ProfileFieldCitation`: `("profile_field", field, as_of)`
+- `RagDocCitation`: `("rag_doc", source_id)`
+
+Failed tool calls (`ok=False`) are skipped silently.
 
 ### `chat-complete`
 
@@ -115,8 +173,6 @@ Deployment-misconfiguration failures (e.g. `ChatConfigurationError` — missing 
 **Heartbeats.** Clients MUST tolerate `: heartbeat\n\n` comment-only frames at any point — they are not events. Some EventSource implementations suppress these automatically; custom parsers should skip any line starting with `:`.
 
 **Disconnect semantics.** If the client closes the `EventSource` mid-stream, the backend honors cancellation: it commits whatever partial state ran (tool rows that completed, the assistant row if the final text flushed) and bumps `chat_sessions.last_active_at`. A dropped turn is indistinguishable in the DB from a completed turn.
-
-**Unknown event names.** Clients MUST silently ignore any event name not listed above. Story 10.6b will add `chat-citations`; this contract is additive.
 
 ## Example (curl + EventSource)
 
@@ -194,5 +250,6 @@ Every frame on a turn carries the same `correlationId` that stamps these backend
 | `chat.stream.disconnected` | Client dropped mid-stream | INFO |
 | `chat.stream.guardrail_detached` | `guardrail_id=None` path hit | WARN |
 | `chat.stream.consent_drift` | `ChatConsentRequiredError` at turn time (should be impossible) | ERROR |
+| `chat.citations.attached` | After the canary scan passes on the happy path | INFO (carries `citation_count` + `citation_kinds_histogram` + `contract_version`) |
 
 Story 10.9 turns these into CloudWatch metric filters + alarms.

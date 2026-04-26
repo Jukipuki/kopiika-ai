@@ -153,7 +153,7 @@ class ChatInvocationResult:
     ``tool_calls`` is the ordered sequence of ``ToolResult`` instances
     executed during this turn (Story 10.4c). Empty tuple when the model
     answered without tools. The handler persists these as ``role='tool'``
-    rows; Story 10.6b reads them for citation assembly.
+    rows; Story 10.6b's citations.assemble_citations consumes them.
     """
 
     text: str

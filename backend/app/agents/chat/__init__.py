@@ -1,4 +1,9 @@
 from app.agents.chat.canary_detector import ChatPromptLeakDetectedError
+from app.agents.chat.citations import (
+    CITATION_CONTRACT_VERSION,
+    Citation,
+    assemble_citations,
+)
 from app.agents.chat.chat_backend import (
     ChatConfigurationError,
     ChatProviderNotSupportedError,
@@ -26,6 +31,9 @@ from app.agents.chat.tools.tool_errors import (
 
 __all__ = [
     "CHAT_TOOL_MANIFEST_VERSION",
+    "CITATION_CONTRACT_VERSION",
+    "Citation",
+    "assemble_citations",
     "ChatConfigurationError",
     "ChatInputBlockedError",
     "ChatPromptLeakDetectedError",
