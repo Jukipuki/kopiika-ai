@@ -156,8 +156,9 @@ resource "aws_bedrock_guardrail" "this" {
   }
 
   # ── Contextual grounding ────────────────────────────────────────────────
-  # Initial 0.85 / 0.5 floor per architecture.md L1705. Story 10.6a tunes the
-  # GROUNDING threshold via its eval harness post-launch.
+  # 0.85 / 0.5 floors validated by Story 10.6a — see
+  # docs/decisions/chat-grounding-threshold-2026-04.md. Re-run the harness on
+  # prompt / model / Guardrail config change.
   contextual_grounding_policy_config {
     filters_config {
       type      = "GROUNDING"

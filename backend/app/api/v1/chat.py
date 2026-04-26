@@ -22,7 +22,7 @@
 # Non-goals (sibling/downstream, do NOT add here — they ship in later stories):
 #   - Rate-limit enforcement (60/hr, 10 concurrent)       → Story 10.11
 #   - Citation payload in SSE frames                      → Story 10.6b
-#   - Contextual-grounding threshold tuning               → Story 10.6a
+#   - Contextual-grounding threshold tuning               → Story 10.6a (DONE — see docs/decisions/chat-grounding-threshold-2026-04.md)
 #   - Chat UI / Vercel AI SDK wiring                      → Story 10.7
 #   - Chat history listing / bulk-delete endpoints        → Story 10.10
 #   - Safety-metric publishing (CloudWatch EMF, alarms)   → Story 10.9

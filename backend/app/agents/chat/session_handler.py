@@ -19,7 +19,7 @@ AgentCore Runtime without changing this file.
 - Tool manifest + tool-use loop              → Story 10.4c
 - SSE streaming + CHAT_REFUSED envelope      → Story 10.5
 - Bedrock Guardrails attach at invoke        → Story 10.5
-- Contextual-grounding threshold tuning      → Story 10.6a
+- Contextual-grounding threshold tuning      → Story 10.6a (DONE — see docs/decisions/chat-grounding-threshold-2026-04.md). Re-tuning trigger: TD-121 (scheduled re-run).
 - Rate-limit envelope (60/hr, 10 concurrent) → Story 10.11
 - Chat UI / UX states                        → Stories 10.7 + 10.3a/b
 - Cross-session memory / long-term memory    → TD-040 (explicitly deferred)

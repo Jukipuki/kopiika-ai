@@ -745,6 +745,109 @@ async def test_finalizer_db_failure_logs_finalizer_failed(
     assert getattr(finalizer_fail[0], "accumulated_char_len", 0) > 0
 
 
+# ----------------------------------------------------------------------
+# Story 10.6a — Grounding enforcement regression pin (AC #2)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_grounding_intervention_returns_ungrounded_no_regenerate(
+    fk_engine, consented_user, caplog, monkeypatch
+):
+    # Story 10.6a AC #2 — the architecture L1711 no-regenerate contract.
+    # Mocks ``invoke_stream`` to yield two text deltas and then raise
+    # ``ChatGuardrailInterventionError(intervention_kind="grounding")``.
+    # Asserts:
+    #  (a) the exception propagates out of ``send_turn_stream`` — the API
+    #      layer at chat.py:193-199 translates it to CHAT_REFUSED with
+    #      reason=ungrounded;
+    #  (b) ``ChatBackend.invoke_stream`` was called *exactly once* — no
+    #      retry / regenerate / second backend call followed the
+    #      intervention (the negative regression pin);
+    #  (c) the persisted assistant row matches Story 10.5a's deferred-
+    #      finalizer clean-row contract — single ``role='assistant'`` row
+    #      with the accumulated pre-intervention text, NO
+    #      ``guardrail_action='blocked'`` flag, NO ``filter_source`` in
+    #      ``redaction_flags`` (the block signal lives on the SSE wire
+    #      envelope translated by chat.py:193-199, not in DB columns);
+    #  (d) ``chat.stream.guardrail_intervened`` INFO log fires exactly once
+    #      with ``intervention_kind='grounding'`` in extra.
+    exc = ChatGuardrailInterventionError(
+        intervention_kind="grounding",
+        trace_summary=(
+            "contextualGroundingPolicy: groundingScore=0.42 below threshold 0.85"
+        ),
+    )
+    events = [
+        BackendTokenDelta(text="The user spent "),
+        BackendTokenDelta(text="The user spent "),
+        BackendTokenDelta(text="$10,000 on cigars"),
+        exc,
+    ]
+    backend = _StreamBackend(events)
+    handler = ChatSessionHandler(backend)
+
+    invoke_call_count = {"n": 0}
+    original_invoke = backend.invoke_stream
+
+    async def _counting_invoke_stream(**kwargs):
+        invoke_call_count["n"] += 1
+        async for ev in original_invoke(**kwargs):
+            yield ev
+
+    monkeypatch.setattr(backend, "invoke_stream", _counting_invoke_stream)
+
+    async with SQLModelAsyncSession(fk_engine, expire_on_commit=False) as db:
+        handle = await handler.create_session(db, consented_user)
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ChatGuardrailInterventionError) as ei:
+                await _collect(
+                    handler.send_turn_stream(
+                        db, handle, "How much did I spend on cigars?",
+                        correlation_id="cg-pin",
+                    )
+                )
+
+    assert ei.value.intervention_kind == "grounding"
+
+    # (b) Negative regression pin — no retry / regenerate.
+    assert invoke_call_count["n"] == 1, (
+        "ChatBackend.invoke_stream must be called exactly once on grounding "
+        "intervention — no silent retry / regenerate is permitted "
+        "(architecture.md L1711)."
+    )
+
+    # (c) Persistence shape — Story 10.5a deferred-finalizer contract:
+    # exactly one role='assistant' row with the accumulated pre-intervention
+    # text, NO guardrail_action='blocked' flag, NO filter_source. The block
+    # signal lives on the SSE wire envelope (translated by the API layer at
+    # chat.py:193-199 to reason="ungrounded"), not in DB columns. Mirrors
+    # the symmetric content_filter pin at line 516 of this file.
+    async with SQLModelAsyncSession(fk_engine) as db:
+        rows = (
+            await db.exec(
+                select(ChatMessage).where(
+                    ChatMessage.session_id == handle.db_session_id
+                )
+            )
+        ).all()
+    assistants = [r[0] for r in rows if r[0].role == "assistant"]
+    assert len(assistants) == 1
+    assert assistants[0].guardrail_action != "blocked"
+    assert "filter_source" not in (assistants[0].redaction_flags or {})
+    assert "$10,000 on cigars" in assistants[0].content
+
+    # (d) Intervention log fires exactly once with intervention_kind="grounding".
+    intervened = [
+        r for r in caplog.records if r.message == "chat.stream.guardrail_intervened"
+    ]
+    assert len(intervened) == 1
+    assert getattr(intervened[0], "intervention_kind", None) == "grounding"
+
+    # (e) No canary-leak log — the deferred-finalizer canary re-scan ran clean.
+    assert not any(r.message == "chat.canary.leaked" for r in caplog.records)
+
+
 @pytest.mark.asyncio
 async def test_canary_leak_happy_path_emits_leaked_log_once(
     fk_engine, consented_user, caplog

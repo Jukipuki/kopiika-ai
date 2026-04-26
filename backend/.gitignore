@@ -14,3 +14,8 @@ wheels/
 
 # Provider-matrix run-reports (Story 9.5c)
 tests/agents/providers/runs/
+
+# Chat-grounding harness run-reports (Story 10.6a) — keep only the
+# committed baseline + .gitkeep marker; all timestamped reports are local.
+tests/fixtures/chat_grounding/runs/*.json
+!tests/fixtures/chat_grounding/runs/baseline-2026-04.json

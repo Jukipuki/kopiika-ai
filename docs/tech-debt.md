@@ -1823,6 +1823,34 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 ---
 
+### TD-121 — Chat-grounding harness: scheduled re-run + eval-set authoring fixes [MEDIUM]
+
+**Where:** [backend/tests/eval/chat_grounding/test_chat_grounding_harness.py](../backend/tests/eval/chat_grounding/test_chat_grounding_harness.py) + [backend/tests/fixtures/chat_grounding/eval_set.jsonl](../backend/tests/fixtures/chat_grounding/eval_set.jsonl) — harness + eval set from Story 10.6a.
+
+**Problem:** The harness from 10.6a runs locally on demand only (`-m eval`); there is no scheduled re-run or CI gate that surfaces drift on the configured prompt / model / Guardrail config. Story 10.8b's safety-CI gate is the natural consumer, but 10.8b's scope is the red-team pass-rate on `backend/tests/ai_safety/`, not the grounding harness. **In addition**, the 2026-04 final baseline (post code-review fix) surfaces three follow-ups that depress `grounding_rate` independent of Guardrail behaviour:
+
+- **Judge unit-conversion blind spot (cg-003):** the judge reads raw `amount_kopiykas: -800` integers from the source JSON and incorrectly faults the model for rendering the value as `₴8.00` (the correct UAH conversion). Fix: extend the judge prompt with a kopiykas / UAH conversion note, or pre-format transaction amounts before they reach the judge.
+- **Soft-leak prompt issues (cg-007 EN Starbucks, cg-107 UK Сільпо):** in both rows the model hedges-and-speculates rather than cleanly refusing. cg-007: model invents a transaction date `2025-05-31` for the generic "Coffee Shop" row. cg-107: model speculates that the generic "Супермаркет" row "could" be Сільпо. Fix is in the chat system prompt (tighter "do not invent specifics" + date / merchant-quoting rule), not the Guardrail threshold.
+- **No scheduled re-run / CI integration:** see opening paragraph.
+
+**Resolved during the code-review pass (no further action):** the original baseline ran against an older eval set where cg-004 / cg-104 referenced the wrong corpus doc (`budgeting-basics` lacked "50/30/20" content). The code-review repointed both rows at `{lang}/50-30-20-rule` and refixed the harness's `CorpusDocRow` / `ProfileSummary` shapes (Pydantic schema drift). cg-004 + cg-104 now PASS in the final baseline. Earlier story-time fixes: Alembic migration drift on `ck_chat_messages_role` (now applied via `alembic upgrade head`); `traceback_tail` per-row capture in the harness driver.
+
+**Why deferred:** Scheduled-workflow + staging-creds + cost-budget conversation is out of scope for the measurement-instrument story; prompt-tuning + judge-sharpening fit the same followup window since they're a small content-edit pass that benefits from co-landing with the scheduled re-run wiring.
+
+**Fix shape:**
+1. **Judge prompt:** add a kopiykas-vs-UAH conversion note (or pre-format amounts) so the judge stops faulting correct unit conversions.
+2. **System prompt:** tighten the "do not invent specifics" guidance — explicit rules against synthesizing dates / merchant names that aren't in the sources.
+3. **Re-run baseline** after (1) and (2) land; replace `baseline-2026-04.json` with the cleaner run, and re-evaluate the threshold decision against the new numbers.
+4. **Scheduled re-run:** new GHA workflow `chat-grounding-eval.yml`; runs on `schedule: cron(0 6 * * 1)` (Mondays 06:00 UTC); uses the prod Bedrock Guardrail ARN against a staging-isolated chat user; opens an issue if `grounding_rate` drifts > 5pp from the (post-fix) baseline.
+
+**Trigger:** After Story 10.8b merges (the safety-CI patterns there inform the staging-creds approach), OR sooner if the prompt / model / Guardrail config changes in a way that obviously needs fresh measurement.
+
+**Effort:** ~half-day (judge + prompt fixes + baseline re-run) + ~half-day (GHA wiring + staging-creds).
+
+**Surfaced in:** Story 10.6a (2026-04-26) + 10.6a code review (2026-04-26).
+
+---
+
 ## Resolved
 
 ### TD-108 — `send_turn_stream` client-disconnect finalizer does not persist partial state [RESOLVED 2026-04-25 — Story 10.5a]

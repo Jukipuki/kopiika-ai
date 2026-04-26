@@ -1786,7 +1786,7 @@ New component alongside the existing batch agents (see [backend/app/agents/](../
 
 - 100% of chat turns traverse Bedrock Guardrails (input + output)
 - Red-team corpus pass rate ≥ 95% (CI gate)
-- Grounding rate ≥ 90% measured by LLM-as-judge in the RAG harness (Story 10.6a)
+- Grounding rate ≥ 90% measured by LLM-as-judge in the RAG harness (Story 10.6a — baseline at [docs/decisions/chat-grounding-threshold-2026-04.md](../../docs/decisions/chat-grounding-threshold-2026-04.md))
 
 ### Data Model Additions
 

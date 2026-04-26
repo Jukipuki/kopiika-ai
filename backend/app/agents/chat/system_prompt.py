@@ -7,7 +7,7 @@
 #
 # Non-goals (owned by sibling/downstream stories):
 #   - Tool-use manifest                        → Story 10.4c
-#   - Grounding directives tuning              → Story 10.6a
+#   - Grounding directives tuning              → Story 10.6a (DONE — see docs/decisions/chat-grounding-threshold-2026-04.md)
 #   - UX copy for refusals                     → Stories 10.3b / 10.7
 """
 

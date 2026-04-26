@@ -406,6 +406,63 @@ async def test_stream_unmapped_exception_emits_terminal_refused_frame(
     assert refused["correlationId"]
 
 
+# ---------------------------------------------------------------------
+# Story 10.6a — Grounding enforcement regression pin (AC #2)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_chat_route_grounding_returns_chat_refused_ungrounded(
+    client_and_handler, monkeypatch
+):
+    """End-to-end pair for the AC #2 unit-level pin in
+    ``test_send_turn_stream::test_grounding_intervention_returns_ungrounded_no_regenerate``.
+
+    Drives a full request through the SSE route with the handler raising
+    ``ChatGuardrailInterventionError(intervention_kind="grounding")`` after
+    a stream has opened, and asserts the wire envelope matches the
+    architecture L1808-L1813 contract:
+    ``{"error": "CHAT_REFUSED", "reason": "ungrounded",
+       "correlationId": "<uuid>", "retryAfterSeconds": null}``.
+    """
+    client, fake, engine = client_and_handler
+    sub = f"sub-{uuid.uuid4()}"
+    uid = await _seed_user(engine, sub)
+    sid = await _seed_chat_session(engine, uid)
+    await _stub_verify(sub, monkeypatch)
+
+    fake.set_stream(
+        exc=ChatGuardrailInterventionError(
+            intervention_kind="grounding",
+            trace_summary=(
+                "contextualGroundingPolicy: groundingScore=0.42 "
+                "below threshold 0.85"
+            ),
+        )
+    )
+    async with client.stream(
+        "POST",
+        f"/api/v1/chat/sessions/{sid}/turns/stream?token=tok",
+        json={"message": "How much did I spend on cigars?"},
+    ) as resp:
+        assert resp.status_code == 200
+        body = await _read_sse_body(resp)
+
+    frames = _parse_frames(body)
+    names = [f[0] for f in frames if f[0] != "heartbeat"]
+    assert names[0] == "chat-open"
+    assert names[-1] == "chat-refused"
+
+    refused = [f[1] for f in frames if f[0] == "chat-refused"][0]
+    # Architecture L1808-L1813 envelope contract.
+    assert refused["error"] == "CHAT_REFUSED"
+    assert refused["reason"] == "ungrounded"
+    # correlationId is a UUID string; envelope omits/keeps null retryAfterSeconds.
+    assert refused["correlationId"]
+    uuid.UUID(refused["correlationId"])  # must parse
+    assert refused.get("retryAfterSeconds") is None
+
+
 @pytest.mark.asyncio
 async def test_stream_over_cap_message_returns_422(client_and_handler, monkeypatch):
     client, fake, engine = client_and_handler
