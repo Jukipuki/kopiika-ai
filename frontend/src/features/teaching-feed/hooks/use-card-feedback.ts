@@ -79,7 +79,9 @@ export function useCardFeedback(cardId: string) {
           old
             ? { ...old, vote: newVote }
             : {
-                id: old?.id ?? "",
+                // Optimistic placeholder; the real feedback row id lands
+                // via onSuccess → setPostedFeedbackId(response.id).
+                id: "",
                 vote: newVote,
                 reasonChip: null,
                 createdAt: new Date().toISOString(),
