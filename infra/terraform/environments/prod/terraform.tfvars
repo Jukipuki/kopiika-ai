@@ -43,10 +43,15 @@ bedrock_invocation_arns = [
   "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
   "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.anthropic.claude-sonnet-4-6",
   "arn:aws:bedrock:eu-central-1:573562677570:inference-profile/eu.amazon.nova-micro-v1:0",
-  # eu-north-1 foundation-model backing ARNs (no account ID in the path)
-  "arn:aws:bedrock:eu-north-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
-  "arn:aws:bedrock:eu-north-1::foundation-model/anthropic.claude-sonnet-4-6-v1:0",
-  "arn:aws:bedrock:eu-north-1::foundation-model/amazon.nova-micro-v1:0",
+  # Foundation-model backing ARNs in any EU region. The Story 9.4 decision
+  # doc originally pinned eu-north-1 only, but Bedrock has expanded the EU
+  # inference-profile fanout to additional regions (observed: eu-west-3 in
+  # 2026-04). The wildcard matches all current and future EU backing
+  # regions; the model-name suffix keeps the grant scoped to the three
+  # families we actually use. No account-id in foundation-model ARNs.
+  "arn:aws:bedrock:eu-*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+  "arn:aws:bedrock:eu-*::foundation-model/anthropic.claude-sonnet-4-6-v1:0",
+  "arn:aws:bedrock:eu-*::foundation-model/amazon.nova-micro-v1:0",
 ]
 
 # Story 10.2 Guardrail is now module-owned (module.bedrock_guardrail). ARN

@@ -11,6 +11,12 @@ locals {
     COGNITO_BACKEND_CLIENT_ID     = "${var.secrets_arns["cognito"]}:backend_client_id::"
     COGNITO_BACKEND_CLIENT_SECRET = "${var.secrets_arns["cognito"]}:backend_client_secret::"
     S3_UPLOADS_BUCKET             = "${var.secrets_arns["s3"]}:bucket_name::"
+    # llm-api-keys is operator-bootstrapped (lifecycle.ignore_changes).
+    # Required by app/rag/embeddings.py + LLM provider clients. If a key
+    # is missing from the secret JSON, App Runner deploy will fail at
+    # secret resolution — re-seed via secrets-bootstrap.md.
+    OPENAI_API_KEY    = "${var.secrets_arns["llm_api_keys"]}:OPENAI_API_KEY::"
+    ANTHROPIC_API_KEY = "${var.secrets_arns["llm_api_keys"]}:ANTHROPIC_API_KEY::"
   }
 }
 
@@ -104,6 +110,28 @@ resource "aws_iam_role_policy" "apprunner_cognito" {
   name   = "cognito-admin"
   role   = aws_iam_role.apprunner_instance.id
   policy = data.aws_iam_policy_document.apprunner_cognito[0].json
+}
+
+# S3 read+write+delete on the uploads bucket. backend/app/services/
+# upload_service.py calls put_object/get_object/delete_object directly
+# (not via presigned URLs). KMS perms for the bucket's CMK are already
+# granted via the apprunner_kms policy.
+data "aws_iam_policy_document" "apprunner_s3" {
+  count = var.s3_uploads_bucket_arn != "" ? 1 : 0
+
+  statement {
+    sid       = "S3UploadsRW"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+    resources = ["${var.s3_uploads_bucket_arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "apprunner_s3" {
+  count  = var.s3_uploads_bucket_arn != "" ? 1 : 0
+  name   = "s3-uploads-rw"
+  role   = aws_iam_role.apprunner_instance.id
+  policy = data.aws_iam_policy_document.apprunner_s3[0].json
 }
 
 # SES send policy attachment. Empty arn (when ses_sender_email is unset)
@@ -225,6 +253,10 @@ resource "aws_apprunner_service" "api" {
           # ["http://localhost:3000"] and rejects browser preflights from
           # the live frontend.
           CORS_ORIGINS = jsonencode(var.cors_origins)
+          # Use Claude via Bedrock (AWS pay-as-you-go) instead of the
+          # third-party Anthropic API (which requires prepaid credits).
+          # IAM grants are already in place (bedrock_invocation_arns).
+          LLM_PROVIDER = "bedrock"
         }
         runtime_environment_secrets = local.app_env_secrets
       }

@@ -113,6 +113,20 @@ Each entry should answer: what's wrong, where, why it was deferred, and what fix
 
 ---
 
+### TD-131 — Bedrock invocation ARNs use `eu-*` region wildcard [LOW]
+
+**Where:** [infra/terraform/environments/prod/terraform.tfvars](../infra/terraform/environments/prod/terraform.tfvars) `bedrock_invocation_arns`
+
+**Problem:** The Story 9.4 decision doc enumerated `eu-north-1` as the only foundation-model backing region for the EU cross-region inference profiles. Bedrock has since expanded the routing fanout to additional regions (observed `eu-west-3` in 2026-04 prod cut-over). To avoid the policy drifting every time AWS adds a backing region, the resource ARNs now use `arn:aws:bedrock:eu-*::foundation-model/...`.
+
+**Why deferred:** Wildcards in IAM `Resource` strings work, are scoped to specific model names (so the grant doesn't cover other Bedrock models), and survive AWS adding capacity in new EU regions. The narrow alternative — enumerating every region — is a maintenance burden.
+
+**Fix shape (if regulator pushback):** Replace `eu-*` with the explicit list of regions AWS publishes for these inference profiles. Re-run when AWS adds a new region (signal: `bedrock:InvokeModel ... AccessDeniedException` on a previously-untouched region in CloudTrail). Maintain a sister TD with the explicit list for compliance trace.
+
+**Surfaced in:** Phase F prod cut-over (2026-04-26)
+
+---
+
 ### TD-120 — Three processing-task tests skipped: error-code drift after Story 11.5 [MEDIUM]
 
 **Where:**

@@ -198,6 +198,7 @@ module "app_runner" {
   ses_send_policy_arn   = module.ses.ses_send_policy_arn
   cors_origins          = var.frontend_origins
   cognito_user_pool_arn = module.cognito.user_pool_arn
+  s3_uploads_bucket_arn = module.s3.bucket_arn
 
   kms_key_arns = [
     module.secrets.kms_key_arn,
@@ -242,7 +243,8 @@ module "ecs" {
   enable_observability_alarms = var.enable_observability_alarms
   observability_sns_topic_arn = var.observability_sns_topic_arn
 
-  image_tag = var.image_tag
+  image_tag             = var.image_tag
+  s3_uploads_bucket_arn = module.s3.bucket_arn
 
   # Both CMKs are needed even though ECS is read-only on S3:
   # - secrets CMK: Decrypt for SecretsManager:GetSecretValue

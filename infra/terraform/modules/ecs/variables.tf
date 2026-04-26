@@ -106,3 +106,9 @@ variable "image_tag" {
   type        = string
   default     = "bootstrap"
 }
+
+variable "s3_uploads_bucket_arn" {
+  description = "ARN of the S3 uploads bucket. Required for Celery worker get_object calls when processing uploaded files. Empty = skip the policy (worker can't process uploads)."
+  type        = string
+  default     = ""
+}

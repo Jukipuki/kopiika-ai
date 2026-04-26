@@ -23,6 +23,19 @@ resource "aws_wafv2_web_acl" "app_runner" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        # CommonRuleSet's default body-size cap is 8 KB, which blocks any
+        # file upload to /api/v1/uploads. Demote this single sub-rule to
+        # COUNT — metrics + samples still recorded, but no block. The rest
+        # of CommonRuleSet (XSS, SQLi, traversal, etc.) stays in BLOCK.
+        # Upload-size discipline is enforced upstream (FastAPI multipart
+        # limits) and downstream (S3 object size, KMS quotas).
+        rule_action_override {
+          name = "SizeRestrictions_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 

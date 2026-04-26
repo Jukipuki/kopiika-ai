@@ -100,3 +100,9 @@ variable "cognito_user_pool_arn" {
   type        = string
   default     = ""
 }
+
+variable "s3_uploads_bucket_arn" {
+  description = "ARN of the S3 uploads bucket. Required for backend put_object/get_object/delete_object calls. Empty = skip the policy."
+  type        = string
+  default     = ""
+}

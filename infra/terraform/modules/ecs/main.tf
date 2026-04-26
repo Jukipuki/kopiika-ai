@@ -13,6 +13,12 @@ locals {
     { name = "COGNITO_BACKEND_CLIENT_ID", valueFrom = "${var.secrets_arns["cognito"]}:backend_client_id::" },
     { name = "COGNITO_BACKEND_CLIENT_SECRET", valueFrom = "${var.secrets_arns["cognito"]}:backend_client_secret::" },
     { name = "S3_UPLOADS_BUCKET", valueFrom = "${var.secrets_arns["s3"]}:bucket_name::" },
+    # llm-api-keys is operator-bootstrapped (lifecycle.ignore_changes).
+    # Required by app/rag/embeddings.py + LLM provider clients. If a key
+    # is missing from the secret JSON, ECS task launch will fail with
+    # ResourceInitializationError — re-seed via secrets-bootstrap.md.
+    { name = "OPENAI_API_KEY", valueFrom = "${var.secrets_arns["llm_api_keys"]}:OPENAI_API_KEY::" },
+    { name = "ANTHROPIC_API_KEY", valueFrom = "${var.secrets_arns["llm_api_keys"]}:ANTHROPIC_API_KEY::" },
   ]
 
   # Plain env vars (not from secrets). ENV gates the local-Fernet vs KMS
@@ -22,6 +28,11 @@ locals {
     { name = "ENV", value = var.environment },
     { name = "AWS_SECRETS_PREFIX", value = "${var.project_name}/${var.environment}" },
     { name = "AWS_REGION", value = var.aws_region },
+    # Bedrock IAM is wired (var.bedrock_invocation_arns) — no third-party
+    # API credits needed. Anthropic direct API (LLM_PROVIDER=anthropic)
+    # remains available as a fallback if ANTHROPIC_API_KEY is set, useful
+    # for local dev outside AWS.
+    { name = "LLM_PROVIDER", value = "bedrock" },
   ]
 }
 
@@ -152,6 +163,27 @@ resource "aws_iam_role_policy" "ecs_task_kms" {
   name   = "kms-decrypt"
   role   = aws_iam_role.ecs_task.id
   policy = data.aws_iam_policy_document.ecs_task_kms[0].json
+}
+
+# S3 read on the uploads bucket. Celery worker (processing_tasks.py)
+# calls get_object to download user-uploaded files for parsing. No write
+# perms — uploads land via App Runner.
+data "aws_iam_policy_document" "ecs_task_s3" {
+  count = var.s3_uploads_bucket_arn != "" ? 1 : 0
+
+  statement {
+    sid       = "S3UploadsRead"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.s3_uploads_bucket_arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_s3" {
+  count  = var.s3_uploads_bucket_arn != "" ? 1 : 0
+  name   = "s3-uploads-read"
+  role   = aws_iam_role.ecs_task.id
+  policy = data.aws_iam_policy_document.ecs_task_s3[0].json
 }
 
 # Story 9.7 — Bedrock invoke + Guardrail for the Celery task role.
