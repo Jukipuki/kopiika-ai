@@ -11,6 +11,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
 from app.api.deps import get_current_user_id, get_db
+from app.models.chat_message import ChatMessage
+from app.models.chat_session import ChatSession
 from app.models.consent import UserConsent
 from app.models.feedback import CardFeedback
 from app.models.financial_health_score import FinancialHealthScore
@@ -23,6 +25,13 @@ router = APIRouter(prefix="/users/me", tags=["user-data"])
 
 
 class TransactionDateRange(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    earliest: datetime
+    latest: datetime
+
+
+class ChatActivityRange(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     earliest: datetime
@@ -96,6 +105,12 @@ class DataSummaryResponse(BaseModel):
     health_score_history: list[HealthScoreEntry]
     consent_records: list[ConsentRecord]
     feedback_summary: FeedbackSummary
+    # Story 10.10 — chat-history footprint for FR35 ("view what data we hold").
+    # Counts include `tool`-role rows (forensic data is still data we hold);
+    # the transcript GET filters them out for user-facing display.
+    chat_session_count: int = 0
+    chat_message_count: int = 0
+    chat_activity_range: Optional[ChatActivityRange] = None
 
 
 @router.get("/data-summary", response_model=DataSummaryResponse)
@@ -242,6 +257,30 @@ async def get_data_summary(
         free_text_entries=free_text_entries,
     )
 
+    # Chat-history footprint (Story 10.10).
+    chat_sess_result = await session.exec(
+        sa_select(
+            func.count(),
+            func.min(ChatSession.last_active_at),
+            func.max(ChatSession.last_active_at),
+        ).where(ChatSession.user_id == user_id)
+    )
+    chat_sess_row = chat_sess_result.one()
+    chat_session_count = int(chat_sess_row[0] or 0)
+    chat_activity_range = None
+    if chat_sess_row[1] is not None:
+        chat_activity_range = ChatActivityRange(
+            earliest=chat_sess_row[1], latest=chat_sess_row[2]
+        )
+
+    chat_msg_result = await session.exec(
+        sa_select(func.count())
+        .select_from(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(ChatSession.user_id == user_id)
+    )
+    chat_message_count = int(chat_msg_result.scalar_one() or 0)
+
     return DataSummaryResponse(
         upload_count=upload_count,
         transaction_count=transaction_count,
@@ -252,4 +291,7 @@ async def get_data_summary(
         health_score_history=health_score_history,
         consent_records=consent_records,
         feedback_summary=feedback_summary,
+        chat_session_count=chat_session_count,
+        chat_message_count=chat_message_count,
+        chat_activity_range=chat_activity_range,
     )

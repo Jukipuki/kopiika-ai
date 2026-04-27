@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useChatConsent } from "../hooks/useChatConsent";
-import { useChatSession } from "../hooks/useChatSession";
-import { useChatStream } from "../hooks/useChatStream";
+import { useChatMessages, useChatSession } from "../hooks/useChatSession";
+import { useChatStream, type ChatTurnState } from "../hooks/useChatStream";
 import { ConsentFirstUseDialog } from "./ConsentFirstUseDialog";
 import { ConsentRevokedEmpty } from "./ConsentRevokedEmpty";
 // ConsentVersionBumpCard is intentionally not imported here yet — the
@@ -26,6 +26,34 @@ export function ChatScreen({ privacyHref }: ChatScreenProps) {
   const { activeSessionId, sessions, createSession } = useChatSession();
   const sessionId = activeSessionId;
   const stream = useChatStream(sessionId);
+  const messagesQuery = useChatMessages(sessionId);
+
+  // Historical transcript rendered before the live stream's turns. The
+  // backend filters tool-role rows; the FE just trusts the role union.
+  // Live (streaming) turns from useChatStream are appended after; in-flight
+  // assistant turns have no DB row yet so they cleanly tail the history.
+  const historicalTurns = useMemo<ChatTurnState[]>(() => {
+    const pages = messagesQuery.data?.pages ?? [];
+    const out: ChatTurnState[] = [];
+    for (const page of pages) {
+      for (const m of page.messages) {
+        if (m.role !== "user" && m.role !== "assistant") continue;
+        out.push({
+          id: m.id,
+          role: m.role,
+          text: m.content,
+          createdAt: m.createdAt,
+        });
+      }
+    }
+    return out;
+  }, [messagesQuery.data]);
+
+  const allTurns = useMemo<ChatTurnState[]>(() => {
+    const seenIds = new Set(historicalTurns.map((t) => t.id));
+    const liveTurns = stream.turns.filter((t) => !seenIds.has(t.id));
+    return [...historicalTurns, ...liveTurns];
+  }, [historicalTurns, stream.turns]);
 
   // First-time hint: auto-create a session once consent is in hand and no
   // sessions exist. Avoids a "blank screen with only a New button" first-run.
@@ -103,7 +131,7 @@ export function ChatScreen({ privacyHref }: ChatScreenProps) {
         <SessionList />
       </div>
       <div className="flex flex-1 flex-col">
-        <ConversationPane turns={stream.turns} onRetry={stream.retryLast} />
+        <ConversationPane turns={allTurns} onRetry={stream.retryLast} />
         <Composer
           onSend={(message) => {
             if (!sessionId) {

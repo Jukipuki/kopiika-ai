@@ -557,7 +557,9 @@
         "confirm_input_match": "delete",
         "confirm_cta": "Delete all",
         "cancel": "Cancel",
-        "coming_soon": "Bulk delete is coming soon"
+        "coming_soon": "Bulk delete is coming soon",
+        "toast": "All chats deleted",
+        "error": "Couldn't delete all chats."
       }
     },
     "ratelimit": {

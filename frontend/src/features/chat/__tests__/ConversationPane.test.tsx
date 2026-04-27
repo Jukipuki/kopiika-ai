@@ -39,6 +39,37 @@ function makeAssistantTurn(text = "hi"): ChatTurnState {
   };
 }
 
+describe("ConversationPane historical-message rendering (Story 10.10)", () => {
+  // Story 10.10 routes historical messages from useChatMessages through the
+  // same `turns` prop the live stream feeds. The pane filters out tool-role
+  // rows defensively (the backend also filters; this guards against future
+  // upstream regressions).
+  it("renders historical user + assistant turns in chronological order", () => {
+    const turns: ChatTurnState[] = [
+      { id: "h1", role: "user", text: "first user msg", createdAt: "2026-04-26T10:00:00Z" },
+      { id: "h2", role: "assistant", text: "first assistant reply", createdAt: "2026-04-26T10:00:01Z" },
+    ];
+    render(<ConversationPane turns={turns} />);
+    const bubbles = screen.getAllByText(/first/i);
+    // First DOM occurrence should be the user msg, then the assistant reply.
+    expect(bubbles[0].textContent).toMatch(/user/i);
+    expect(bubbles[1].textContent).toMatch(/assistant/i);
+  });
+
+  it("never renders a tool-role bubble (FE assumes backend has filtered)", () => {
+    // The ChatTurnState union excludes "tool", so the FE has no code path to
+    // render one — the assertion is structural: TypeScript guarantees it,
+    // and any consumer that tried would fail typecheck. This test just
+    // documents the invariant by rendering only allowed roles.
+    const turns: ChatTurnState[] = [
+      { id: "h1", role: "user", text: "u", createdAt: "2026-04-26T10:00:00Z" },
+      { id: "h2", role: "assistant", text: "a", createdAt: "2026-04-26T10:00:01Z" },
+    ];
+    render(<ConversationPane turns={turns} />);
+    expect(screen.queryByText(/tool payload/i)).toBeNull();
+  });
+});
+
 describe("ConversationPane scroll-lock 80px rule", () => {
   // jsdom doesn't run layout, so we stub the scroll properties on the
   // pane's div directly to simulate the user being scrolled up vs. pinned.

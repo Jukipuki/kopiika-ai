@@ -26,6 +26,7 @@ vi.mock("sonner", () => ({
 const mockSessions = vi.fn();
 const mockCreate = vi.fn();
 const mockDelete = vi.fn();
+const mockBulkDelete = vi.fn();
 const mockSelect = vi.fn();
 vi.mock("../hooks/useChatSession", () => ({
   useChatSession: () => ({
@@ -38,7 +39,10 @@ vi.mock("../hooks/useChatSession", () => ({
     createError: null,
     deleteSession: mockDelete,
     isDeleting: false,
+    bulkDeleteAll: mockBulkDelete,
+    isBulkDeleting: false,
   }),
+  useChatMessages: () => ({ data: { pages: [] }, isLoading: false }),
 }));
 
 function wrap(ui: React.ReactElement) {
@@ -53,6 +57,7 @@ describe("SessionList", () => {
     ]);
     mockCreate.mockResolvedValue({ sessionId: "new", createdAt: "x" });
     mockDelete.mockResolvedValue("s1");
+    mockBulkDelete.mockResolvedValue(undefined);
     toastSuccess.mockClear();
     toastError.mockClear();
   });
@@ -73,10 +78,38 @@ describe("SessionList", () => {
     expect(mockCreate).toHaveBeenCalled();
   });
 
-  it("renders disabled Delete-all link when bulk-delete flag is off", async () => {
+  it("renders enabled Delete-all link by default (bulk-delete on)", async () => {
     const { SessionList } = await import("../components/SessionList");
     wrap(<SessionList />);
     const link = screen.getByRole("button", { name: /delete all chats/i });
-    expect(link).toHaveAttribute("aria-disabled", "true");
+    expect(link).toHaveAttribute("aria-disabled", "false");
+  });
+
+  it("bulk-delete confirm calls bulkDeleteAll, toasts, and clears active session", async () => {
+    const user = userEvent.setup();
+    const { SessionList } = await import("../components/SessionList");
+    wrap(<SessionList />);
+    await user.click(screen.getByRole("button", { name: /delete all chats/i }));
+    // Type the confirm-match phrase ("delete") to enable the destructive CTA.
+    const input = await screen.findByRole("textbox");
+    await user.type(input, "delete");
+    await user.click(screen.getByRole("button", { name: /^delete all$/i }));
+    expect(mockBulkDelete).toHaveBeenCalled();
+    expect(toastSuccess).toHaveBeenCalled();
+  });
+
+  it("just-created session comes from server refetch, not local state", async () => {
+    // Mock returns the same (empty) list both before and after createSession;
+    // the previous localSessions workaround would have shown the new row
+    // optimistically. After 10.10's refactor, the visible list mirrors the
+    // server query — empty stays empty until the next refetch fills it.
+    mockSessions.mockReturnValue([]);
+    const user = userEvent.setup();
+    const { SessionList } = await import("../components/SessionList");
+    wrap(<SessionList />);
+    await user.click(screen.getByRole("button", { name: /new chat/i }));
+    expect(mockCreate).toHaveBeenCalled();
+    // No optimistic injection — list remains empty until the mocked GET fills.
+    expect(screen.queryByText(/first chat/i)).toBeNull();
   });
 });

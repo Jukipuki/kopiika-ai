@@ -1800,7 +1800,7 @@ New tables (Alembic migration [`e3c5f7d9b2a1_add_chat_sessions_and_messages.py`]
 
 Deletion cascade aligned with FR31 + FR70: account deletion → `chat_sessions` deletion → `chat_messages` deletion.
 
-Operational indexes: `chat_sessions(user_id, last_active_at desc)` for session list; `chat_messages(session_id, created_at)` for transcript render; partial index on `chat_messages(guardrail_action) WHERE guardrail_action != 'none'` for safety-monitoring queries.
+Operational indexes: `chat_sessions(user_id, last_active_at desc)` for session list; `chat_messages(session_id, created_at)` for transcript render; partial index on `chat_messages(guardrail_action) WHERE guardrail_action != 'none'` for safety-monitoring queries. Both the `chat_sessions(user_id, last_active_at desc)` and `chat_messages(session_id, created_at)` indexes are exercised by Story 10.10's history listing and transcript endpoints (verified via EXPLAIN at implementation time — no schema change).
 
 ### API Pattern — Chat Streaming
 
@@ -1818,6 +1818,8 @@ Chat uses server-sent events (SSE) for token streaming, consistent with the exis
 `correlation_id` surfaces in the frontend refusal UX so support can triage an incident without the user knowing the internal rationale. `reason` is intentionally coarse — no leakage of specific filter matches.
 
 On the happy path, an optional terminal-adjacent `chat-citations` frame carries the typed citation payload (Story 10.6b); the chip strip is suppressed on all `chat-refused` paths.
+
+History/listing: `GET /api/v1/chat/sessions`, `GET /api/v1/chat/sessions/{id}/messages`, `DELETE /api/v1/chat/sessions` (bulk) — Story 10.10. Cursor-paged keyset on `(timestamp, uuid)`; per-tenant filter via Cognito-resolved `user_id`; cross-user access returns 404 (enumeration-safe). The transcript GET excludes `role='tool'` rows; the `messageCount` in the listing GET and the `chatMessageCount` extension on `/users/me/data-summary` include them (FR35 honesty about data we hold).
 
 ### Related Artifacts
 

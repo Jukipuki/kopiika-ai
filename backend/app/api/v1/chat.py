@@ -34,6 +34,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import time
@@ -42,10 +44,13 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func
+from sqlalchemy import select as sa_select
 from sqlalchemy import update as sa_update
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
@@ -83,6 +88,7 @@ from app.agents.chat.tools.tool_errors import (
 from app.api.deps import get_current_user, get_current_user_id, get_db
 from app.api.v1._sse import SSE_RESPONSE_HEADERS, get_user_id_from_token
 from app.core.config import settings
+from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.user import User
 from app.services.chat_session_service import (
@@ -377,6 +383,369 @@ async def delete_session_endpoint(
         .values(last_active_at=_now())
     )
     await db.commit()
+
+
+# ----------------------------------------------------------------------
+# Chat history surfaces (Story 10.10)
+# ----------------------------------------------------------------------
+#
+# Scope (Story 10.10) — what these routes are AND ARE NOT:
+#   IN:  GET /chat/sessions                 — list user's sessions (cursor-paged)
+#        GET /chat/sessions/{id}/messages   — paged transcript (excludes role='tool')
+#        DELETE /chat/sessions              — bulk delete (no path id, idempotent 204)
+#   OUT: No new chat-runtime / tools / prompts (10.4a/b/c own).
+#        No chat_processing consent UX (10.1a/b own).
+#        No write-path mutations to messages (no edit / per-message redact).
+#        No download/export endpoint (Epic 5 follow-up if requested).
+#        No rate-limit envelope (10.11 owns).
+#        No new observability metric filters/alarms in Terraform (10.9 owns —
+#        events emitted here are filter-ready but not yet matched).
+#        No `tool` role in transcript GET (privacy regression — see AC #3).
+#        No migration / no schema changes (10.1b owns the schema).
+
+
+class ChatSessionSummary(BaseModel):
+    model_config = _camel_model()
+    session_id: str
+    created_at: str
+    last_active_at: str
+    consent_version_at_creation: str
+    message_count: int
+
+
+class ListChatSessionsResponse(BaseModel):
+    model_config = _camel_model()
+    sessions: list[ChatSessionSummary]
+    next_cursor: str | None = None
+
+
+class ChatMessageView(BaseModel):
+    model_config = _camel_model()
+    id: str
+    role: str  # "user" | "assistant" | "system" — `tool` excluded by query.
+    content: str
+    guardrail_action: str
+    redaction_flags: dict[str, Any]
+    created_at: str
+
+
+class ListChatMessagesResponse(BaseModel):
+    model_config = _camel_model()
+    messages: list[ChatMessageView]
+    next_cursor: str | None = None
+
+
+def _encode_cursor(ts: datetime, row_id: uuid.UUID) -> str:
+    raw = f"{ts.isoformat()}|{row_id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(token: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        raw = base64.urlsafe_b64decode(padded).decode()
+        ts_iso, id_str = raw.split("|", 1)
+        ts = datetime.fromisoformat(ts_iso)
+        # Normalize to naive UTC so comparison against the column (naive in
+        # this codebase) never raises offset-aware-vs-naive TypeError if the
+        # client (or a future schema flip) hands us a tz-aware ISO string.
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(UTC).replace(tzinfo=None)
+        return ts, uuid.UUID(id_str)
+    except (ValueError, binascii.Error) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "CHAT_HISTORY_BAD_CURSOR",
+                    "message": "Cursor is malformed or expired.",
+                }
+            },
+        ) from exc
+
+
+@router.get("/sessions", response_model=ListChatSessionsResponse)
+async def list_chat_sessions(
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    db: Annotated[SQLModelAsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    cursor: str | None = None,
+) -> ListChatSessionsResponse:
+    """List the caller's chat sessions, paged via opaque ``(last_active_at, id)``
+    keyset cursor. Cross-tenant rows never surface (per-row WHERE on ``user_id``).
+    `messageCount` includes ``tool``-role rows so it matches `data-summary`.
+    """
+    correlation_id = str(uuid.uuid4())
+
+    # Defensive: AC #2 says limit > 50 is silently clamped. FastAPI Query(le=50)
+    # already enforces 1..50, so the only thing left is to honour the default.
+    page_size = min(max(limit, 1), 50)
+
+    msg_count = func.count(ChatMessage.id).label("message_count")
+    stmt = (
+        sa_select(
+            ChatSession.id,
+            ChatSession.created_at,
+            ChatSession.last_active_at,
+            ChatSession.consent_version_at_creation,
+            msg_count,
+        )
+        .select_from(ChatSession)
+        .outerjoin(ChatMessage, ChatMessage.session_id == ChatSession.id)
+        .where(ChatSession.user_id == user_id)
+        .group_by(
+            ChatSession.id,
+            ChatSession.created_at,
+            ChatSession.last_active_at,
+            ChatSession.consent_version_at_creation,
+        )
+        .order_by(ChatSession.last_active_at.desc(), ChatSession.id.desc())
+        .limit(page_size + 1)
+    )
+
+    if cursor:
+        cur_ts, cur_id = _decode_cursor(cursor)
+        # Keyset: rows strictly after the cursor under (last_active_at DESC, id DESC).
+        stmt = stmt.where(
+            (ChatSession.last_active_at < cur_ts)
+            | ((ChatSession.last_active_at == cur_ts) & (ChatSession.id < cur_id))
+        )
+
+    result = await db.exec(stmt)
+    rows = list(result.all())
+
+    next_cursor: str | None = None
+    if len(rows) > page_size:
+        rows = rows[:page_size]
+        last = rows[-1]
+        next_cursor = _encode_cursor(last.last_active_at, last.id)
+
+    summaries = [
+        ChatSessionSummary(
+            session_id=str(r.id),
+            created_at=r.created_at.isoformat(),
+            last_active_at=r.last_active_at.isoformat(),
+            consent_version_at_creation=r.consent_version_at_creation,
+            message_count=int(r.message_count or 0),
+        )
+        for r in rows
+    ]
+
+    logger.info(
+        "chat.history.listed",
+        extra={
+            "correlation_id": correlation_id,
+            "user_id_hash": _hash_user_id(user_id),
+            "session_count": len(summaries),
+        },
+    )
+
+    return ListChatSessionsResponse(sessions=summaries, next_cursor=next_cursor)
+
+
+@router.get(
+    "/sessions/{session_id}/messages",
+    response_model=ListChatMessagesResponse,
+)
+async def list_chat_messages(
+    session_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    db: Annotated[SQLModelAsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: str | None = None,
+) -> ListChatMessagesResponse:
+    """Page the transcript for a chat session.
+
+    `tool`-role rows are excluded — they hold raw tool-call payloads that
+    can echo PII (privacy footgun if surfaced). `messageCount` on the
+    listing endpoint still includes them (FR35 honesty).
+
+    404 (not 403) on cross-user access — enumeration-safe.
+    """
+    correlation_id = str(uuid.uuid4())
+
+    chat_session = await db.get(ChatSession, session_id)
+    if chat_session is None or chat_session.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "CHAT_SESSION_NOT_FOUND",
+                    "message": "Chat session not found.",
+                    "correlationId": correlation_id,
+                }
+            },
+        )
+
+    page_size = min(max(limit, 1), 100)
+
+    stmt = (
+        sa_select(ChatMessage)
+        .where(
+            ChatMessage.session_id == session_id,
+            ChatMessage.role != "tool",
+        )
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+        .limit(page_size + 1)
+    )
+    if cursor:
+        cur_ts, cur_id = _decode_cursor(cursor)
+        stmt = stmt.where(
+            (ChatMessage.created_at > cur_ts)
+            | ((ChatMessage.created_at == cur_ts) & (ChatMessage.id > cur_id))
+        )
+
+    result = await db.exec(stmt)
+    rows = list(result.scalars().all())
+
+    next_cursor: str | None = None
+    if len(rows) > page_size:
+        rows = rows[:page_size]
+        last = rows[-1]
+        next_cursor = _encode_cursor(last.created_at, last.id)
+
+    views = [
+        ChatMessageView(
+            id=str(m.id),
+            role=m.role,
+            content=m.content,
+            guardrail_action=m.guardrail_action,
+            redaction_flags=m.redaction_flags or {},
+            created_at=m.created_at.isoformat(),
+        )
+        for m in rows
+    ]
+
+    logger.info(
+        "chat.history.transcript_listed",
+        extra={
+            "correlation_id": correlation_id,
+            "user_id_hash": _hash_user_id(user_id),
+            "session_id": str(session_id),
+            "message_count": len(views),
+        },
+    )
+
+    return ListChatMessagesResponse(messages=views, next_cursor=next_cursor)
+
+
+@router.delete("/sessions", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_delete_chat_sessions(
+    user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+    db: Annotated[SQLModelAsyncSession, Depends(get_db)],
+    handler: Annotated[ChatSessionHandler, Depends(get_chat_session_handler)],
+) -> None:
+    """Bulk-delete every chat session belonging to the caller.
+
+    NOTE: distinct path from ``DELETE /chat/sessions/{session_id}``. FastAPI
+    matches exact paths before path-parameter paths so the no-id route is
+    unambiguous; the 1-char path difference is easy to miss in review.
+
+    Order of operations (per AC #4):
+      1) Iterate the user's sessions and call ``handler.terminate_session``
+         on each so any in-flight stream is cancelled before its row goes.
+         Any ``ChatSessionTerminationFailed`` aborts the whole op (no partial
+         DB deletion). The DB delete only fires after every terminate succeeds.
+      2) Pre-count messages (for the structured-log audit field).
+      3) Single ``DELETE FROM chat_sessions WHERE user_id = $1`` — the FK
+         cascade on chat_messages.session_id removes messages atomically.
+      4) Returns 204 even when the user had zero sessions (idempotent).
+
+    NOTE on the AC #4 "all-or-nothing runtime termination" guarantee: the
+    DB half is genuinely atomic (single DELETE in one transaction). The
+    runtime half is best-effort — ``terminate_session`` is not transactional
+    across AgentCore, so if session N fails after sessions 1..N-1 succeeded,
+    those earlier runtimes are already gone while DB rows for all sessions
+    remain. ``terminate_session`` is expected to be idempotent (re-calling
+    on an already-terminated handle no-ops), so a retry of the bulk-delete
+    is safe and converges to the desired end state.
+    """
+    correlation_id = str(uuid.uuid4())
+
+    # (1) Load sessions and terminate runtime handles. Series, not parallel —
+    # mirrors terminate_all_user_sessions's reasoning re: per-user tier limits.
+    sessions_result = await db.exec(
+        sa_select(ChatSession.id, ChatSession.created_at).where(
+            ChatSession.user_id == user_id
+        )
+    )
+    session_rows = list(sessions_result.all())
+
+    for row in session_rows:
+        handle = ChatSessionHandle(
+            db_session_id=row.id,
+            agentcore_session_id=str(row.id),
+            created_at=row.created_at,
+            user_id=user_id,
+        )
+        try:
+            await handler.terminate_session(handle)
+        except ChatSessionTerminationFailed as exc:
+            logger.error(
+                "chat.history.bulk_delete_failed",
+                extra={
+                    "correlation_id": correlation_id,
+                    "user_id_hash": _hash_user_id(user_id),
+                    "failure_stage": "agentcore_terminate",
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": {
+                        "code": "CHAT_BACKEND_UNAVAILABLE",
+                        "message": "Chat backend is temporarily unavailable.",
+                        "correlationId": correlation_id,
+                    }
+                },
+            ) from exc
+
+    # (2) Pre-delete COUNT for the audit log — same query AC #5 uses on
+    # the data-summary endpoint, kept consistent with the actual destruction.
+    msg_count_result = await db.exec(
+        sa_select(func.count(ChatMessage.id))
+        .select_from(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(ChatSession.user_id == user_id)
+    )
+    messages_to_delete = int(msg_count_result.scalar_one() or 0)
+
+    # (3) Bulk delete. FK cascade fans messages out.
+    try:
+        await db.exec(
+            sa_delete(ChatSession).where(ChatSession.user_id == user_id)
+        )
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        logger.error(
+            "chat.history.bulk_delete_failed",
+            extra={
+                "correlation_id": correlation_id,
+                "user_id_hash": _hash_user_id(user_id),
+                "failure_stage": "db_delete",
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": {
+                    "code": "CHAT_BACKEND_UNAVAILABLE",
+                    "message": "Chat backend is temporarily unavailable.",
+                    "correlationId": correlation_id,
+                }
+            },
+        ) from exc
+
+    logger.warning(
+        "chat.history.bulk_deleted",
+        extra={
+            "correlation_id": correlation_id,
+            "user_id_hash": _hash_user_id(user_id),
+            "sessions_deleted": len(session_rows),
+            "messages_deleted": messages_to_delete,
+        },
+    )
 
 
 # ----------------------------------------------------------------------

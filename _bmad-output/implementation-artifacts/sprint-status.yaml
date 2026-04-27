@@ -240,7 +240,7 @@ development_status:
   # is_soft_refusal helper. Unblocks TD-131 step 5a (bless first baseline).
   10-8c-corpus-expectation-revision: done
   10-9-safety-observability: done
-  10-10-chat-history-deletion: backlog
+  10-10-chat-history-deletion: done
   10-11-abuse-rate-limit-enforcement: backlog
   epic-10-retrospective: optional
 

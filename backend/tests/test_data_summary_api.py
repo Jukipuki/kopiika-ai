@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
+from app.models.chat_message import ChatMessage
+from app.models.chat_session import ChatSession
 from app.models.consent import UserConsent
 from app.models.feedback import CardFeedback
 from app.models.financial_health_score import FinancialHealthScore
@@ -276,6 +278,78 @@ class TestDataSummaryEndpoint:
             assert data["uploadCount"] == 0
             assert data["transactionCount"] == 0
             assert data["insightCount"] == 0
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_chat_history_fields_empty_when_no_sessions(
+        self, ds_client, ds_api_session
+    ):
+        """Story 10.10 — zero-session user gets count=0 + range=null."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "ds-chat-zero"
+        await _create_user(ds_api_session, cognito_sub, "chatzero@test.com")
+        await ds_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await ds_client.get("/api/v1/users/me/data-summary")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["chatSessionCount"] == 0
+            assert data["chatMessageCount"] == 0
+            assert data["chatActivityRange"] is None
+        finally:
+            app.dependency_overrides.pop(get_current_user_payload, None)
+
+    @pytest.mark.asyncio
+    async def test_chat_history_fields_with_seeded_sessions(
+        self, ds_client, ds_api_session
+    ):
+        """Story 10.10 — counts include tool-role rows; range reflects min/max."""
+        from app.core.security import get_current_user_payload
+        from app.main import app
+
+        cognito_sub = "ds-chat-seed"
+        user_id = await _create_user(ds_api_session, cognito_sub, "chatseed@test.com")
+
+        early = datetime(2026, 3, 1, 9, 0, 0)
+        late = datetime(2026, 4, 15, 12, 0, 0)
+        s1 = ChatSession(
+            user_id=user_id,
+            consent_version_at_creation="v1",
+            last_active_at=early,
+        )
+        s2 = ChatSession(
+            user_id=user_id,
+            consent_version_at_creation="v1",
+            last_active_at=late,
+        )
+        ds_api_session.add(s1)
+        ds_api_session.add(s2)
+        await ds_api_session.flush()
+        # Two user-visible + one tool-role row → message count is 3.
+        ds_api_session.add(ChatMessage(session_id=s1.id, role="user", content="hi"))
+        ds_api_session.add(
+            ChatMessage(session_id=s1.id, role="assistant", content="hello")
+        )
+        ds_api_session.add(
+            ChatMessage(session_id=s2.id, role="tool", content="raw payload")
+        )
+        await ds_api_session.commit()
+
+        app.dependency_overrides[get_current_user_payload] = _auth_override(cognito_sub)
+        try:
+            response = await ds_client.get("/api/v1/users/me/data-summary")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["chatSessionCount"] == 2
+            assert data["chatMessageCount"] == 3  # includes tool-role
+            assert data["chatActivityRange"] is not None
+            assert data["chatActivityRange"]["earliest"] == "2026-03-01T09:00:00"
+            assert data["chatActivityRange"]["latest"] == "2026-04-15T12:00:00"
         finally:
             app.dependency_overrides.pop(get_current_user_payload, None)
 

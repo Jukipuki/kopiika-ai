@@ -10,7 +10,9 @@ import { SessionRow } from "./SessionRow";
 import { DeleteAllDialog } from "./DeleteAllDialog";
 import { ConcurrentSessionsDialog } from "./ConcurrentSessionsDialog";
 
-const BULK_DELETE = process.env.NEXT_PUBLIC_CHAT_BULK_DELETE === "true";
+// Default-on bulk-delete: only NEXT_PUBLIC_CHAT_BULK_DELETE="false" disables.
+// The flag remains as an operator kill-switch for incident response.
+const BULK_DELETE = process.env.NEXT_PUBLIC_CHAT_BULK_DELETE !== "false";
 const DELETE_UNDO = process.env.NEXT_PUBLIC_CHAT_DELETE_UNDO === "true";
 
 export function SessionList() {
@@ -24,6 +26,7 @@ export function SessionList() {
     createError,
     deleteSession,
     isDeleting,
+    bulkDeleteAll,
   } = useChatSession();
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [concurrentOpen, setConcurrentOpen] = useState(false);
@@ -46,11 +49,29 @@ export function SessionList() {
       await deleteSession(id);
       toast.success(t("delete.session.toast"), {
         action: DELETE_UNDO
-          ? { label: t("delete.session.undo"), onClick: () => {/* 10.10 owns */} }
+          ? {
+              label: t("delete.session.undo"),
+              // Per Story 10.10 AC #11 — per-session undo is intentionally a
+              // no-op pending product confirmation of the soft-delete UX.
+              // Tracked as a tech-debt entry; the toast action stays visible
+              // when the env-flag is on so the 10.7 affordance is preserved.
+              onClick: () => undefined,
+            }
           : undefined,
       });
     } catch {
       toast.error(t("delete.session.error"));
+    }
+  };
+
+  const onConfirmDeleteAll = async () => {
+    try {
+      await bulkDeleteAll();
+      toast.success(t("delete.all.toast"));
+    } catch {
+      toast.error(t("delete.all.error"));
+    } finally {
+      setDeleteAllOpen(false);
     }
   };
 
@@ -90,9 +111,10 @@ export function SessionList() {
         <button
           type="button"
           onClick={() => setDeleteAllOpen(true)}
+          disabled={!BULK_DELETE}
           aria-disabled={!BULK_DELETE}
           title={!BULK_DELETE ? t("delete.all.coming_soon") : undefined}
-          className="text-xs text-destructive underline disabled:opacity-50"
+          className="text-xs text-destructive underline disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {t("delete.all.link")}
         </button>
@@ -101,7 +123,7 @@ export function SessionList() {
         open={deleteAllOpen}
         onOpenChange={setDeleteAllOpen}
         bulkAvailable={BULK_DELETE}
-        onConfirm={() => setDeleteAllOpen(false)}
+        onConfirm={onConfirmDeleteAll}
       />
       <ConcurrentSessionsDialog
         open={concurrentOpen}

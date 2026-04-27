@@ -4,8 +4,8 @@
 //   - No backend changes. Backend contracts (10.1a, 10.1b, 10.2, 10.4a/b/c,
 //     10.5, 10.5a, 10.6a, 10.6b) are frozen; defects → TD entry.
 //   - No new UX spec content. UX is fully specified by 10.3a/10.3b.
-//   - No history/deletion mechanics — Story 10.10 owns the bulk-delete API,
-//     undo grace-window, export. UI here renders entry points only.
+//   - Story 10.10 shipped the history list, transcript, bulk-delete, and
+//     data-summary parity surfaces.
 //   - No rate-limit enforcement logic — Story 10.11 owns that. UI renders
 //     refusal-variant copy/countdown only.
 //   - No safety observability authorship — Story 10.9 owns metrics/alarms.

@@ -1644,6 +1644,8 @@ Before applying any of the above, snapshot the current state file (`aws s3 cp s3
 
 **Resolved by:** Story 10.4a. The `TODO(10.4a)` marker in `revoke_chat_consent` is replaced with a call to `terminate_all_user_sessions_fail_open(session, user)` before the `sa_delete(ChatSession)` cascade. Phase A (per ADR-0004) has no remote session state, so the call is a no-op iteration today; the same call site becomes live on Phase B (Story 10.4a-runtime) without a consent_service edit. Fail-open semantics: termination errors are logged but do not block revocation. Coverage: three new tests in `backend/tests/test_chat_schema_cascade.py` assert (a) the terminator is invoked once per revoke, (b) revocation commits when the terminator raises, (c) zero-session revokes still invoke the terminator once.
 
+**Approach reference (added 2026-04-27 — Story 10.10):** Story 10.10's bulk-delete endpoint at `backend/app/api/v1/chat.py` (`bulk_delete_chat_sessions`) implements the *strict* variant of the same pattern — it iterates user sessions, calls `handler.terminate_session(handle)` per row, and aborts the entire DB delete with `503 CHAT_BACKEND_UNAVAILABLE` if any termination raises `ChatSessionTerminationFailed` (no partial deletion). The fail-open posture in `revoke_chat_consent` is intentional (consent revocation must not be blocked); the bulk-delete posture is fail-fast (partial state would leave orphan AgentCore sessions whose DB anchor is gone). Both are valid; the choice is per-call-site.
+
 ---
 
 ### TD-093 — UA plural forms mix adjective and noun case (`few` branch) [LOW]
@@ -2085,6 +2087,86 @@ The [infra/terraform/Makefile](../infra/terraform/Makefile) wrapper (added the s
 Option 1 is the simplest and matches AWS Terraform community convention (defaults match the most common deployment target). Option 2 adds belt-and-braces.
 
 **Surfaced in:** Story 10.8c follow-on infra debugging session (2026-04-26) — running prod plan after the Story 10.8c IAM patch surfaced the trap.
+
+---
+
+### TD-136 — Per-session chat-delete Undo (5s soft-delete window) [LOW]
+
+**Where:** [frontend/src/features/chat/components/SessionList.tsx:48-56](../frontend/src/features/chat/components/SessionList.tsx#L48-L56) — the `delete.session.undo` toast action callback is wired but the click handler is a no-op pending product confirmation. The `NEXT_PUBLIC_CHAT_DELETE_UNDO` env-flag remains as the gate.
+
+**Problem:** Story 10.7 wired the `Undo` toast affordance behind an env-flag with a `/* 10.10 owns */` placeholder, expecting Story 10.10 to implement a soft-delete (5s window). 10.10 keeps the affordance visible (preserves the 10.7 UX intent) but leaves the click as a no-op. Hard-delete is the current posture and matches the FR70 + FR31 cascade contract; soft-delete is a UX improvement, not a correctness gap.
+
+**Why deferred:** Soft-delete needs (a) product confirmation that the 5-second window is the desired UX (vs. always-hard-delete), (b) a `deleted_at TIMESTAMPTZ NULL` column on `chat_sessions`, (c) a sweeper Celery beat task to hard-delete after the window, (d) consistent treatment across the bulk-delete path. Non-trivial enough to warrant a deliberate design call.
+
+**Fix shape:** Product confirmation → schema migration → list/transcript GETs filter `deleted_at IS NULL` → sweeper job → frontend wires the toast click to a `POST /chat/sessions/{id}/restore` (or similar). Bulk-delete should likely keep hard-delete semantics regardless.
+
+**Surfaced in:** Story 10.10 implementation (2026-04-27).
+
+**Owner:** Epic 10 / TBD.
+
+---
+
+### TD-137 — Reverse pagination on chat-history list [LOW]
+
+**Where:** [backend/app/api/v1/chat.py](../backend/app/api/v1/chat.py) `list_chat_sessions` — only forward `nextCursor` is returned; no `prevCursor`.
+
+**Problem:** AC #2 of Story 10.10 explicitly defers reverse pagination — `cursor` is forward-only. Users who want to navigate backward through > 50 sessions cannot.
+
+**Why deferred:** Symmetric prev/next cursors double the implementation surface (reversed ORDER BY arm, dual-direction client UX) for a use-case nobody has asked for. Forward pagination is sufficient for the typical browsing pattern (most-recent-first scroll).
+
+**Fix shape:** Add `prevCursor` to the response shape; on input, the route detects `?cursor=` direction (e.g. via a `direction=back` flag) and flips the ORDER BY + WHERE clause. Trigger: a real user complaint OR a session-count threshold (>200 sessions per user becoming common).
+
+**Surfaced in:** Story 10.10 (2026-04-27).
+
+**Owner:** Epic 10 / TBD.
+
+---
+
+### TD-138 — Downloadable chat-history export (ZIP / JSON archive) [LOW]
+
+**Where:** No code today. Would land alongside the existing data-export surfaces in [backend/app/services/account_deletion_service.py](../backend/app/services/account_deletion_service.py)'s neighborhood (Epic 5 owns the data-export pattern).
+
+**Problem:** Story 10.10's §Scope Boundaries defers a downloadable archive of all chat data. FR35's "view what data we hold" is satisfied for chat by the listing GETs (`GET /chat/sessions` + `GET /chat/sessions/{id}/messages`) plus the `data-summary` parity fields shipped in 10.10 — clients can already serialize this to disk via dev tools or a future "Download my data" button. A first-class one-click download is a UX nicety, not a regulatory must.
+
+**Why deferred:** No product or regulatory ask. The composition (zip across multiple GETs, or a dedicated bulk endpoint) needs a design decision that doesn't fit inside 10.10's scope.
+
+**Fix shape:** New `GET /api/v1/users/me/chat-export` returning a streamed ZIP (one JSON file per session + an index), or a single multi-page JSON. Consider piggy-backing on Epic 5's data-export pattern if it ships first. Trigger: product asks OR a regulatory request (e.g., GDPR DSAR) lands.
+
+**Surfaced in:** Story 10.10 (2026-04-27).
+
+**Owner:** Epic 5 / TBD.
+
+---
+
+### TD-139 — Story 10.9 metric filters for `chat.history.*` events [LOW]
+
+**Where:** [infra/terraform/modules/app-runner/observability-chat.tf](../infra/terraform/modules/app-runner/observability-chat.tf) (Story 10.9 owns the file).
+
+**Problem:** Story 10.10 emits four new structured-log events (`chat.history.listed`, `chat.history.transcript_listed`, `chat.history.bulk_deleted`, `chat.history.bulk_delete_failed`) on the API stdout in the same JSON shape Story 10.9's metric filters consume. The filters do NOT yet match these new event names — operators get the audit trail in CloudWatch Insights but no metricified alarms / dashboards.
+
+**Why deferred:** Story 10.10's §Scope Boundaries explicitly excludes Terraform changes; the event shape is wire-compatible so adding the filter is a one-line additive PR once the alerting need surfaces. The bulk-delete event is the most operationally interesting (WARN level destructive op); a filter on it is the obvious first add.
+
+**Fix shape:** Add metric filters in `observability-chat.tf` matching `{ $.message = "chat.history.bulk_deleted" }` and friends; emit `ChatHistoryBulkDeleted` / `ChatHistoryBulkDeleteFailed` metrics; consider a sev-2 alarm on `chat.history.bulk_delete_failed` (any failure → page).
+
+**Surfaced in:** Story 10.10 (2026-04-27).
+
+**Owner:** Story 10.9 follow-up / TBD.
+
+---
+
+### TD-140 — Per-session DELETE keeps DB row while bulk DELETE purges [MEDIUM]
+
+**Where:** [backend/app/api/v1/chat.py:334-385](../backend/app/api/v1/chat.py#L334-L385) (`delete_session_endpoint`, Story 10.5) vs [backend/app/api/v1/chat.py:626-733](../backend/app/api/v1/chat.py#L626-L733) (`bulk_delete_chat_sessions`, Story 10.10).
+
+**Problem:** The two delete paths have asymmetric data semantics. `DELETE /chat/sessions/{id}` (single) terminates the AgentCore runtime and bumps `last_active_at` but leaves the `chat_sessions` row + `chat_messages` rows intact (10.5's design — keep audit trail). `DELETE /chat/sessions` (bulk, 10.10) terminates runtimes and physically deletes rows via FK cascade. A user who deletes sessions one-by-one ends up with all DB rows still present (and `data-summary.chatMessageCount` still counting them); the same user clicking "Delete all chats" gets a clean wipe. This is an FR35-honesty pitfall: "I deleted that chat — why does data-summary still count it?"
+
+**Why deferred:** Picking a single posture is a product/compliance call, not a 10.10 sub-task. Either flip per-session DELETE to physical-delete (matches FR70 strictly, loses audit trail), or flip bulk DELETE to soft-delete (preserves audit, requires a `deleted_at` column + sweeper — overlaps with TD-136 soft-delete-undo work). The asymmetry has shipped through 10.5 + 10.10 unflagged so the user-impact is unknown.
+
+**Fix shape:** Decide soft-delete vs hard-delete posture for the chat surface as a whole. If hard-delete wins: change `delete_session_endpoint` to issue `sa_delete(ChatSession).where(id == session_id, user_id == current_user.id)` after the runtime terminate, drop the `last_active_at` bump. If soft-delete wins: add `deleted_at` column to `chat_sessions`, filter all reads by `deleted_at IS NULL`, change bulk-delete to set `deleted_at`, add a sweeper Celery task. Couple with TD-136.
+
+**Surfaced in:** Story 10.10 code review (2026-04-27).
+
+**Owner:** Epic 10 / TBD.
 
 ---
 

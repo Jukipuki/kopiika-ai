@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { ChatSession } from "../lib/chat-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -15,6 +20,21 @@ interface CreateSessionResponse {
 
 interface ListSessionsResponse {
   sessions: ChatSession[];
+  nextCursor?: string | null;
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  guardrailAction: "none" | "blocked" | "modified";
+  redactionFlags: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface ListMessagesResponse {
+  messages: ChatHistoryMessage[];
+  nextCursor?: string | null;
 }
 
 async function postJson<T>(path: string, token: string, body?: unknown): Promise<T> {
@@ -44,12 +64,6 @@ export function useChatSession() {
   const token = session?.accessToken;
   const qc = useQueryClient();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  // Locally-tracked sessions created during this client lifetime. While
-  // the GET /chat/sessions list endpoint isn't live (owned by Story
-  // 10.10), the server returns nothing, so a freshly POSTed session would
-  // disappear from the UI on the next refetch. We merge these in to keep
-  // them visible until the real list endpoint exists and supersedes them.
-  const [localSessions, setLocalSessions] = useState<ChatSession[]>([]);
 
   const sessionsQuery = useQuery<ListSessionsResponse>({
     queryKey: ["chat-sessions"],
@@ -60,9 +74,6 @@ export function useChatSession() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        // List endpoint may not exist (10.10) — return empty sessions list
-        // to allow the UI to render and the user to create a session.
-        if (res.status === 404 || res.status === 405) return { sessions: [] };
         throw new Error(`HTTP ${res.status}`);
       }
       return (await res.json()) as ListSessionsResponse;
@@ -76,11 +87,6 @@ export function useChatSession() {
     },
     onSuccess: (data) => {
       setActiveSessionId(data.sessionId);
-      setLocalSessions((prev) =>
-        prev.some((s) => s.sessionId === data.sessionId)
-          ? prev
-          : [...prev, { sessionId: data.sessionId, createdAt: data.createdAt, consentVersionAtCreation: data.consentVersionAtCreation }],
-      );
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
     },
   });
@@ -97,21 +103,29 @@ export function useChatSession() {
     },
     onSuccess: (deletedId) => {
       if (activeSessionId === deletedId) setActiveSessionId(null);
-      setLocalSessions((prev) => prev.filter((s) => s.sessionId !== deletedId));
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
     },
   });
 
-  const mergedSessions = useMemo(() => {
-    const server = sessionsQuery.data?.sessions ?? [];
-    const seen = new Set(server.map((s) => s.sessionId));
-    return [...server, ...localSessions.filter((s) => !seen.has(s.sessionId))];
-  }, [sessionsQuery.data?.sessions, localSessions]);
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!token) throw new Error("not authenticated");
+      const res = await fetch(`${API_URL}/api/v1/chat/sessions`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+    },
+    onSuccess: () => {
+      setActiveSessionId(null);
+      qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+    },
+  });
 
   const selectSession = useCallback((id: string | null) => setActiveSessionId(id), []);
 
   return {
-    sessions: mergedSessions,
+    sessions: sessionsQuery.data?.sessions ?? [],
     isLoading: sessionsQuery.isLoading,
     activeSessionId,
     selectSession,
@@ -120,5 +134,30 @@ export function useChatSession() {
     createError: createMutation.error as (Error & { status?: number }) | null,
     deleteSession: deleteMutation.mutateAsync,
     isDeleting: deleteMutation.isPending,
+    bulkDeleteAll: bulkDeleteMutation.mutateAsync,
+    isBulkDeleting: bulkDeleteMutation.isPending,
   };
+}
+
+export function useChatMessages(sessionId: string | null) {
+  const { data: session } = useSession();
+  const token = session?.accessToken;
+
+  return useInfiniteQuery({
+    queryKey: ["chat-messages", sessionId],
+    enabled: !!token && !!sessionId,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const url = new URL(
+        `${API_URL}/api/v1/chat/sessions/${sessionId}/messages`,
+      );
+      if (pageParam) url.searchParams.set("cursor", pageParam);
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as ListMessagesResponse;
+    },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
 }

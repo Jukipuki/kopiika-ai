@@ -48,7 +48,10 @@ vi.mock("../hooks/useChatSession", () => ({
     createError: null,
     deleteSession: vi.fn(),
     isDeleting: false,
+    bulkDeleteAll: vi.fn(),
+    isBulkDeleting: false,
   }),
+  useChatMessages: () => ({ data: { pages: [] }, isLoading: false }),
 }));
 
 vi.mock("../hooks/useChatConsent", () => ({
