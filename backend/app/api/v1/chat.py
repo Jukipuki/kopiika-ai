@@ -85,7 +85,13 @@ from app.agents.chat.tools.tool_errors import (
     ChatToolLoopExceededError,
     ChatToolNotAllowedError,
 )
-from app.api.deps import get_current_user, get_current_user_id, get_db
+from app.agents.chat.token_estimate import estimate_input_tokens
+from app.api.deps import (
+    get_current_user,
+    get_current_user_id,
+    get_db,
+    get_rate_limiter,
+)
 from app.api.v1._sse import SSE_RESPONSE_HEADERS, get_user_id_from_token
 from app.core.config import settings
 from app.models.chat_message import ChatMessage
@@ -94,6 +100,7 @@ from app.models.user import User
 from app.services.chat_session_service import (
     ChatConsentRequiredError,
 )
+from app.services.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +267,7 @@ async def create_session_endpoint(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[SQLModelAsyncSession, Depends(get_db)],
     handler: Annotated[ChatSessionHandler, Depends(get_chat_session_handler)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> CreateSessionResponse:
     """Create a new chat session.
 
@@ -268,8 +276,42 @@ async def create_session_endpoint(
       - ChatSessionCreationError             → 503 CHAT_BACKEND_UNAVAILABLE
       - ChatProviderNotSupportedError /
         ChatConfigurationError               → 503 CHAT_UNAVAILABLE
+      - Concurrent-session cap exceeded      → 429 CHAT_RATE_LIMITED
+                                               (Story 10.11; FE catch at
+                                               SessionList.tsx:39 opens
+                                               ConcurrentSessionsDialog).
     """
     correlation_id = str(uuid.uuid4())
+
+    # Story 10.11 — concurrent-session cap gate. Counts open chat_sessions
+    # rows (the row IS the slot — no Redis counter). On `False`, raise the
+    # 429 envelope the FE SessionList catch is coded against.
+    if not await rate_limiter.acquire_chat_concurrent_session_slot(
+        db, str(user.id)
+    ):
+        logger.info(
+            "chat.ratelimit.create_blocked",
+            extra={
+                "correlation_id": correlation_id,
+                "user_id_hash": _hash_user_id(user.id),
+                "cause": "concurrent",
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": {
+                    "code": "CHAT_RATE_LIMITED",
+                    "message": (
+                        "You have 10 active chats. "
+                        "Close one to start a new session."
+                    ),
+                    "correlationId": correlation_id,
+                    "cause": "concurrent",
+                }
+            },
+        )
+
     try:
         handle = await handler.create_session(db, user)
     except ChatConsentRequiredError as exc:
@@ -779,6 +821,7 @@ async def stream_chat_turn(
     payload: StreamTurnRequest,
     db: Annotated[SQLModelAsyncSession, Depends(get_db)],
     handler: Annotated[ChatSessionHandler, Depends(get_chat_session_handler)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> StreamingResponse:
     """SSE streaming endpoint for a single chat turn.
 
@@ -821,6 +864,55 @@ async def stream_chat_turn(
         )
 
     correlation_id = str(uuid.uuid4())
+
+    # Story 10.11 — pre-stream rate-limit gates. Order matters: daily
+    # first (longest cooldown / wall-clock UX wins if both would fire),
+    # hourly second. A `ChatRateLimitedError` here MUST NOT open the SSE
+    # stream — the FE's EventSource only knows how to render a 200 +
+    # terminal `chat-refused` (a 429 here would route through the WAF /
+    # generic-error path instead). Mirror Story 10.5's translator output
+    # byte-for-byte by reusing `_refused_payload`.
+    try:
+        await rate_limiter.check_chat_daily_token_cap(
+            str(user_id),
+            correlation_id=correlation_id,
+            projected_tokens=estimate_input_tokens(payload.message, chat_session),
+        )
+        await rate_limiter.check_chat_hourly_rate_limit(
+            str(user_id), correlation_id=correlation_id
+        )
+    except ChatRateLimitedError as exc:
+        # Capture into local names — `exc` is unbound after the except
+        # block exits, but the inner generator closes over it lazily.
+        rl_cause = exc.cause
+        rl_retry_after = exc.retry_after_seconds
+        logger.info(
+            "chat.ratelimit.turn_blocked",
+            extra={
+                "correlation_id": correlation_id,
+                "user_id_hash": _hash_user_id(user_id),
+                "cause": rl_cause,
+                "retry_after_seconds": rl_retry_after,
+                "db_session_id": str(chat_session.id),
+            },
+        )
+
+        async def _refused_only_stream() -> AsyncGenerator[str, None]:
+            yield _sse_event(
+                "chat-refused",
+                _refused_payload(
+                    reason="rate_limited",
+                    correlation_id=correlation_id,
+                    retry_after_seconds=rl_retry_after,
+                ),
+            )
+
+        return StreamingResponse(
+            _refused_only_stream(),
+            media_type="text/event-stream",
+            headers=SSE_RESPONSE_HEADERS,
+        )
+
     handle = ChatSessionHandle(
         db_session_id=chat_session.id,
         agentcore_session_id=str(chat_session.id),
@@ -857,9 +949,20 @@ async def stream_chat_turn(
         )
 
         token_count = 0
+        output_chars = 0
         phase = "before_first_token"
         first_token_logged = False
         last_yield_at = time.monotonic()
+        # Story 10.11 — track whether the per-user daily-token counter
+        # has already been settled for this turn. The route guarantees
+        # exactly-one settle: either a clean ``record_chat_token_spend``
+        # on completion / disconnect, OR an explicit "no-record" decision
+        # for refused turns (which already cost the user the refusal).
+        # The ``finally`` block records best-effort partial spend for any
+        # unsettled path (CancelledError, unmapped Exception, etc.) so a
+        # malicious actor can't dodge the cap by triggering an exotic
+        # termination path.
+        spend_settled = False
 
         # Emit chat-open first, before any handler work — confirms the API
         # layer passed auth + owned the session before streaming begins.
@@ -902,6 +1005,31 @@ async def stream_chat_turn(
                             "phase": phase,
                         },
                     )
+                    # Story 10.11 — record best-effort partial spend on
+                    # disconnect so a malicious actor can't open a turn,
+                    # consume input + partial output, then disconnect to
+                    # have zero spend recorded against their daily cap.
+                    # The exact token count isn't known mid-stream; bound
+                    # it with the same input estimator used by the pre-gate
+                    # plus the observed token_count delta.
+                    try:
+                        await rate_limiter.record_chat_token_spend(
+                            str(user_id),
+                            tokens_used=estimate_input_tokens(
+                                payload.message, chat_session
+                            )
+                            + (output_chars // 3),
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception(
+                            "chat.ratelimit.token_spend_record_failed",
+                            extra={
+                                "correlation_id": correlation_id,
+                                "db_session_id": str(handle.db_session_id),
+                                "phase": "disconnect",
+                            },
+                        )
+                    spend_settled = True
                     return
 
                 try:
@@ -967,6 +1095,7 @@ async def stream_chat_turn(
                         first_token_logged = True
                         phase = "during_stream"
                     token_count += 1
+                    output_chars += len(event.text or "")
                     yield _sse_event("chat-token", {"delta": event.text})
                     continue
                 if isinstance(event, ChatStreamCompleted):
@@ -996,6 +1125,25 @@ async def stream_chat_turn(
                             "token_source": event.token_source,
                         },
                     )
+                    # Story 10.11 — record actual spend post-completion
+                    # against the per-user daily-token Redis counter.
+                    # Refused turns reach a different branch and are NOT
+                    # double-charged (the refusal already cost the user).
+                    try:
+                        await rate_limiter.record_chat_token_spend(
+                            str(user_id),
+                            tokens_used=int(event.input_tokens or 0)
+                            + int(event.output_tokens or 0),
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception(
+                            "chat.ratelimit.token_spend_record_failed",
+                            extra={
+                                "correlation_id": correlation_id,
+                                "db_session_id": str(handle.db_session_id),
+                            },
+                        )
+                    spend_settled = True
                     return
         except (
             ChatInputBlockedError,
@@ -1022,6 +1170,10 @@ async def stream_chat_turn(
                 },
             )
             yield _sse_event("chat-refused", refused_payload)
+            # Refused turns don't double-charge the user — the refusal
+            # already cost them. Mark settled so the finally block skips
+            # the partial-spend record path.
+            spend_settled = True
             return
         except ChatConfigurationError as exc:
             # Deployment misconfiguration (missing Guardrail ARN, IAM gap,
@@ -1045,6 +1197,9 @@ async def stream_chat_turn(
                     reason="transient_error", correlation_id=correlation_id
                 ),
             )
+            # Configuration errors are an operator-side miss, not user
+            # consumption — no daily-counter charge.
+            spend_settled = True
             return
         except asyncio.CancelledError:
             # Client disconnect / server shutdown — logged above in the
@@ -1071,8 +1226,39 @@ async def stream_chat_turn(
                     reason="transient_error", correlation_id=correlation_id
                 ),
             )
+            # Server-side bug surfaced as transient_error — operator's
+            # miss, not user consumption. No daily-counter charge (the
+            # finally block's last-resort path is reserved for
+            # client-driven cancellations only).
+            spend_settled = True
             return
         finally:
+            # Story 10.11 — last-resort partial-spend record. If we got
+            # past chat-open but the turn ended via CancelledError, an
+            # unmapped exception, or any other path that didn't already
+            # settle the daily counter, charge a best-effort estimate so
+            # an actor can't dodge the cap by triggering exotic
+            # terminations. ``spend_settled`` is set True by every other
+            # branch (success, polled-disconnect, explicit refusal,
+            # config error). Best-effort: never raises.
+            if not spend_settled:
+                try:
+                    await rate_limiter.record_chat_token_spend(
+                        str(user_id),
+                        tokens_used=estimate_input_tokens(
+                            payload.message, chat_session
+                        )
+                        + (output_chars // 3),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "chat.ratelimit.token_spend_record_failed",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "db_session_id": str(handle.db_session_id),
+                            "phase": "finalizer",
+                        },
+                    )
             # Cancel any outstanding anext task + close the generator so
             # the handler's finally blocks fire (canary scan, partial row
             # persistence). Without this, a disconnect / exception leaves

@@ -241,7 +241,7 @@ development_status:
   10-8c-corpus-expectation-revision: done
   10-9-safety-observability: done
   10-10-chat-history-deletion: done
-  10-11-abuse-rate-limit-enforcement: backlog
+  10-11-abuse-rate-limit-enforcement: done
   epic-10-retrospective: optional
 
   # Epic 11: Ingestion & Categorization Hardening

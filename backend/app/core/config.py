@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     # for load tests; production value is pinned. Rationale in AC #2.
     CHAT_CANARY_CACHE_TTL_SECONDS: int = 900
 
+    # Story 10.11 — per-user daily input+output token cap (hard envelope).
+    # Default 200_000 ≈ ~$6/user/day worst-case at Sonnet input pricing;
+    # the soft band-anomaly alarm (Story 10.9) fires earlier on a 3σ
+    # deviation, so this is the second-line "no single user can ever spend
+    # more than this in a calendar day" cap. Tunable via env.
+    CHAT_DAILY_TOKEN_CAP_PER_USER: int = 200_000
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property

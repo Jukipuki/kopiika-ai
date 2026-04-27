@@ -621,6 +621,67 @@ is for local development only.
    transparently) or manual account-level action via the user-admin
    tooling in `backend/scripts/`.
 
+### Inventory: Rate-Limit Observability (Story 10.11)
+
+Story 10.11 enforces the four-dimension chat rate-limit envelope (60
+msgs/hr per user, 10 concurrent sessions per user, per-user daily token
+cap, per-IP cap). The observability surface is intentionally split:
+
+- **Per-cause CloudWatch metric**: NOT shipped. The existing
+  `chat_refusal_rate_warn` metric filter
+  ([`infra/terraform/modules/app-runner/observability-chat.tf`](../infra/terraform/modules/app-runner/observability-chat.tf))
+  catches `chat-refused` events of every cause (rate-limit refusals are
+  a subset). The aggregate alarm fires when the refusal rate exceeds
+  `>= 20%` over 30m regardless of cause.
+- **Per-cause breakdown**: lives in the structured-log events emitted
+  by Story 10.11 — `chat.ratelimit.create_blocked`,
+  `chat.ratelimit.turn_blocked`, `chat.ratelimit.token_spend_recorded`.
+  Operators slice by `cause` via the Logs Insights query below.
+- **Token-spend hard cap vs anomaly band** (Story 10.9): the 3σ /  5σ
+  alarms (`chat_token_spend_anomaly_warn` / `_page`) read the bucketed
+  `chat.turn.completed.totalTokensUsed` metric and remain the *soft*
+  signal. Story 10.11's hard daily cap is the *prevention* layer — they
+  are decoupled by design: the metric filter slices CloudWatch metrics
+  for trend / anomaly observability, the Redis counter slices for hard
+  envelope. **Do not merge them.**
+- **Future per-cause alarm**: tracked as TD-NNN follow-up against
+  Story 10.9's module — file only if a post-prod incident requires
+  per-cause thresholds (e.g. "alarm if rate-limit refusal rate > N%
+  but ungrounded refusal rate is normal").
+
+Logs Insights — refusal causes broken down by Story 10.11 dimension
+over the last 1h:
+
+```
+fields @timestamp, cause, retry_after_seconds
+| filter message like /chat\.ratelimit\./
+| stats count() as hits by message, cause
+| sort hits desc
+```
+
+### Inventory: Per-IP Cap Location (Story 10.11)
+
+The per-IP cap referenced by `architecture.md` §Rate Limits L1737 is
+NOT enforced in app code. It lives in AWS WAF.
+
+- **Location**: [`infra/terraform/modules/app-runner/waf.tf`](../infra/terraform/modules/app-runner/waf.tf)
+  — rule `RateLimitPerIP` (priority 3).
+- **Current rate**: `limit = 2000` per IP per 5-minute rolling window
+  (AWS WAF rate-based statement default), aggregated by `IP`.
+- **Surface**: WAF blocks return a generic HTTP 403 from the WAF layer
+  BEFORE the request reaches App Runner. There is NO `CHAT_REFUSED` SSE
+  frame for a per-IP block — the FE generic-error toast applies (per
+  Story 10.3b's "Per-IP gateway 429 — out of scope for 10.3b"
+  delegation).
+- **Chat-tier-specific tuning**: deferred to a future TD if the chat
+  endpoint hits the global rate consistently while non-chat endpoints
+  have headroom. Story 10.11 does NOT retune the rule.
+- **Manual smoke test** (dev environment only — verify before running):
+  hit `/api/v1/chat/sessions` from a single IP at the WAF rate using
+  `xargs -P` or similar; confirm WAF returns 403 once the rate is
+  exceeded. Do NOT add an automated test that hits AWS WAF (couples the
+  test suite to live AWS infra).
+
 ### CloudWatch Logs Insights Snippets
 
 Set `${LOG_GROUP_NAME}` to the App Runner application log group at the

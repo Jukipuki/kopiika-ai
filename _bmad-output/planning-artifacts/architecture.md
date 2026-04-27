@@ -1736,6 +1736,8 @@ Single source of truth for chat throttling — implemented in Story 10.11 (rate-
 - **Per-user daily token cap** — see Bedrock *Cost Controls*; exceeding returns `CHAT_REFUSED` with `reason=rate_limited`
 - **Global per-IP cap** at the API-gateway layer (reuses existing limit) — abuse scenario only
 
+Implementation: `RateLimiter.check_chat_hourly_rate_limit` / `acquire_chat_concurrent_session_slot` / `check_chat_daily_token_cap` / `record_chat_token_spend` in [`backend/app/services/rate_limiter.py`](../../backend/app/services/rate_limiter.py); enforced at [`backend/app/api/v1/chat.py`](../../backend/app/api/v1/chat.py) `create_session_endpoint` (concurrent) and `stream_chat_turn` (hourly + daily). Per-IP cap: WAF, see [`infra/terraform/modules/app-runner/waf.tf`](../../infra/terraform/modules/app-runner/waf.tf). — Story 10.11.
+
 ### Consent Drift Policy
 
 See [Consent Management → Chat Processing Consent](#consent-management) for the schema + version semantics (independent version stream, append-only `revoked_at`, `revoke_chat_consent()` integration hook). The policy below governs how active chat sessions behave when the consent version bumps or is revoked.

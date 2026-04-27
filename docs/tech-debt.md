@@ -2170,6 +2170,54 @@ Option 1 is the simplest and matches AWS Terraform community convention (default
 
 ---
 
+### TD-141 — Replace heuristic input-token estimator with Bedrock-side token counter [LOW]
+
+**Where:** [backend/app/agents/chat/token_estimate.py](../backend/app/agents/chat/token_estimate.py) (`estimate_input_tokens`) — consumed by the Story 10.11 daily-token-cap pre-gate at [backend/app/api/v1/chat.py](../backend/app/api/v1/chat.py) (`stream_chat_turn`).
+
+**Problem:** The pre-gate projection uses `len(message) // 3 + 8000` (a hand-rolled heuristic) to upper-bound the upcoming turn's input + memory tokens. The over-estimate biases against false-positives on the daily cap (occasionally a near-cap user gets blocked slightly earlier than the true cap), which is correct denial-of-wallet behaviour. It is, however, imprecise — a Bedrock-API-side `count_tokens` would be authoritative.
+
+**Why deferred:** `bedrock-runtime` does NOT expose a `count_tokens` action as of 2026-04 (verified). Building a tokenizer locally would add a runtime dependency just to mirror Bedrock's tokenizer (which is internally inconsistent across model families). The over-estimate is operationally fine; the post-turn `record_chat_token_spend` records actual usage, so the next turn projects against an accurate base.
+
+**Fix shape:** Once AWS ships `bedrock-runtime:CountTokens` (or equivalent), swap `estimate_input_tokens` for a single boto3 call. Keep the existing function as a fallback when the Bedrock call errors so the pre-gate never fails open.
+
+**Surfaced in:** Story 10.11 (Abuse & Rate-Limit Enforcement).
+
+**Owner:** Epic 10 / TBD.
+
+---
+
+### TD-142 — Per-cause CloudWatch metric breakdown for `chat-refused` [LOW]
+
+**Where:** [infra/terraform/modules/app-runner/observability-chat.tf](../infra/terraform/modules/app-runner/observability-chat.tf) (`chat_refusal_rate_warn`, Story 10.9).
+
+**Problem:** Story 10.11's three rate-limit dimensions (hourly, concurrent, daily-tokens) all surface as `chat-refused` SSE frames with `reason=rate_limited`. The aggregate alarm catches them as a subset of all refusals; the per-cause split lives only in structured-log events (`chat.ratelimit.create_blocked`, `chat.ratelimit.turn_blocked`). An operator who wants per-cause alerting (e.g. "alarm if rate-limit refusals > N% but ungrounded refusals are normal") can't get it from a single CloudWatch metric.
+
+**Why deferred:** No production incident has yet required per-cause thresholds. Adding a metric filter per cause inflates the metric namespace without a known consumer. Logs Insights queries (documented in operator-runbook §Inventory: Rate-Limit Observability) cover the forensic case adequately.
+
+**Fix shape:** If a post-prod incident requires per-cause alarming, add 3 new metric filters to `observability-chat.tf` discriminating on the `cause` field of `chat.ratelimit.*` events, plus 3 alarm pairs (warn / page) in the same module. Update the runbook's inventory subsection to reflect the new alarms.
+
+**Surfaced in:** Story 10.11.
+
+**Owner:** Story 10.9 follow-up / TBD.
+
+---
+
+### TD-143 — Chat-tier-specific WAF tuning [LOW]
+
+**Where:** [infra/terraform/modules/app-runner/waf.tf](../infra/terraform/modules/app-runner/waf.tf) (`RateLimitPerIP`, `limit = 2000` per IP per 5min).
+
+**Problem:** The global per-IP cap is shared across every API endpoint behind App Runner. Chat traffic has a fundamentally different shape than upload / search traffic (long-lived SSE streams + per-user envelopes). If chat traffic ever consistently consumes the per-IP allowance while non-chat endpoints have headroom, the global rule mis-throttles legitimate chat users and under-protects upload endpoints from abuse.
+
+**Why deferred:** The traffic-baseline data needed to choose a chat-specific rate doesn't exist yet (Epic 10 is the first chat workload in production). Over-tuning the WAF without traffic data risks false-positive blocks on legitimate users.
+
+**Fix shape:** Once chat is in steady-state production and the WAF dashboard shows chat endpoint hitting the per-IP rate consistently while non-chat endpoints have headroom, add a chat-prefix WAF rule (priority < 3) with a dedicated `limit` tuned to the observed chat traffic. Keep the global rule as the floor for non-chat endpoints.
+
+**Surfaced in:** Story 10.11.
+
+**Owner:** Epic 10 / TBD.
+
+---
+
 ## Resolved
 
 ### TD-099 — `CanaryLeaked` CloudWatch metric + sev-1 alarm + `chat.stream.finalizer_failed` sev-2 alarm [RESOLVED 2026-04-26 — Story 10.9]
