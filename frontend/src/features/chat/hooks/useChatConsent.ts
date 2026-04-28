@@ -2,10 +2,16 @@
 
 import { useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useLocale } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import {
+  CONSENT_TYPE_CHAT_PROCESSING,
+  CURRENT_CHAT_CONSENT_VERSION,
+} from "@/features/onboarding/consent-version";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-export const CHAT_PROCESSING = "chat_processing";
+export const CHAT_PROCESSING = CONSENT_TYPE_CHAT_PROCESSING;
 
 export interface ChatConsentStatus {
   hasCurrentConsent: boolean;
@@ -17,6 +23,7 @@ export interface ChatConsentStatus {
 export function useChatConsent() {
   const { data: session } = useSession();
   const token = session?.accessToken;
+  const locale = useLocale();
   const qc = useQueryClient();
 
   const query = useQuery<ChatConsentStatus>({
@@ -42,9 +49,24 @@ export function useChatConsent() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ consent_kind: CHAT_PROCESSING }),
+        body: JSON.stringify({
+          version: CURRENT_CHAT_CONSENT_VERSION,
+          locale,
+          consentType: CHAT_PROCESSING,
+        }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's structured error message (e.g.
+        // CONSENT_VERSION_MISMATCH) instead of a bare "HTTP 422" so the
+        // dialog can render something useful. Mirrors the pattern in
+        // PrivacyExplanationScreen.
+        const errorData = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        throw new Error(
+          errorData?.error?.message ?? `HTTP ${res.status}`,
+        );
+      }
       return res.json();
     },
     onSuccess: () => {
