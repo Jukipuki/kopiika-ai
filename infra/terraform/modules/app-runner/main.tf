@@ -213,6 +213,13 @@ resource "aws_iam_role_policy_attachment" "apprunner_ecr" {
 }
 
 # VPC Connector
+#
+# Note: the existence of this connector forces an extra IAM permission on
+# any principal that calls apprunner:UpdateService against the API service
+# below. App Runner re-validates the connector's subnets via a forward-
+# access ec2:DescribeSubnets call under the caller's identity, so the GH
+# Actions deploy role carries that perm — see
+# modules/ecs/github-oidc.tf "AppRunnerVpcConnectorValidate".
 resource "aws_apprunner_vpc_connector" "main" {
   vpc_connector_name = "${local.name_prefix}-vpc-connector"
   subnets            = var.private_subnet_ids

@@ -44,7 +44,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -92,7 +92,11 @@ from app.api.deps import (
     get_db,
     get_rate_limiter,
 )
-from app.api.v1._sse import SSE_RESPONSE_HEADERS, get_user_id_from_token
+from app.api.v1._sse import (
+    SSE_RESPONSE_HEADERS,
+    get_user_id_from_token,
+    resolve_sse_jwt,
+)
 from app.core.config import settings
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
@@ -817,21 +821,27 @@ def _camelify_keys(value: Any) -> Any:
 async def stream_chat_turn(
     session_id: uuid.UUID,
     request: Request,
-    token: str,
     payload: StreamTurnRequest,
     db: Annotated[SQLModelAsyncSession, Depends(get_db)],
     handler: Annotated[ChatSessionHandler, Depends(get_chat_session_handler)],
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    token: Annotated[str | None, Query()] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> StreamingResponse:
     """SSE streaming endpoint for a single chat turn.
 
-    AC #1, #4, #5. Auth: ``?token=<JWT>`` query-string (EventSource can't
-    send headers). Request body: ``{message: str}`` (length capped at
-    ``CHAT_MAX_INPUT_CHARS``; 422 on overflow — NOT a ``chat-refused``
-    frame, this is a client-shape failure before the stream opens).
+    AC #1, #4, #5. Auth: ``Authorization: Bearer <JWT>`` header (used by
+    the FE's fetch + ReadableStream client) OR ``?token=<JWT>`` query string
+    (legacy EventSource fallback — kept so any non-fetch tooling continues
+    to work). Header wins if both are present. Request body:
+    ``{message: str}`` (length capped at ``CHAT_MAX_INPUT_CHARS``; 422 on
+    overflow — NOT a ``chat-refused`` frame, this is a client-shape failure
+    before the stream opens).
     """
-    # Auth first — a bad token must never open the stream.
-    user_id = await get_user_id_from_token(token, db)
+    # Auth first — a bad token must never open the stream. Header preferred,
+    # ?token= query kept as fallback for legacy EventSource clients.
+    jwt = resolve_sse_jwt(authorization, token)
+    user_id = await get_user_id_from_token(jwt, db)
 
     # Session ownership — 404 (not 403) on cross-user access to prevent
     # enumeration of other users' session ids.
@@ -1263,8 +1273,14 @@ async def stream_chat_turn(
             # the handler's finally blocks fire (canary scan, partial row
             # persistence). Without this, a disconnect / exception leaves
             # the handler suspended and its finalizer never runs.
-            if anext_task is not None and not anext_task.done():
-                anext_task.cancel()
+            if anext_task is not None:
+                # Always retrieve the task's outcome (cancel only if still
+                # pending). If the task already finished — typically with
+                # StopAsyncIteration after a clean chat-complete return —
+                # skipping the await leaves the exception unretrieved and
+                # Python prints "Task exception was never retrieved".
+                if not anext_task.done():
+                    anext_task.cancel()
                 try:
                     await anext_task
                 except (asyncio.CancelledError, StopAsyncIteration, Exception):

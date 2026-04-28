@@ -248,6 +248,60 @@ async def _stub_verify(sub: str, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_accepts_authorization_header(
+    client_and_handler, monkeypatch
+):
+    """Header path: FE moved off EventSource and now sends the JWT in
+    ``Authorization: Bearer ...``. The endpoint MUST authenticate from
+    the header (no ``?token=`` query). Locks the regression where the
+    endpoint silently demanded a query-string token and returned 422."""
+    client, fake, engine = client_and_handler
+    sub = f"sub-{uuid.uuid4()}"
+    uid = await _seed_user(engine, sub)
+    sid = await _seed_chat_session(engine, uid)
+    await _stub_verify(sub, monkeypatch)
+
+    fake.set_stream(
+        events=[
+            ChatStreamStarted(correlation_id="c", session_id=sid),
+            ChatTokenDelta(text="hi"),
+            ChatStreamCompleted(
+                input_tokens=1,
+                output_tokens=1,
+                session_turn_count=1,
+                summarization_applied=False,
+                token_source="model",
+                tool_call_count=0,
+            ),
+        ]
+    )
+
+    async with client.stream(
+        "POST",
+        f"/api/v1/chat/sessions/{sid}/turns/stream",
+        json={"message": "hi"},
+        headers={"Authorization": "Bearer tok"},
+    ) as resp:
+        assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_stream_missing_token_returns_401(client_and_handler):
+    """Neither Authorization header nor ?token= query → 401 MISSING_TOKEN.
+    Ensures the new dual-source resolver doesn't accidentally allow
+    anonymous access."""
+    client, _fake, _engine = client_and_handler
+    session_id = uuid.uuid4()
+    resp = await client.post(
+        f"/api/v1/chat/sessions/{session_id}/turns/stream",
+        json={"message": "hi"},
+    )
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["detail"]["error"]["code"] == "MISSING_TOKEN"
+
+
+@pytest.mark.asyncio
 async def test_stream_cross_user_session_returns_404(client_and_handler, monkeypatch):
     client, fake, engine = client_and_handler
     sub = f"sub-{uuid.uuid4()}"

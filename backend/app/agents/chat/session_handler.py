@@ -215,6 +215,13 @@ class ChatSessionHandler:
         self, db: SQLModelAsyncSession, user: User
     ) -> ChatSessionHandle:
         correlation_id = self._correlation_id_factory()
+        # Snapshot user.id BEFORE create_chat_session commits the session.
+        # commit() expires ORM-bound attributes by default; touching user.id
+        # afterwards triggers a sync lazy-load and raises MissingGreenlet
+        # under the asyncpg driver. The hash is also computed up front so
+        # log lines below use the cached value, not the expired attribute.
+        user_id = user.id
+        user_id_hash = _hash_user_id(user_id)
         # DB-first: consent check + row insert happen inside chat_session_service.
         # Failure here raises ChatConsentRequiredError, cheap and idempotent.
         from app.services.chat_session_service import create_chat_session
@@ -239,7 +246,7 @@ class ChatSessionHandler:
                 extra={
                     "correlation_id": correlation_id,
                     "db_session_id": str(chat_session.id),
-                    "user_id_hash": _hash_user_id(user.id),
+                    "user_id_hash": user_id_hash,
                     "consent_version_at_creation": chat_session.consent_version_at_creation,
                     "error_class": type(exc).__name__,
                     "error_message": str(exc)[:200],
@@ -255,7 +262,7 @@ class ChatSessionHandler:
                 "correlation_id": correlation_id,
                 "db_session_id": str(chat_session.id),
                 "agentcore_session_id": agentcore_session_id,
-                "user_id_hash": _hash_user_id(user.id),
+                "user_id_hash": user_id_hash,
                 "consent_version_at_creation": chat_session.consent_version_at_creation,
             },
         )
@@ -263,7 +270,7 @@ class ChatSessionHandler:
             db_session_id=chat_session.id,
             agentcore_session_id=agentcore_session_id,
             created_at=chat_session.created_at,
-            user_id=user.id,
+            user_id=user_id,
         )
 
     # ------------------------------------------------------------------
@@ -830,6 +837,11 @@ class ChatSessionHandler:
                         "correlation_id": correlation_id,
                         "db_session_id": str(handle.db_session_id),
                         "intervention_kind": exc.intervention_kind,
+                        # Per-filter trace (JSON array of policy/filter/
+                        # action/confidence). Lets an operator triage
+                        # which Guardrail filter blocked vs. guessing
+                        # from the coarse intervention_kind bucket.
+                        "guardrail_trace": exc.trace_summary,
                     },
                 )
                 raise

@@ -29,6 +29,40 @@ SSE_RESPONSE_HEADERS: dict[str, str] = {
 }
 
 
+def resolve_sse_jwt(
+    authorization: str | None, token: str | None
+) -> str:
+    """Pick the JWT from ``Authorization: Bearer ...`` or ``?token=`` query.
+
+    Header wins when both are present. Raises 401 if neither yields a value.
+    Lifted here so chat + jobs SSE routes share one resolution path — when
+    a third SSE endpoint shows up, plumb it through this helper too rather
+    than re-implementing the precedence rules in-route.
+
+    Note: the jobs SSE route at ``api/v1/jobs.py`` still uses query-only —
+    see TD-144 for the migration plan (the FE jobs client hasn't moved off
+    EventSource yet, so there's no live bug there).
+    """
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer = authorization[7:].strip()
+        if bearer:
+            return bearer
+    if token:
+        return token
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "error": {
+                "code": "MISSING_TOKEN",
+                "message": (
+                    "Authorization header (Bearer) or ?token= query param "
+                    "is required."
+                ),
+            }
+        },
+    )
+
+
 async def get_user_id_from_token(
     token: str, session: SQLModelAsyncSession
 ) -> uuid.UUID:
@@ -69,4 +103,4 @@ async def get_user_id_from_token(
     return user_id
 
 
-__all__ = ["SSE_RESPONSE_HEADERS", "get_user_id_from_token"]
+__all__ = ["SSE_RESPONSE_HEADERS", "get_user_id_from_token", "resolve_sse_jwt"]

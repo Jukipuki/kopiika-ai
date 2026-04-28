@@ -152,6 +152,11 @@ async def _get_user_id_from_token(
     NOTE: Duplicates cognito_sub→user_id lookup from deps.get_current_user_id.
     Needed because EventSource doesn't support Authorization headers.
     If deps.py auth logic changes, update this function too.
+
+    TD-144: this route still requires the JWT as a query string. The chat
+    SSE route was migrated to accept Authorization-header-or-query via
+    ``_sse.resolve_sse_jwt``; this route should follow the same pattern
+    when the FE jobs client moves off EventSource. See docs/tech-debt.md.
     Story 10.5 extracted a shared equivalent at ``app.api.v1._sse``; jobs
     still uses this local helper so the existing ``patch("app.api.v1.jobs.
     verify_token", ...)`` test pattern continues to work.

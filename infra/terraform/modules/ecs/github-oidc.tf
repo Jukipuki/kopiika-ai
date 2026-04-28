@@ -156,6 +156,27 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     ]
     resources = ["arn:aws:iam::*:role/${var.project_name}-*"]
   }
+
+  # App Runner forward-access session: when UpdateService runs against a
+  # service that has a VPC connector (see modules/app-runner/main.tf
+  # aws_apprunner_vpc_connector.main), App Runner re-validates the
+  # connector's subnets by calling ec2:DescribeSubnets under the *caller's*
+  # identity (CloudTrail shows invokedBy=apprunner.amazonaws.com on the GH
+  # Actions principal). Without it, the deploy still completes but every
+  # release fires a Client.UnauthorizedOperation alarm (first observed
+  # 2026-04-28 cut-over). Scoped to DescribeSubnets only — the other VPC
+  # describes (SecurityGroups, Vpcs) have not been observed denied; expand
+  # this list only if a new alarm fires for them. Resource is "*" because
+  # EC2 Describe* actions do not support resource-level perms (consistent
+  # with AppRunnerListServices above).
+  statement {
+    sid    = "AppRunnerVpcConnectorValidate"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeSubnets",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions_deploy" {

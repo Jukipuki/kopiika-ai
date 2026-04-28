@@ -88,7 +88,12 @@ class ChatGuardrailInterventionError(Exception):
         correlation_id: str | None = None,
     ) -> None:
         self.intervention_kind = intervention_kind
-        self.trace_summary = (trace_summary or "")[:200]
+        # 8KB cap: a JSON summary of per-filter findings comfortably
+        # fits, with headroom for the diagnostic `raw:` fallback when the
+        # walker doesn't recognize the trace shape (which carries the full
+        # outputAssessments blob — measured ~3-5KB in practice).
+        # Log-only — never surfaces to the user.
+        self.trace_summary = (trace_summary or "")[:8192]
         self.correlation_id = correlation_id
         super().__init__(
             f"Bedrock Guardrail intervened (kind={intervention_kind})"
@@ -613,6 +618,20 @@ class DirectBedrockBackend(ChatBackend):
                 guardrail_config={
                     "guardrailIdentifier": guardrail_id,
                     "guardrailVersion": guardrail_version or "DRAFT",
+                    # trace="ENABLED" makes Bedrock include the per-filter
+                    # assessment block in `response.response_metadata.trace
+                    # .guardrail` whenever an intervention fires (no extra
+                    # tokens / latency on clean responses). Without this,
+                    # `chat.stream.guardrail_intervened` only carries the
+                    # coarse `intervention_kind` bucket and an operator
+                    # cannot tell which filter (MISCONDUCT vs PROMPT_ATTACK
+                    # vs ...) actually blocked. The trace contains
+                    # category/confidence/action only — no user payload —
+                    # so logging it is safe.
+                    # AWS rejects ENABLED here — the enum on this field is
+                    # lowercase (enabled / enabled_full / disabled), unlike
+                    # most Bedrock enums.
+                    "trace": "enabled",
                 }
             )
         else:
@@ -687,9 +706,7 @@ class DirectBedrockBackend(ChatBackend):
             if intervention_kind is not None:
                 raise ChatGuardrailInterventionError(
                     intervention_kind=intervention_kind,
-                    trace_summary=str(
-                        getattr(response, "response_metadata", {})
-                    )[:200],
+                    trace_summary=_summarize_guardrail_trace(response),
                 )
 
             tool_uses = _extract_tool_uses(response)
@@ -704,6 +721,7 @@ class DirectBedrockBackend(ChatBackend):
                 final_in_tokens: int | None = None
                 final_out_tokens: int | None = None
                 final_intervention: str | None = None
+                final_intervention_chunk: Any = None
                 try:
                     stream = bound_client.astream(lc_messages)
                 except ClientError as exc:
@@ -732,6 +750,7 @@ class DirectBedrockBackend(ChatBackend):
                     kind = _detect_guardrail_intervention(chunk)
                     if kind is not None:
                         final_intervention = kind
+                        final_intervention_chunk = chunk
 
                 if final_in_tokens is None or final_out_tokens is None:
                     final_in_tokens = estimate_tokens(
@@ -760,6 +779,11 @@ class DirectBedrockBackend(ChatBackend):
                 if final_intervention is not None:
                     raise ChatGuardrailInterventionError(
                         intervention_kind=final_intervention,
+                        trace_summary=(
+                            _summarize_guardrail_trace(final_intervention_chunk)
+                            if final_intervention_chunk is not None
+                            else ""
+                        ),
                     )
 
                 record_success("bedrock")
@@ -884,10 +908,17 @@ def _detect_guardrail_intervention(response: Any) -> str | None:
             else None
         )
 
+    # Trust only the explicit stop-reason / action signals. The trace dict
+    # is present on EVERY invocation when guardrailConfig.trace="enabled"
+    # (informational, not a block signal) — using `bool(trace)` here would
+    # flag every response as intervened. We saw exactly that symptom on
+    # 2026-04-28 after enabling trace logging: the trace carried
+    # `actionReason: "No action."` and empty assessment blocks, yet the
+    # detector reported `intervention_kind: content_filter` and the FE
+    # showed a refusal envelope to the user.
     intervened = (
         stop_reason == "guardrail_intervened"
         or guardrail_action == "INTERVENED"
-        or bool(trace)
     )
     if not intervened:
         return None
@@ -908,6 +939,52 @@ def _detect_guardrail_intervention(response: Any) -> str | None:
                     blobs.append(v)
         if isinstance(input_assessment, dict):
             blobs.append(input_assessment)
+
+        # ANONYMIZE actions modify the text inline (e.g. {NAME} substitution
+        # for the configured PII entities) — they are NOT a refusal. If every
+        # filter that fired was non-blocking (ANONYMIZED / NONE), the model's
+        # response is clean-with-redactions and must flow to the user; raising
+        # ChatGuardrailInterventionError here would convert a successful
+        # turn into a spurious "I can't help with that". Only when at least
+        # one BLOCKED action is present do we classify as intervened.
+        all_actions: list[str] = []
+        for blob in blobs:
+            for policy_key in (
+                "contentPolicy",
+                "topicPolicy",
+                "sensitiveInformationPolicy",
+                "wordPolicy",
+                "contextualGroundingPolicy",
+            ):
+                policy = blob.get(policy_key)
+                if not isinstance(policy, dict):
+                    continue
+                for items_key in (
+                    "filters",
+                    "topics",
+                    "piiEntities",
+                    "regexes",
+                    "managedWordLists",
+                    "customWords",
+                ):
+                    items = policy.get(items_key)
+                    if not isinstance(items, list):
+                        continue
+                    for entry in items:
+                        if isinstance(entry, dict):
+                            all_actions.append(
+                                str(entry.get("action") or "").upper()
+                            )
+
+        # If we collected any actions and none of them are blocking, the
+        # `intervened` flag was set by Bedrock for an inline modification
+        # (anonymization) — let the response through.
+        non_blocking = {"ANONYMIZED", "NONE", ""}
+        if all_actions and all(a in non_blocking for a in all_actions):
+            return None
+
+        # First-match wins on the kind classification. Order: grounding >
+        # denied_topic > pii > word_filter > content_filter (default).
         for blob in blobs:
             if blob.get("contextualGroundingPolicy"):
                 return "grounding"
@@ -918,6 +995,108 @@ def _detect_guardrail_intervention(response: Any) -> str | None:
             if blob.get("wordPolicy"):
                 return "word_filter"
     return "content_filter"
+
+
+def _summarize_guardrail_trace(response: Any) -> str:
+    """Compact JSON of which Bedrock Guardrail filters fired and how strongly.
+
+    Output shape: ``[{"policy":"contentPolicy","filter":"MISCONDUCT",
+    "action":"BLOCKED","confidence":"HIGH"}, ...]``. Designed for the
+    ``trace_summary`` field on ``ChatGuardrailInterventionError`` so an
+    operator reading the ``chat.stream.guardrail_intervened`` log can see
+    exactly which filter blocked the response — coarse buckets like
+    ``content_filter`` are not enough to tune Guardrail strengths.
+
+    Best-effort: shape varies across langchain-aws minor versions. Returns
+    ``""`` if no trace is present (caller decides what to substitute).
+    """
+    metadata = getattr(response, "response_metadata", None) or {}
+    additional = getattr(response, "additional_kwargs", None) or {}
+    trace = (
+        (metadata.get("trace") or {}).get("guardrail")
+        if isinstance(metadata.get("trace"), dict)
+        else None
+    )
+    if trace is None:
+        trace = (
+            (additional.get("trace") or {}).get("guardrail")
+            if isinstance(additional.get("trace"), dict)
+            else None
+        )
+    if not isinstance(trace, dict):
+        return ""
+
+    findings: list[dict[str, str]] = []
+
+    def _emit(policy_name: str, items: Any) -> None:
+        # Each policy block carries either a {"filters": [...]} list, a
+        # {"topics": [...]} list, or similar. Walk what we got.
+        if isinstance(items, list):
+            for entry in items:
+                if not isinstance(entry, dict):
+                    continue
+                findings.append(
+                    {
+                        "policy": policy_name,
+                        "filter": str(
+                            entry.get("type")
+                            or entry.get("name")
+                            or entry.get("match")
+                            or "?"
+                        ),
+                        "action": str(entry.get("action") or "?"),
+                        "confidence": str(
+                            entry.get("confidence") or entry.get("strength") or "?"
+                        ),
+                    }
+                )
+
+    def _walk(blob: dict) -> None:
+        for policy_key in (
+            "contentPolicy",
+            "topicPolicy",
+            "sensitiveInformationPolicy",
+            "wordPolicy",
+            "contextualGroundingPolicy",
+        ):
+            policy = blob.get(policy_key)
+            if not isinstance(policy, dict):
+                continue
+            # Try each known item-list key under the policy.
+            for items_key in ("filters", "topics", "piiEntities", "regexes", "managedWordLists", "customWords"):
+                _emit(policy_key, policy.get(items_key))
+
+    output_assessments = trace.get("outputAssessments") or trace.get("output_assessments")
+    input_assessment = trace.get("inputAssessment") or trace.get("input_assessment")
+    if isinstance(output_assessments, dict):
+        for v in output_assessments.values():
+            if isinstance(v, list):
+                for blob in v:
+                    if isinstance(blob, dict):
+                        _walk(blob)
+            elif isinstance(v, dict):
+                _walk(v)
+    if isinstance(input_assessment, dict):
+        _walk(input_assessment)
+
+    # Drop NONE actions — they're advisory, not blocking, and noise up the log.
+    findings = [f for f in findings if f["action"].upper() != "NONE"]
+
+    # Diagnostic fallback: if the walker found nothing but Bedrock said
+    # an intervention happened, dump the raw trace keys + a truncated repr
+    # so we can see what shape this langchain-aws version actually emits.
+    # Drops automatically once we've adapted the walker.
+    if not findings:
+        try:
+            raw = json.dumps(trace, default=str, separators=(",", ":"))
+        except (TypeError, ValueError):
+            raw = repr(trace)
+        return f"raw:{raw[:7000]}"
+
+    try:
+        return json.dumps(findings, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return ""
 
 
 def _stringify(obj: Any) -> str:

@@ -47,7 +47,7 @@ type Action =
   | { type: "ASSISTANT_OPEN"; turn: ChatTurnState }
   | { type: "FRAME"; event: StreamEvent }
   | { type: "DISCONNECT"; turnId: string }
-  | { type: "PRE_STREAM_ERROR"; turnId: string; status: number }
+  | { type: "PRE_STREAM_ERROR"; turnId: string; status: number; errorCode?: string }
   | { type: "RESET"; turns: ChatTurnState[] };
 
 function reducer(state: ChatStreamState, action: Action): ChatStreamState {
@@ -104,18 +104,31 @@ function reducer(state: ChatStreamState, action: Action): ChatStreamState {
       return { ...state, turns, inFlight: stillStreaming };
     }
     case "DISCONNECT": {
-      const turns = state.turns.map((t) =>
-        t.id === action.turnId ? { ...t, streaming: false, disconnected: true } : t,
-      );
+      // A normal `chat-complete` / `chat-refused` already flipped the turn's
+      // `streaming` to false; in that case the for-await loop ending is a
+      // clean stream close, NOT a disconnect, and we must NOT tag the turn
+      // with `disconnected: true` (otherwise the FE shows "connection lost /
+      // retry" after every successful message). Only flag disconnect if
+      // the turn was still mid-stream when the loop ended.
+      const turns = state.turns.map((t) => {
+        if (t.id !== action.turnId) return t;
+        if (!t.streaming) return t;
+        return { ...t, streaming: false, disconnected: true };
+      });
       return { ...state, turns, inFlight: false };
     }
     case "PRE_STREAM_ERROR": {
       const turns = state.turns.map((t) => {
         if (t.id !== action.turnId) return t;
+        // Map by the backend error code (when available) — a bare status
+        // is ambiguous, e.g. FastAPI returns 422 for *any* request-shape
+        // failure, which used to mis-render every shape error as
+        // "message too long".
         const kind: "input_too_long" | "consent_required" | "other" =
-          action.status === 422
+          action.errorCode === "CHAT_INPUT_TOO_LONG"
             ? "input_too_long"
-            : action.status === 403
+            : action.errorCode === "CHAT_CONSENT_REQUIRED" ||
+                action.status === 403
               ? "consent_required"
               : "other";
         return { ...t, preStreamError: { status: action.status, kind } };
@@ -190,7 +203,32 @@ export function useChatStream(sessionId: string | null) {
           return;
         }
         if (err instanceof StreamHttpError) {
-          dispatch({ type: "PRE_STREAM_ERROR", turnId: assistantTurn.id, status: err.status });
+          // Backend wraps shape/precondition failures as
+          // {"detail":{"error":{"code":"...","message":"..."}}}.
+          // FastAPI's own missing-field 422 has a different shape
+          // ({"detail":[{"loc":..., "type":"missing"}]}) — that one has no
+          // code and falls through to "other".
+          let errorCode: string | undefined;
+          try {
+            const parsed = JSON.parse(err.bodyText) as {
+              detail?: { error?: { code?: string } };
+            };
+            errorCode = parsed?.detail?.error?.code;
+          } catch {
+            // body is not JSON (e.g. proxy HTML page, plain-text 502) —
+            // log so the bare status doesn't hide an upstream failure
+            // mode, then fall through to the generic "other" path.
+            console.warn(
+              `[chat-stream] non-JSON pre-stream error body (status ${err.status})`,
+              err.bodyText.slice(0, 200),
+            );
+          }
+          dispatch({
+            type: "PRE_STREAM_ERROR",
+            turnId: assistantTurn.id,
+            status: err.status,
+            errorCode,
+          });
           return;
         }
         dispatch({ type: "DISCONNECT", turnId: assistantTurn.id });

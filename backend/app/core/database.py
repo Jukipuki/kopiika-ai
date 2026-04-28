@@ -22,7 +22,18 @@ async def init_db() -> None:
 
 
 async def get_session() -> AsyncGenerator[SQLModelAsyncSession, None]:
-    async with SQLModelAsyncSession(engine) as session:
+    # expire_on_commit=False is the standard FastAPI + SQLAlchemy-async
+    # recommendation: the default (True) expires every ORM-bound attribute
+    # on every commit, and any subsequent attribute access then triggers a
+    # synchronous lazy-load — which under asyncpg surfaces as
+    # `MissingGreenlet: greenlet_spawn has not been called`. Endpoints that
+    # genuinely need fresh server-side values (trigger-defaulted columns,
+    # ON UPDATE timestamps) must call `await session.refresh(obj)` explicitly;
+    # the codebase already follows this pattern in services that need it
+    # (auth, review_queue, upload, profile, health_score).
+    async with SQLModelAsyncSession(
+        engine, expire_on_commit=False
+    ) as session:
         yield session
 
 
